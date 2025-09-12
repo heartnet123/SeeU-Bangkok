@@ -1,0 +1,29 @@
+{
+	"name": "mapchatbot-fyp",
+	"private": true,
+	"workspaces": [
+		"apps/*",
+		"packages/*"
+	],
+	"scripts": {
+		"dev": "turbo dev",
+		"build": "turbo build",
+		"check-types": "turbo check-types",
+		"dev:native": "turbo -F native dev",
+		"dev:web": "turbo -F web dev",
+		"dev:server": "turbo -F server dev",
+		"db:push": "turbo -F server db:push",
+		"db:studio": "turbo -F server db:studio",
+		"db:generate": "turbo -F server db:generate",
+		"db:migrate": "turbo -F server db:migrate"
+	},
+	"dependencies": {
+		"@hono/zod-validator": "^0.7.2",
+		"@supabase/ssr": "^0.7.0",
+		"@supabase/supabase-js": "^2.56.0"
+	},
+	"devDependencies": {
+		"turbo": "^2.5.4"
+	},
+	"packageManager": "bun@1.2.18"
+}
