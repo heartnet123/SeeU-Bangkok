@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { nameToSlug } from '@/lib/slug-utils';
+import { useAuth } from '@/contexts/auth-context';
 import { 
   MapPin, 
   ArrowLeft, 
@@ -348,7 +349,7 @@ export default function PlaceDetailPage() {
                     Add to Trip Plan
                   </Button>
                   <Button variant="outline" className="w-full border-gray-300 text-black hover:bg-gray-50">
-                    Ask Chatbot
+                    Ask Trip Planner
                   </Button>
                   <Button variant="outline" className="w-full border-gray-300 text-black hover:bg-gray-50">
                     Save for Later

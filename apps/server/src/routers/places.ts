@@ -33,7 +33,7 @@ places.get('/', async (c) => {
       query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`)
     }
     
-    // Add pagination
+    // Pagination
     const limitNum = parseInt(limit)
     const offsetNum = parseInt(offset)
     query = query.range(offsetNum, offsetNum + limitNum - 1)

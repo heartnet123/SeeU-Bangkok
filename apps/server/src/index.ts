@@ -2,6 +2,7 @@ import "dotenv/config";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
+import { Scalar } from "@scalar/hono-api-reference";
 import { appRouter } from "./routers/index";
 
 const app = new Hono();
@@ -19,9 +20,11 @@ app.use(
 // Mount all routes
 app.route("/api", appRouter);
 
+// Serve OpenAPI JSON at /doc for Scalar to consume
+app.get('/scalar', Scalar({ url: '/doc', theme: 'purple', pageTitle: 'My API Reference' }))
 // Health check for the main app
 app.get("/", (c) => {
-	return c.text("MapChatBot API - OK");
+    return c.text("TripPlanner API - OK");
 });
 
 export default app;

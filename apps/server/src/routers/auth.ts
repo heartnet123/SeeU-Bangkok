@@ -33,8 +33,6 @@ const updateProfileSchema = z.object({
 })
 
 // Auth routes (these handle authentication via Supabase client-side)
-// These are more for verification and additional logic if needed
-
 // Get current user profile
 auth.get('/me', authMiddleware, async (c) => {
   const user = c.get('user')

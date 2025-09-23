@@ -57,7 +57,7 @@ export default function Home() {
 								className="bg-transparent border-2 border-white text-white hover:bg-white hover:text-gray-900 px-12 py-6 text-xl font-semibold rounded-lg transition-all duration-300 flex items-center gap-3 shadow-lg hover:shadow-xl"
 							>
 								<MessageCircle className="w-6 h-6" />
-								Chatbot
+								Trip Planner
 							</Button>
 						</Magnetic>
 					</AnimatedGroup>
@@ -113,8 +113,8 @@ export default function Home() {
 							<div className="w-16 h-16 mx-auto mb-6 bg-orange-100 rounded-full flex items-center justify-center group-hover:bg-orange-200 transition-colors">
 								<MessageCircle className="w-8 h-8 text-orange-600" />
 							</div>
-							<h3 className="text-xl font-semibold text-gray-900 mb-4">AI Chatbot</h3>
-							<p className="text-gray-600 leading-relaxed">Get instant answers and personalized travel advice from our intelligent chatbot trained on local knowledge.</p>
+							<h3 className="text-xl font-semibold text-gray-900 mb-4">Trip Planner</h3>
+							<p className="text-gray-600 leading-relaxed">Get instant answers and personalized travel advice from our intelligent Trip Planner trained on local knowledge.</p>
 						</Card>
 
 						<Card className="p-8 text-center hover:shadow-lg transition-all duration-300 border-0 bg-white group">

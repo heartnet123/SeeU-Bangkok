@@ -17,7 +17,8 @@ export default function Header() {
 		{ to: "/places", label: "Places" },
 		{ to: "/map", label: "Map" },
 		{ to: "/saved-trips", label: "Saved Trips" },
-		// { to: "/chatbot", label: "Chatbot" },
+		// { to: "/chat", label: "Trip Planner" },
+		{ to: "/admin/places", label: "Admin" },
 		// { to: "/about", label: "About Us" },
 	];
 

@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-	title: "mapchatbot-fyp",
-	description: "mapchatbot-fyp",
+	title: "TripPlanner-fyp",
+	description: "TripPlanner-fyp",
 };
 
 export default function RootLayout({
