@@ -89,13 +89,7 @@ export default function Header() {
 
 				{/* Right side - Search and Auth Button */}
 				<div className="flex items-center gap-4">
-					<motion.button 
-						className="p-3 hover:bg-gray-800/50 rounded-full transition-all duration-300 border border-gray-700/50 backdrop-blur-sm hover:border-blue-500/50"
-						whileHover={{ scale: 1.05, y: -2 }}
-						whileTap={{ scale: 0.95 }}
-					>
-						<Search className="w-5 h-5 text-gray-300 hover:text-blue-400 transition-colors duration-200" />
-					</motion.button>
+ 
 					<div className="hidden sm:flex">
 						<AuthButton />
 					</div>

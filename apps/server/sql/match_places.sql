@@ -4,7 +4,8 @@
 create or replace function public.match_places(
   query_embedding vector(1536),
   match_count int,
-  search text default null
+  search text default null,
+  similarity_threshold double precision default 0.4
 )
 returns table (
   id uuid,
@@ -34,6 +35,7 @@ as $$
     1 - (embedding <=> query_embedding) as similarity
   from public.bangkok_unseen
   where embedding is not null
+    and (1 - (embedding <=> query_embedding)) >= similarity_threshold
     and (
       search is null
       or name ilike '%'||search||'%'

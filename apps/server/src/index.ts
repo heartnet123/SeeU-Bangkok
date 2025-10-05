@@ -20,9 +20,9 @@ app.use(
 // Mount all routes
 app.route("/api", appRouter);
 
-// Serve OpenAPI JSON at /doc for Scalar to consume
+// Serve OpenAPI JSON
 app.get('/scalar', Scalar({ url: '/doc', theme: 'purple', pageTitle: 'My API Reference' }))
-// Health check for the main app
+// Health check 
 app.get("/", (c) => {
     return c.text("TripPlanner API - OK");
 });

@@ -4,7 +4,6 @@ import { nameToSlug, slugToName } from '../lib/slug-utils'
 
 const places = new Hono()
 
-// Interface for place data
 interface Place {
   id: string;
   name: string;

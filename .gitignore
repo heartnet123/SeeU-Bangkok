@@ -3,3 +3,10 @@ node_modules
 .alchemy
 .qoder
 .env
+# BMAD (local only)
+.bmad-core/
+.bmad-*/
+.clinerules
+web-bundles
+.github
+/.md

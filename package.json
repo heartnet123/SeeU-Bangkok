@@ -1,34 +1,37 @@
 {
-	"name": "TripPlanner-fyp",
-	"private": true,
-	"workspaces": [
-		"apps/*",
-		"packages/*"
-	],
-	"scripts": {
-		"dev": "turbo dev",
-		"build": "turbo build",
-		"check-types": "turbo check-types",
-		"dev:native": "turbo -F native dev",
-		"dev:web": "turbo -F web dev",
-		"dev:server": "turbo -F server dev",
-		"db:push": "turbo -F server db:push",
-		"db:studio": "turbo -F server db:studio",
-		"db:generate": "turbo -F server db:generate",
-		"db:migrate": "turbo -F server db:migrate"
-	},
-	"dependencies": {
-		"@hono/zod-validator": "^0.7.2",
-		"@huggingface/inference": "^4.8.0",
-		"@langchain/community": "^0.3.56",
-		"@langchain/core": "^0.3.77",
-		"@langchain/langgraph": "^0.4.9",
-		"@langchain/openai": "^0.6.13",
-		"@supabase/ssr": "^0.7.0",
-		"@supabase/supabase-js": "^2.56.0"
-	},
-	"devDependencies": {
-		"turbo": "^2.5.4"
-	},
-	"packageManager": "bun@1.2.18"
+  "name": "TripPlanner-fyp",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "check-types": "turbo check-types",
+    "dev:native": "turbo -F native dev",
+    "dev:web": "turbo -F web dev",
+    "dev:server": "turbo -F server dev",
+    "db:push": "turbo -F server db:push",
+    "db:studio": "turbo -F server db:studio",
+    "db:generate": "turbo -F server db:generate",
+    "db:migrate": "turbo -F server db:migrate",
+    "bmad:refresh": "bmad-method install -f -i codex",
+    "bmad:list": "bmad-method list:agents",
+    "bmad:validate": "bmad-method validate"
+  },
+  "dependencies": {
+    "@hono/zod-validator": "^0.7.2",
+    "@huggingface/inference": "^4.8.0",
+    "@langchain/community": "^0.3.56",
+    "@langchain/core": "^0.3.77",
+    "@langchain/langgraph": "^0.4.9",
+    "@langchain/openai": "^0.6.13",
+    "@supabase/ssr": "^0.7.0",
+    "@supabase/supabase-js": "^2.56.0"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.4"
+  },
+  "packageManager": "bun@1.2.18"
 }

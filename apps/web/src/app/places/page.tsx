@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { nameToSlug } from "@/lib/slug-utils";
 import { createClient } from "@/lib/supabase/client";
+import Image from "next/image";
 
 interface Place {
   id: string;
@@ -171,7 +172,7 @@ export default function NeighborhoodsPage() {
                 }}
                 placeholder="Search by name, tag, or description"
                 aria-label="Search places"
-                className="pl-10"
+                className="pl-10 text-black"
               />
             </div>
           </div>
@@ -197,10 +198,12 @@ export default function NeighborhoodsPage() {
                   <CardContent className="p-0 flex flex-col h-full">
                       {/* Always show placeholder image */}
                       <div className="relative h-48 bg-gradient-to-br from-gray-200 to-gray-300 rounded-t-lg overflow-hidden flex items-center justify-center">
-                        <div className="text-center text-gray-400">
-                          <Camera className="w-12 h-12 mx-auto mb-2" />
-                          <p className="text-xs">Image placeholder</p>
-                        </div>
+                <Image
+                    src="https://i.pinimg.com/736x/5d/60/bb/5d60bb1df532a1c181d55c54e0e19c66.jpg"
+                    alt={place.name}
+                    fill
+                    className="object-cover transition-transform duration-300 group-hover:scale-105"
+                />
                         <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors duration-300" />
                         <div className="absolute bottom-4 left-4 text-white">
                           <h3 className="text-xl font-semibold">{place.name}</h3>

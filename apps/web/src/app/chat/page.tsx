@@ -14,6 +14,8 @@ type ChatEvent =
   | { type: 'itinerary'; data: any }
   | { type: 'error'; text: string }
   | { type: 'done' }
+  | { type: 'tools'; data: any }
+  | { type: 'context'; data: any }
 
 interface PlaceItem {
   id: string
@@ -37,7 +39,7 @@ function useSSEStream() {
     setStreaming(false)
   }, [])
 
-  const start = useCallback(async (payload: any) => {
+  const start = useCallback(async (payload: any, endpoint: 'chat' | 'agent' = 'chat') => {
     if (isStreaming) stop()
     setEvents([])
     setStreaming(true)
@@ -46,7 +48,7 @@ function useSSEStream() {
 
     try {
       const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'
-      const res = await fetch(`${serverUrl}/api/chat`, {
+      const res = await fetch(`${serverUrl}/api/${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
         body: JSON.stringify(payload),
@@ -99,6 +101,22 @@ function useSSEStream() {
                 setEvents((prev) => [...prev, { type: 'error', text: 'Bad itinerary payload' }])
               }
               break
+            case 'tools':
+              try {
+                const payload = JSON.parse(joined)
+                setEvents((prev) => [...prev, { type: 'tools', data: payload }])
+              } catch (e) {
+                setEvents((prev) => [...prev, { type: 'error', text: 'Bad tools payload' }])
+              }
+              break
+            case 'context':
+              try {
+                const payload = JSON.parse(joined)
+                setEvents((prev) => [...prev, { type: 'context', data: payload }])
+              } catch (e) {
+                setEvents((prev) => [...prev, { type: 'error', text: 'Bad context payload' }])
+              }
+              break
             case 'error':
               setEvents((prev) => [...prev, { type: 'error', text: joined }])
               break
@@ -136,6 +154,7 @@ export default function ChatTestPage() {
   const [input, setInput] = useState('Suggest a half-day temple tour near me under ฿200')
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [forceNoMatch, setForceNoMatch] = useState(false)
+  const [useAgent, setUseAgent] = useState(false)
   const { events, isStreaming, start, stop } = useSSEStream()
   const { session } = useAuth()
 
@@ -154,6 +173,16 @@ export default function ChatTestPage() {
     return ev?.text || ''
   }, [events])
 
+  const toolsUsed = useMemo(() => {
+    const ev = [...events].reverse().find((e) => e.type === 'tools') as any
+    return ev?.data?.tools || []
+  }, [events])
+
+  const contextInfo = useMemo(() => {
+    const ev = [...events].reverse().find((e) => e.type === 'context') as any
+    return ev?.data || null
+  }, [events])
+
   const handleSend = useCallback(() => {
     const payload: any = {
       messages: [
@@ -163,8 +192,8 @@ export default function ChatTestPage() {
     }
     if (coords) payload.userLocation = coords
     if (forceNoMatch) payload.force_no_match = true
-    start(payload)
-  }, [input, coords, start])
+    start(payload, useAgent ? 'agent' : 'chat')
+  }, [input, coords, forceNoMatch, useAgent, start])
 
   const handleLocate = useCallback(() => {
     if (!navigator.geolocation) return
@@ -181,13 +210,39 @@ export default function ChatTestPage() {
 
   return (
     <div className="max-w-5xl mx-auto p-6 space-y-6">
-      <h1 className="text-2xl font-semibold text-black">Trip Planner Tester</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold text-black">Trip Planner Tester</h1>
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-gray-700 font-medium">Mode:</label>
+          <Button
+            variant={useAgent ? 'outline' : 'default'}
+            size="sm"
+            onClick={() => setUseAgent(false)}
+          >
+            Classic Chat
+          </Button>
+          <Button
+            variant={useAgent ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setUseAgent(true)}
+          >
+            🤖 RAG Agent
+          </Button>
+        </div>
+      </div>
+
+      {useAgent && (
+        <div className="p-3 rounded-md bg-blue-50 border border-blue-200 text-sm text-blue-800">
+          <strong>RAG Agent Mode:</strong> Uses LangGraph workflow with vector search, tool calling, and retrieval-augmented generation.
+        </div>
+      )}
 
       <div className="flex gap-2 items-center flex-wrap text-black">
         <Input
-          className='border-2 border-indigo-500'
+          className='border-2 border-indigo-500 flex-1'
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && !isStreaming && handleSend()}
           placeholder="Ask for places or a plan..."
         />
         <Button onClick={handleSend} disabled={isStreaming}>Send</Button>
@@ -199,11 +254,39 @@ export default function ChatTestPage() {
       </div>
 
       {coords && (
-        <div className="text-sm text-gray-600">Location: {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}</div>
+        <div className="text-sm text-gray-600">📍 Location: {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}</div>
       )}
 
       {statusText && (
-        <div className="text-sm text-blue-600">Status: {statusText}</div>
+        <div className="text-sm text-blue-600">⏳ Status: {statusText}</div>
+      )}
+
+      {/* RAG Agent specific info */}
+      {useAgent && toolsUsed.length > 0 && (
+        <div className="p-3 rounded-md bg-purple-50 border border-purple-200">
+          <div className="text-sm font-medium text-purple-900 mb-1">🛠️ Tools Used:</div>
+          <div className="text-sm text-purple-700">
+            {toolsUsed.map((t: any, i: number) => (
+              <span key={i} className="inline-block mr-2 px-2 py-0.5 bg-purple-100 rounded">
+                {t.tool}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {useAgent && contextInfo && (
+        <div className="p-3 rounded-md bg-green-50 border border-green-200">
+          <div className="text-sm font-medium text-green-900 mb-1">📚 Retrieved Context:</div>
+          <div className="text-sm text-green-700">
+            {contextInfo.documents} documents retrieved
+            {contextInfo.top_docs && contextInfo.top_docs.length > 0 && (
+              <div className="mt-1 text-xs">
+                Top matches: {contextInfo.top_docs.map((d: any) => d.name).join(', ')}
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Streamed assistant messages */}

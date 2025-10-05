@@ -75,7 +75,7 @@ export default function SavedTripsPage() {
     <div className="max-w-5xl mx-auto p-6 space-y-6 text-black">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Saved Trips</h1>
-        <div className="text-sm text-gray-600">{trips.length} trips</div>
+        <div className="text-sm text-gray-600">{trips.length} Trips</div>
       </div>
 
       {error && (
@@ -87,7 +87,7 @@ export default function SavedTripsPage() {
           <CardContent className="p-6 space-y-3">
             <p className="text-gray-700">No trips yet. Create one from the Trip Planner or a Place page.</p>
             <div className="flex gap-3">
-              <Link href="/chat"><Button>Open Trip Planner</Button></Link>
+              <Link href="/map"><Button>Open Trip Planner</Button></Link>
               <Link href="/places"><Button variant="outline">Browse Places</Button></Link>
             </div>
           </CardContent>

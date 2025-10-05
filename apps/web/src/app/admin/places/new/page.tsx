@@ -5,6 +5,8 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { AdminMapPicker } from '@/components/map/admin-map-picker'
+import { MapPin } from 'lucide-react'
 
 type PlacePayload = {
   name: string
@@ -40,10 +42,15 @@ export default function AdminNewPlacePage() {
   const [result, setResult] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
   const [slugTouched, setSlugTouched] = useState(false)
+  const [showMap, setShowMap] = useState(false)
 
   const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'
 
   const update = (k: keyof PlacePayload, v: any) => setForm((f) => ({ ...f, [k]: v }))
+
+  const handleLocationSelect = (lat: number, lng: number) => {
+    setForm((f) => ({ ...f, lat, lng }))
+  }
 
   // auto-generate slug from name
   const autoSlug = useMemo(() => slugify(form.name || ''), [form.name])
@@ -51,7 +58,7 @@ export default function AdminNewPlacePage() {
 
   const latNum = form.lat != null ? Number(form.lat) : NaN
   const lngNum = form.lng != null ? Number(form.lng) : NaN
-  const priceNum = form.price != null && form.price !== '' ? Number(form.price) : null
+  const priceNum = form.price != null && String(form.price) !== '' ? Number(form.price) : null
 
   const latValid = Number.isFinite(latNum) && latNum >= -90 && latNum <= 90
   const lngValid = Number.isFinite(lngNum) && lngNum >= -180 && lngNum <= 180
@@ -166,32 +173,68 @@ export default function AdminNewPlacePage() {
           />
         </div>
 
-        {/* Lat/Lng */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <Label className="mb-1 block text-black">Latitude *</Label>
-            <Input
-              type="number"
-              step="any"
-              value={form.lat ?? ''}
-              onChange={(e) => update('lat', e.target.value)}
-              placeholder="13.746"
-              className="text-black"
-            />
-            {!latValid && <p className="text-xs text-red-600 mt-1">ต้องอยู่ระหว่าง -90 ถึง 90</p>}
+        {/* Lat/Lng with Map Picker */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <Label className="text-black font-semibold">Location Coordinates *</Label>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowMap(!showMap)}
+              className="text-blue-600 border-blue-600 hover:bg-blue-50"
+            >
+              <MapPin className="h-4 w-4 mr-2" />
+              {showMap ? 'Hide Map' : 'Show Map Picker'}
+            </Button>
           </div>
-          <div>
-            <Label className="mb-1 block text-black">Longitude *</Label>
-            <Input
-              type="number"
-              step="any"
-              value={form.lng ?? ''}
-              onChange={(e) => update('lng', e.target.value)}
-              placeholder="100.535"
-              className="text-black"
-            />
-            {!lngValid && <p className="text-xs text-red-600 mt-1">ต้องอยู่ระหว่าง -180 ถึง 180</p>}
+
+          {/* Map Picker */}
+          {showMap && (
+            <div className="mb-4">
+              <AdminMapPicker
+                lat={form.lat}
+                lng={form.lng}
+                onLocationSelect={handleLocationSelect}
+                className="h-[500px]"
+              />
+            </div>
+          )}
+
+          {/* Manual Input Fields */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label className="mb-1 block text-black">Latitude *</Label>
+              <Input
+                type="number"
+                step="any"
+                value={form.lat ?? ''}
+                onChange={(e) => update('lat', e.target.value)}
+                placeholder="13.746"
+                className="text-black"
+              />
+              {!latValid && <p className="text-xs text-red-600 mt-1">ต้องอยู่ระหว่าง -90 ถึง 90</p>}
+            </div>
+            <div>
+              <Label className="mb-1 block text-black">Longitude *</Label>
+              <Input
+                type="number"
+                step="any"
+                value={form.lng ?? ''}
+                onChange={(e) => update('lng', e.target.value)}
+                placeholder="100.535"
+                className="text-black"
+              />
+              {!lngValid && <p className="text-xs text-red-600 mt-1">ต้องอยู่ระหว่าง -180 ถึง 180</p>}
+            </div>
           </div>
+          
+          {form.lat && form.lng && latValid && lngValid && (
+            <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
+              <MapPin className="h-3 w-3" />
+              Location set: {Number(form.lat).toFixed(6)}, {Number(form.lng).toFixed(6)}
+            </p>
+          )}
         </div>
 
         {/* Address */}
