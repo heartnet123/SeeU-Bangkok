@@ -1,1 +1,1 @@
-# FYP_Mapchatbot
+# FYP_TripPlanner

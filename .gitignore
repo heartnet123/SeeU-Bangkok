@@ -9,4 +9,13 @@ node_modules
 .clinerules
 web-bundles
 .github
-/.md
+*.md
+
+*.cursor
+
+*.roomodes
+*.codeviz
+*.agents
+*.vscode
+
+

@@ -38,7 +38,7 @@ auth.get('/me', authMiddleware, async (c) => {
   const user = c.get('user')
   
   try {
-    // Fetch additional user profile data if you have a user_profiles table
+    // Fetch additional user profile data
     const { data: profile, error } = await supabase
       .from('user_profiles')
       .select('*')

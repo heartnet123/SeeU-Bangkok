@@ -20,9 +20,13 @@ interface PlaceItem {
 
 export default function TripPlannerPage() {
   const [trips, setTrips] = useState<Trip[]>(mockTrips);
-  const [selectedTripId, setSelectedTripId] = useState<string | null>(mockTrips[0]?.id || null);
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(
+    mockTrips[0]?.id || null
+  );
   const [isLoading, setIsLoading] = useState(false);
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | undefined>();
+  const [userLocation, setUserLocation] = useState<
+    { lat: number; lng: number } | undefined
+  >();
   const [foundPlaces, setFoundPlaces] = useState<PlaceItem[]>([]);
 
   const selectedTrip = trips.find((t) => t.id === selectedTripId) || null;
@@ -32,7 +36,10 @@ export default function TripPlannerPage() {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+          setUserLocation({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+          });
         },
         () => {
           // Silently fail - location is optional
@@ -81,12 +88,15 @@ export default function TripPlannerPage() {
           }
 
           const updatedStops = [...trip.stops, newStop];
-          
+
           // Recalculate trip duration (simplified)
-          const newDuration = updatedStops.reduce((sum, stop) => sum + stop.suggestedDurationMin, 0);
-          
+          const newDuration = updatedStops.reduce(
+            (sum, stop) => sum + stop.suggestedDurationMin,
+            0
+          );
+
           toast.success(`Added ${place.name} to ${trip.name}`);
-          
+
           return {
             ...trip,
             stops: updatedStops,
@@ -123,6 +133,42 @@ export default function TripPlannerPage() {
     // Placeholder for future implementation
   };
 
+  const handleReorderTrips = (orderedTripIds: string[]) => {
+    setTrips((prev) => {
+      const idToTrip = new Map(prev.map((t) => [t.id, t] as const));
+      const reordered: Trip[] = [];
+      for (const id of orderedTripIds) {
+        const tr = idToTrip.get(id);
+        if (tr) reordered.push(tr);
+      }
+      // Append any missing (safety)
+      for (const t of prev)
+        if (!orderedTripIds.includes(t.id)) reordered.push(t);
+      return reordered;
+    });
+  };
+
+  const handleReorderStops = (tripId: string, orderedStopIds: string[]) => {
+    setTrips((prev) =>
+      prev.map((t) => {
+        if (t.id !== tripId) return t;
+        const idToStop = new Map(t.stops.map((s) => [s.id, s] as const));
+        const reordered: TripStop[] = [];
+        for (const id of orderedStopIds) {
+          const st = idToStop.get(id);
+          if (st) reordered.push(st);
+        }
+        for (const s of t.stops)
+          if (!orderedStopIds.includes(s.id)) reordered.push(s);
+        const newDuration = reordered.reduce(
+          (sum, s) => sum + s.suggestedDurationMin,
+          0
+        );
+        return { ...t, stops: reordered, totalDurationMin: newDuration };
+      })
+    );
+  };
+
   return (
     <div className="bg-gray-50 min-h-screen p-4 md:p-6">
       <div className="w-full max-w-8xl mx-auto h-[calc(100vh-var(--header-height,3rem))] grid grid-cols-1 lg:grid-cols-[350px_1fr_400px] gap-4 md:gap-6">
@@ -134,6 +180,7 @@ export default function TripPlannerPage() {
           onNewTripClick={handleNewTrip}
           onDeleteTrip={handleDeleteTrip}
           onEditTrip={handleEditTrip}
+          onReorderTrips={handleReorderTrips}
         />
 
         {/* Map & Details */}
@@ -147,6 +194,7 @@ export default function TripPlannerPage() {
         <ItineraryColumn
           trip={selectedTrip}
           onEditTrip={handleEditTrip}
+          onReorderStops={handleReorderStops}
         />
       </div>
 
