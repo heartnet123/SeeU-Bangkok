@@ -1,5 +1,21 @@
 {
   "description": "Template configuration for this project. See https://www.codebuff.com/config for all options.",
-  "startupProcesses": [],
-  "fileChangeHooks": []
+  "startupProcesses": [
+    {
+      "name": "web",
+      "command": "bun run dev",
+      "cwd": "apps/web",
+      "stdoutFile": "logs/web.log"
+    },
+    {
+      "name": "server",
+      "command": "bun run dev",
+      "cwd": "apps/server",
+      "stdoutFile": "logs/server.log"
+    }
+  ],
+  "fileChangeHooks": [],
+  "addedSpawnableAgents": [
+    "codebuff/deep-code-reviewer@0.0.2"
+  ]
 }

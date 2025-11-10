@@ -188,6 +188,7 @@ export default function TripPlannerPage() {
           trip={selectedTrip}
           isLoading={isLoading}
           foundPlaces={foundPlaces}
+          userLocation={userLocation}
         />
 
         {/* Itinerary */}

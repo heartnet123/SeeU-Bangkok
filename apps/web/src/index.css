@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+/* Add Mapbox GL styles globally so any map instance displays correctly */
+@import "mapbox-gl/dist/mapbox-gl.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 

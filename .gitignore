@@ -17,5 +17,7 @@ web-bundles
 *.codeviz
 *.agents
 *.vscode
+*.bmad
+
 
 

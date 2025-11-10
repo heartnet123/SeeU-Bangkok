@@ -1,9 +1,11 @@
 "use client";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, Edit, Clock, Navigation, Wallet, Search } from "lucide-react";
+import MapContainer from "@/components/map/map-container";
 import type { Trip } from "./mock-data";
 
 interface PlaceItem {
@@ -20,9 +22,62 @@ interface Props {
   trip: Trip | null;
   isLoading?: boolean;
   foundPlaces?: PlaceItem[];
+  userLocation?: { lat: number; lng: number };
 }
 
-export function MapDetailsColumn({ trip, isLoading = false, foundPlaces = [] }: Props) {
+export function MapDetailsColumn({ trip, isLoading = false, foundPlaces = [], userLocation }: Props) {
+  const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
+
+  // Transform places data for MapContainer
+  const transformPlacesForMap = (places: PlaceItem[]): any[] => {
+    return places
+      .filter(place => place.lat && place.lng)
+      .map(place => ({
+        id: place.id,
+        name: place.name,
+        description: place.tags?.join(', ') || 'No description available',
+        tags: place.tags || [],
+        lat: place.lat!,
+        lng: place.lng!,
+        address: place.slug || 'Address not available',
+        price: place.price || 0,
+        image_url: '',
+        slug: place.slug || place.id,
+      }));
+  };
+
+  // Transform trip stops for map
+  const transformTripStopsForMap = (trip: Trip | null): any[] => {
+    if (!trip || !trip.stops) return [];
+    return trip.stops
+      .filter(stop => stop.lat && stop.lng)
+      .map(stop => ({
+        id: stop.id,
+        name: stop.name,
+        description: `${stop.category} - ${stop.address}`,
+        tags: [stop.category],
+        lat: stop.lat,
+        lng: stop.lng,
+        address: stop.address,
+        price: 0,
+        image_url: '',
+        slug: stop.id,
+      }));
+  };
+
+  const handlePlaceSelect = (place: any) => {
+    setSelectedPlace(place);
+  };
+
+  const handlePlaceDeselect = () => {
+    setSelectedPlace(null);
+  };
+
+  // Combine found places and trip stops for map display
+  const allPlacesForMap = [
+    ...transformPlacesForMap(foundPlaces),
+    ...transformTripStopsForMap(trip),
+  ];
   // Loading state
   if (isLoading) {
     return (
@@ -59,85 +114,28 @@ export function MapDetailsColumn({ trip, isLoading = false, foundPlaces = [] }: 
   return (
     <main className="flex flex-col gap-6 h-full" role="main" aria-label="Map and trip details">
       {/* Map Card */}
-      <Card className="flex-1 bg-white border border-slate-200 shadow-sm transition-shadow hover:shadow-lg">
-        <CardHeader>
+      <Card className="flex-1 bg-white border border-slate-200 shadow-sm transition-shadow hover:shadow-lg flex flex-col">
+        <CardHeader className="flex-shrink-0">
           <CardTitle className="text-slate-800 flex items-center gap-2">
             <MapPin className="w-5 h-5" aria-hidden="true" />
             Map Overview: {trip.name}
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex-1 p-0 min-h-0">
           <div
-            className="w-full h-[400px] flex flex-col bg-slate-50 rounded-lg border border-slate-200 overflow-hidden"
+            className="w-full h-full rounded-lg overflow-hidden"
             role="img"
             aria-label="Interactive map with found places"
           >
-            {/* Map Placeholder */}
-            <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-blue-50 to-slate-100 relative">
-              <div className="text-center p-8">
-                <MapPin className="w-16 h-16 mx-auto text-slate-300 mb-4" aria-hidden="true" />
-                <h3 className="text-xl font-semibold text-slate-600">
-                  Interactive Map Coming Soon
-                </h3>
-                <p className="text-sm text-slate-500 mt-2 max-w-md">
-                  View your trip stops and routes on an interactive map
-                </p>
-              </div>
-
-              {/* Found Places Markers Overlay */}
-              {foundPlaces.length > 0 && (
-                <div className="absolute top-4 left-4 right-4">
-                  <Badge variant="secondary" className="bg-white/90 backdrop-blur-sm shadow-lg text-black">
-                    <Search className="w-3 h-3 mr-1" />
-                    {foundPlaces.length} places found from chat
-                  </Badge>
-                </div>
-              )}
-
-              {/* Mock Pin Visualization */}
-              {foundPlaces.length > 0 && (
-                <div className="absolute inset-0 pointer-events-none">
-                  {foundPlaces.slice(0, 5).map((place, idx) => (
-                    <div
-                      key={place.id}
-                      className="absolute transform -translate-x-1/2 -translate-y-1/2"
-                      style={{
-                        left: `${20 + idx * 15}%`,
-                        top: `${30 + (idx % 2) * 20}%`,
-                      }}
-                    >
-                      <div className="relative group">
-                        <MapPin className="w-8 h-8 text-red-500 drop-shadow-lg animate-bounce" style={{ animationDelay: `${idx * 0.1}s` }} />
-                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block">
-                          <div className="bg-white rounded-lg shadow-lg p-2 text-xs whitespace-nowrap">
-                            <div className="font-semibold">{place.name}</div>
-                            {place.tags && place.tags.length > 0 && (
-                              <div className="text-gray-500">{place.tags[0]}</div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Trip Stops List (if trip exists) */}
-            {trip && trip.stops.length > 0 && (
-              <div className="bg-white border-t p-3 max-h-32 overflow-y-auto">
-                <div className="text-xs font-medium text-slate-700 mb-2">Trip Stops ({trip.stops.length})</div>
-                <div className="space-y-1">
-                  {trip.stops.map((stop, idx) => (
-                    <div key={stop.id} className="flex items-center gap-2 text-xs text-slate-600">
-                      <span className="font-medium w-4">{idx + 1}.</span>
-                      <span className="flex-1 truncate">{stop.name}</span>
-                      <Badge variant="outline" className="text-xs">{stop.category}</Badge>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            <MapContainer
+              places={allPlacesForMap}
+              selectedPlace={selectedPlace}
+              onPlaceSelect={handlePlaceSelect}
+              onPlaceDeselect={handlePlaceDeselect}
+              userLocation={userLocation ? [userLocation.lat, userLocation.lng] : undefined}
+              initialCenter={[100.5018, 13.7563]} // Bangkok center
+              initialZoom={12}
+            />
           </div>
         </CardContent>
       </Card>

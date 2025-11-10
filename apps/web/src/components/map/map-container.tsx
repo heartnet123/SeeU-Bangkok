@@ -258,15 +258,15 @@ const MapContainer: React.FC<MapContainerProps> = ({
         
         markerElement.innerHTML = `${count}`;
         
-        // Cluster hover effects
+        // Cluster hover effects - avoid transform scale to prevent positioning issues
         markerElement.addEventListener('mouseenter', () => {
-          markerElement.style.transform = 'scale(1.1)';
-          markerElement.style.zIndex = '1000';
+          markerElement.style.opacity = '0.8';
+          markerElement.style.filter = 'brightness(1.2)';
         });
 
         markerElement.addEventListener('mouseleave', () => {
-          markerElement.style.transform = 'scale(1)';
-          markerElement.style.zIndex = '1';
+          markerElement.style.opacity = '1';
+          markerElement.style.filter = 'brightness(1)';
         });
         
         // Cluster click handler - zoom in to expand
@@ -310,15 +310,15 @@ const MapContainer: React.FC<MapContainerProps> = ({
         const icon = getPlaceIcon(place);
         markerElement.innerHTML = icon;
 
-        // Hover effects
+        // Hover effects - avoid transform scale to prevent positioning issues
         markerElement.addEventListener('mouseenter', () => {
-          markerElement.style.transform = 'scale(1.2)';
-          markerElement.style.zIndex = '1000';
+          markerElement.style.opacity = '0.8';
+          markerElement.style.filter = 'brightness(1.2)';
         });
 
         markerElement.addEventListener('mouseleave', () => {
-          markerElement.style.transform = 'scale(1)';
-          markerElement.style.zIndex = '1';
+          markerElement.style.opacity = '1';
+          markerElement.style.filter = 'brightness(1)';
         });
 
         // Click handler
@@ -417,7 +417,8 @@ const MapContainer: React.FC<MapContainerProps> = ({
   };
 
   const handleMarkerClick = (place: Place) => {
-    onPlaceSelect(place);
+    // Don't call onPlaceSelect to avoid triggering fly-to behavior
+    // Just show the popup directly
     showPlacePopup(place);
   };
 

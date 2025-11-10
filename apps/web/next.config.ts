@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const nextConfig: NextConfig = {
+  // Configure for monorepo file tracing
+  outputFileTracingRoot: path.join(__dirname, '../../'),
   images: {
     remotePatterns: [
       {
@@ -40,7 +43,7 @@ const nextConfig: NextConfig = {
     if (!isServer) {
       config.resolve.alias = {
         ...config.resolve.alias,
-        'mapbox-gl': 'mapbox-gl/dist/mapbox-gl.js'
+        'mapbox-gl': 'mapbox-gl'
       };
     }
     return config;
