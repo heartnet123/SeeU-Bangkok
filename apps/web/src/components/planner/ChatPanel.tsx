@@ -38,7 +38,6 @@ export function ChatPanel({ onPlacesFound, onAddPlaceToTrip, userLocation, defau
   const [input, setInput] = useState("");
   const [events, setEvents] = useState<ChatEvent[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [useAgent, setUseAgent] = useState(false);
   const controllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -87,6 +86,7 @@ export function ChatPanel({ onPlacesFound, onAddPlaceToTrip, userLocation, defau
 
       try {
         const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3000";
+        console.log("Starting agent request", { input, userLocation, serverUrl });
         const payload: any = {
           messages: [
             { role: "system", content: "You are a helpful Bangkok travel assistant." },
@@ -102,12 +102,16 @@ export function ChatPanel({ onPlacesFound, onAddPlaceToTrip, userLocation, defau
           signal: controller.signal,
         });
 
+        console.log("Fetch response received", { ok: res.ok, status: res.status, statusText: res.statusText });
+
         if (!res.ok || !res.body) {
+          console.log("Response invalid, setting error");
           setEvents((prev) => [...prev, { type: "error", text: `Request failed (${res.status})` }]);
           setIsStreaming(false);
           return;
         }
 
+        console.log("Starting to read response stream");
         const reader = res.body.getReader();
         const decoder = new TextDecoder("utf-8");
         let buffer = "";
@@ -170,6 +174,7 @@ export function ChatPanel({ onPlacesFound, onAddPlaceToTrip, userLocation, defau
         buffer += decoder.decode();
         flush();
       } catch (e: any) {
+        console.log("Error during streaming", e);
         if (e?.name !== "AbortError") {
           setEvents((prev) => [...prev, { type: "error", text: e?.message || "Stream error" }]);
         }
@@ -182,8 +187,8 @@ export function ChatPanel({ onPlacesFound, onAddPlaceToTrip, userLocation, defau
 
   const handleSend = useCallback(() => {
     if (!input.trim() || isStreaming) return;
-    start(useAgent ? "agent" : "chat");
-  }, [input, isStreaming, useAgent, start]);
+    start("agent");
+  }, [input, isStreaming, start]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -217,7 +222,7 @@ export function ChatPanel({ onPlacesFound, onAddPlaceToTrip, userLocation, defau
         <CardTitle className="text-base flex items-center gap-2">
           <MessageSquare className="w-5 h-5" />
           Trip Assistant
-          {useAgent && <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">🤖 AI Agent</span>}
+          {/* <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">🤖 AI Agent</span> */}
         </CardTitle>
         <div className="flex gap-1">
           <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => setIsMinimized(!isMinimized)}>
@@ -248,7 +253,7 @@ export function ChatPanel({ onPlacesFound, onAddPlaceToTrip, userLocation, defau
                 </div>
               ))}
 
-            {useAgent && toolsUsed.length > 0 && (
+            {toolsUsed.length > 0 && (
               <div className="p-2 rounded-md bg-purple-50 border border-purple-200 text-xs">
                 <div className="font-medium text-purple-900">🛠️ Tools: </div>
                 <div className="text-purple-700 mt-1">
@@ -261,7 +266,7 @@ export function ChatPanel({ onPlacesFound, onAddPlaceToTrip, userLocation, defau
               </div>
             )}
 
-            {useAgent && contextInfo && (
+            {contextInfo && (
               <div className="p-2 rounded-md bg-green-50 border border-green-200 text-xs">
                 <div className="font-medium text-green-900">📚 Context: {contextInfo.documents} docs</div>
               </div>
@@ -320,25 +325,6 @@ export function ChatPanel({ onPlacesFound, onAddPlaceToTrip, userLocation, defau
           </CardContent>
 
           <div className="p-4 border-t space-y-2">
-            <div className="flex gap-2 items-center text-xs">
-              <span className="text-gray-600">Mode:</span>
-              <Button
-                variant={useAgent ? "outline" : "default"}
-                size="sm"
-                className="h-6 text-xs px-2"
-                onClick={() => setUseAgent(false)}
-              >
-                Chat
-              </Button>
-              <Button
-                variant={useAgent ? "default" : "outline"}
-                size="sm"
-                className="h-6 text-xs px-2"
-                onClick={() => setUseAgent(true)}
-              >
-                🤖 Agent
-              </Button>
-            </div>
             <div className="flex gap-2">
               <Input
                 value={input}

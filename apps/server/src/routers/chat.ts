@@ -5,7 +5,7 @@ import { optionalAuthMiddleware } from '../middleware/auth'
 import { supabase } from '../lib/supabase'
 import { nameToSlug } from '../lib/slug-utils'
 import { streamSSE } from 'hono/streaming'
-import { hfGenerateText, hfEmbed } from '../lib/hf'
+import { openaiGenerateText, openaiEmbed } from '../lib/openai'
 
 const chat = new Hono()
 
@@ -130,7 +130,7 @@ chat.post('/', optionalAuthMiddleware, zValidator('json', chatSchema), async (c)
       try {
         const queryText = content
         if (queryText && queryText.length >= 3) {
-          const qEmbedding = await hfEmbed(queryText)
+          const qEmbedding = await openaiEmbed(queryText)
           const topK = Number(process.env.CHAT_VECTOR_TOP_K || 10)
           const shallow = keywords.join(' ') || null
           const { data: vecData, error: vecErr } = await supabase
@@ -269,7 +269,7 @@ chat.post('/', optionalAuthMiddleware, zValidator('json', chatSchema), async (c)
 
         let plan: any | null = null
         try {
-          const text = await hfGenerateText(userPrompt, { system: systemPrompt, max_new_tokens: 400, temperature: 0.2, retries: 2, timeout_ms: 25000 })
+          const text = await openaiGenerateText(userPrompt, { system: systemPrompt, max_completion_tokens: 400, temperature: 1, retries: 2, timeout_ms: 25000 })
           plan = extractJsonCandidate(text)
         } catch (e: any) {
           // Fallback to heuristic plan if LLM unavailable

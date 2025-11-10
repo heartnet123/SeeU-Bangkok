@@ -211,8 +211,8 @@ export default function ChatTestPage() {
   return (
     <div className="max-w-5xl mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-black">Trip Planner Tester</h1>
-        <div className="flex items-center gap-2">
+        <h1 className="text-2xl font-semibold text-black">Trip Planner Test</h1>
+        {/* <div className="flex items-center gap-2">
           <label className="text-sm text-gray-700 font-medium">Mode:</label>
           <Button
             variant={useAgent ? 'outline' : 'default'}
@@ -228,7 +228,7 @@ export default function ChatTestPage() {
           >
             🤖 RAG Agent
           </Button>
-        </div>
+        </div> */}
       </div>
 
       {useAgent && (

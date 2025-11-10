@@ -4,7 +4,7 @@ import { zValidator } from "@hono/zod-validator";
 import { optionalAuthMiddleware } from "../middleware/auth";
 import { supabase } from "../lib/supabase";
 import { streamSSE } from "hono/streaming";
-import { hfGenerateText, hfEmbed } from "../lib/hf";
+import { openaiGenerateText, openaiEmbed } from "../lib/openai";
 
 import {
   search_places,
@@ -117,7 +117,7 @@ async function retrieveDocuments(
   minSimilarity = 0.35
 ): Promise<Array<{ content: string; metadata: any; score?: number }>> {
   try {
-    const queryEmbedding = await hfEmbed(query);
+    const queryEmbedding = await openaiEmbed(query);
 
     // Try with similarity_threshold parameter (new version)
     let { data, error } = await supabase.rpc("match_places", {
@@ -344,10 +344,10 @@ Instructions:
     const userPrompt = `${conversationHistory}\n\nBased on the context and tool results above, provide a helpful response.`;
 
     // Generate response
-    const response = await hfGenerateText(userPrompt, {
+    const response = await openaiGenerateText(userPrompt, {
       system: systemPrompt,
-      max_new_tokens: 300,
-      temperature: 0.7,
+      max_completion_tokens: 300,
+      temperature: 1,
       retries: 2,
       timeout_ms: 20000,
     });
@@ -451,37 +451,46 @@ agent.post(
           });
 
           const events = await graph.stream(initialState);
+        console.log("Graph stream initialized", initialState);
           for await (const evt of events) {
-            if (evt?.toolCalls) {
+          console.log("Processing graph event", evt);
+            if (evt.analyze?.toolCalls || evt.retrieve?.toolCalls) {
+              console.log("Sending tools event");
+              const toolCalls = evt.analyze?.toolCalls || evt.retrieve?.toolCalls || [];
               await stream.writeSSE({
                 event: "tools",
-                data: JSON.stringify({ tools: evt.toolCalls }),
+                data: JSON.stringify({ tools: toolCalls }),
               });
             }
-            if (evt?.retrievedDocs) {
+            if (evt.retrieve?.retrievedDocs) {
+              console.log("Sending context event");
               await stream.writeSSE({
                 event: "context",
                 data: JSON.stringify({
-                  documents: evt.retrievedDocs.length,
-                  top_docs: evt.retrievedDocs
+                  documents: evt.retrieve.retrievedDocs.length,
+                  top_docs: evt.retrieve.retrievedDocs
                     .slice(0, 3)
                     .map((d: any) => d.metadata),
                 }),
               });
             }
-            if (evt?.finalResponse) {
+            if (evt.generate?.finalResponse) {
+              console.log("Sending message event");
               await stream.writeSSE({
                 event: "message",
-                data: evt.finalResponse,
+                data: evt.generate.finalResponse,
               });
             }
-            if (evt?.error) {
-              await stream.writeSSE({ event: "error", data: evt.error });
+            if (evt.generate?.error) {
+              console.log("Sending error event");
+              await stream.writeSSE({ event: "error", data: evt.generate.error });
             }
+          console.log("Sent done event");
           }
 
           await stream.writeSSE({ event: "done", data: "ok" });
         } catch (err: any) {
+          console.log("Sent streaming error event", err);
           await stream.writeSSE({
             event: "error",
             data: err.message || "Processing failed",

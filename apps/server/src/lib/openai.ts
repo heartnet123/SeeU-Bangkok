@@ -1,21 +1,20 @@
 /**
- * Hugging Face Inference SDK client wrappers for text and embeddings
+ * OpenAI client wrappers for text generation and embeddings
  */
-import { HfInference } from '@huggingface/inference'
 import OpenAI from 'openai'
 
-export interface HFOptions {
+export interface OpenAIOptions {
   model?: string
-  max_new_tokens?: number
+  max_completion_tokens?: number
   temperature?: number
   system?: string
   timeout_ms?: number
   retries?: number
 }
 
-export async function hfGenerateText(input: string, opts: HFOptions = {}): Promise<string> {
+export async function openaiGenerateText(input: string, opts: OpenAIOptions = {}): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY
-  const model = opts.model || process.env.OPENAI_TEXT_MODEL || 'gpt-5-nano-2025-08-07'
+  const model = opts.model || 'gpt-4o-mini'
   if (!apiKey) throw new Error('OPENAI_API_KEY is not set')
 
   const baseURL = process.env.OPENAI_BASE_URL // optional (Azure/proxy)
@@ -33,8 +32,8 @@ export async function hfGenerateText(input: string, opts: HFOptions = {}): Promi
   const res = await client.chat.completions.create({
     model,
     messages,
-    max_tokens: typeof opts.max_new_tokens === 'number' ? opts.max_new_tokens : 512,
-    temperature: typeof opts.temperature === 'number' ? opts.temperature : 0.3,
+    max_completion_tokens: typeof opts.max_completion_tokens === 'number' ? opts.max_completion_tokens : 512,
+    temperature: typeof opts.temperature === 'number' ? opts.temperature : 1,
   }, requestOptions)
 
   const content = res?.choices?.[0]?.message?.content
@@ -44,14 +43,13 @@ export async function hfGenerateText(input: string, opts: HFOptions = {}): Promi
 
 function delay(ms: number) { return new Promise((r) => setTimeout(r, ms)) }
 
-// Embeddings via HF feature-extraction pipeline
-export interface HFEmbedOptions {
+// Embeddings via OpenAI Embeddings API
+export interface OpenAIEmbedOptions {
   model?: string
   timeout_ms?: number
 }
 
-export async function hfEmbed(text: string, opts: HFEmbedOptions = {}): Promise<number[]> {
-  // Switch to OpenAI Embeddings API per request
+export async function openaiEmbed(text: string, opts: OpenAIEmbedOptions = {}): Promise<number[]> {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) throw new Error('OPENAI_API_KEY is not set')
   const baseURL = process.env.OPENAI_BASE_URL // optional (Azure/proxy)
