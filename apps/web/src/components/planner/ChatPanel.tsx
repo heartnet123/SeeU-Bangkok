@@ -4,7 +4,9 @@ import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MessageSquare, Send, Loader2, X, Minimize2, Maximize2 } from "lucide-react";
+import { MessageSquare, Send, Loader2, X, Minimize2, Maximize2, Save } from "lucide-react";
+import { useAuth } from "@/contexts/auth-context";
+import { nameToSlug } from "@/lib/slug-utils";
 
 type ChatEvent =
   | { type: "message"; text: string }
@@ -13,7 +15,8 @@ type ChatEvent =
   | { type: "error"; text: string }
   | { type: "done" }
   | { type: "tools"; data: any }
-  | { type: "context"; data: any };
+  | { type: "context"; data: any }
+  | { type: "itinerary"; data: any };
 
 interface PlaceItem {
   id: string;
@@ -33,13 +36,15 @@ interface ChatPanelProps {
 }
 
 export function ChatPanel({ onPlacesFound, onAddPlaceToTrip, userLocation, defaultOpen = false }: ChatPanelProps) {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
-  const [isMinimized, setIsMinimized] = useState(false);
-  const [input, setInput] = useState("");
-  const [events, setEvents] = useState<ChatEvent[]>([]);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const controllerRef = useRef<AbortController | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+   const [isOpen, setIsOpen] = useState(defaultOpen);
+   const [isMinimized, setIsMinimized] = useState(false);
+   const [input, setInput] = useState("");
+   const [events, setEvents] = useState<ChatEvent[]>([]);
+   const [isStreaming, setIsStreaming] = useState(false);
+   const [isSavingItinerary, setIsSavingItinerary] = useState(false);
+   const controllerRef = useRef<AbortController | null>(null);
+   const messagesEndRef = useRef<HTMLDivElement>(null);
+   const { session } = useAuth();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -61,6 +66,11 @@ export function ChatPanel({ onPlacesFound, onAddPlaceToTrip, userLocation, defau
 
   const contextInfo = useMemo(() => {
     const ev = [...events].reverse().find((e) => e.type === "context") as any;
+    return ev?.data || null;
+  }, [events]);
+
+  const itineraryInfo = useMemo(() => {
+    const ev = [...events].reverse().find((e) => e.type === "itinerary") as any;
     return ev?.data || null;
   }, [events]);
 
@@ -154,6 +164,12 @@ export function ChatPanel({ onPlacesFound, onAddPlaceToTrip, userLocation, defau
                   setEvents((prev) => [...prev, { type: "context", data: payload }]);
                 } catch (e) {}
                 break;
+              case "itinerary":
+                try {
+                  const payload = JSON.parse(joined);
+                  setEvents((prev) => [...prev, { type: "itinerary", data: payload }]);
+                } catch (e) {}
+                break;
               case "error":
                 setEvents((prev) => [...prev, { type: "error", text: joined }]);
                 break;
@@ -199,6 +215,54 @@ export function ChatPanel({ onPlacesFound, onAddPlaceToTrip, userLocation, defau
     },
     [handleSend]
   );
+
+  const handleSaveItinerary = useCallback(async () => {
+    if (!itineraryInfo || !session?.access_token) return;
+
+    setIsSavingItinerary(true);
+    try {
+      const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3000";
+      const payload = {
+        title: itineraryInfo.title || "My Trip",
+        stops: (itineraryInfo.stops || []).map((s: any) => ({
+          slug: s.slug,
+          suggested_time_min: s.suggested_time_min,
+          notes: s.notes || "",
+        })),
+      };
+
+      const res = await fetch(`${serverUrl}/api/itineraries`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const contentType = res.headers.get("content-type") || "";
+      const json = contentType.includes("application/json")
+        ? await res.json()
+        : { success: false, error: (await res.text()) || "Bad response" };
+
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || "Failed to save itinerary");
+      }
+
+      // Show success message
+      setEvents((prev) => [
+        ...prev,
+        { type: "message", text: "✅ Itinerary saved successfully! Check your Saved Trips." },
+      ]);
+    } catch (e: any) {
+      setEvents((prev) => [
+        ...prev,
+        { type: "error", text: `Failed to save itinerary: ${e?.message || "Unknown error"}` },
+      ]);
+    } finally {
+      setIsSavingItinerary(false);
+    }
+  }, [itineraryInfo, session]);
 
   if (!isOpen) {
     return (
@@ -307,6 +371,62 @@ export function ChatPanel({ onPlacesFound, onAddPlaceToTrip, userLocation, defau
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {itineraryInfo && (
+              <div className="space-y-3">
+                <div className="text-sm font-medium text-gray-800">📋 {itineraryInfo.title}</div>
+                <div className="space-y-2">
+                  {itineraryInfo.stops.map((stop: any, index: number) => (
+                    <div key={stop.slug} className="p-3 rounded-lg border bg-blue-50 text-sm">
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center font-medium">
+                          {index + 1}
+                        </div>
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-900">{stop.name}</div>
+                          <div className="text-gray-600 text-xs mt-1">
+                            Suggested time: {stop.suggested_time_min} min
+                            {stop.distance_from_prev_km > 0 && (
+                              <span className="ml-2">• {stop.distance_from_prev_km} km from previous</span>
+                            )}
+                          </div>
+                          {stop.notes && (
+                            <div className="text-gray-700 text-xs mt-2 italic">{stop.notes}</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
+                  <div className="font-medium">Trip Summary:</div>
+                  <div>Total distance: {itineraryInfo.total_distance_km} km</div>
+                  <div>Estimated time: {Math.round(itineraryInfo.total_minutes / 60)} hours {itineraryInfo.total_minutes % 60} minutes</div>
+                  {session?.access_token && (
+                    <div className="mt-2 pt-2 border-t">
+                      <Button
+                        size="sm"
+                        onClick={handleSaveItinerary}
+                        disabled={isSavingItinerary}
+                        className="w-full text-xs"
+                      >
+                        {isSavingItinerary ? (
+                          <>
+                            <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <Save className="w-3 h-3 mr-1" />
+                            Save Itinerary
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

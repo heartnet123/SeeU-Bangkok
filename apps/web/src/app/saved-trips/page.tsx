@@ -100,7 +100,7 @@ export default function SavedTripsPage() {
             <CardContent className="p-5 space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-lg font-medium">{t.title}</div>
+                  <div className="text-lg font-medium text-black">{t.title}</div>
                   <div className="text-xs text-gray-500">{t.created_at ? new Date(t.created_at).toLocaleString() : ''}</div>
                 </div>
                 <div className="text-sm text-gray-600 flex items-center gap-4">
@@ -115,7 +115,7 @@ export default function SavedTripsPage() {
               <ol className="list-decimal pl-6 space-y-1">
                 {t.stops?.map((s) => (
                   <li key={s.id}>
-                    <span className="font-medium">{s.place?.name}</span>
+                    <span className="font-medium text-black">{s.place?.name}</span>
                     {typeof s.distance_from_prev_km === 'number' && (
                       <span className="text-gray-600 ml-2">(+{s.distance_from_prev_km} km)</span>
                     )}
@@ -127,14 +127,14 @@ export default function SavedTripsPage() {
                 ))}
               </ol>
               <div className="flex gap-3 pt-2">
-                <Button variant="outline" onClick={() => {
+                <Button className="bg-blue-500 hover:bg-blue-600 text-white border-blue-500" onClick={() => {
                   const first = t.stops?.[0]?.place
                   if (first?.lat && first?.lng) {
                     const url = `https://www.google.com/maps?q=${first.lat},${first.lng}`
                     window.open(url, '_blank')
                   }
                 }}>
-                  <MapPin className="w-4 h-4 mr-2" /> Open First Stop
+                  <MapPin className="w-4 h-4 mr-2 text-white" /> View On Map
                 </Button>
               </div>
             </CardContent>

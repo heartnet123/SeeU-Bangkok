@@ -342,7 +342,7 @@ export default function ChatTestPage() {
                     const payload = {
                       title: itinerary.title || 'My Trip',
                       stops: (itinerary.stops || []).map((s: any) => ({
-                        slug: s.slug || nameToSlug(s.name || ''),
+                        slug: s.slug,
                         suggested_time_min: s.suggested_time_min,
                         notes: s.notes || '',
                       })),

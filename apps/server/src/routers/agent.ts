@@ -10,6 +10,7 @@ import {
   search_places,
   nearby_places,
   build_route,
+  plan_itinerary,
   type PlaceItem,
 } from "../lib/tools";
 import { StateGraph, START, END } from "@langchain/langgraph";
@@ -31,12 +32,13 @@ const agentRequestSchema = z.object({
 });
 
 // LangGraph State Interface
-interface AgentState {
+interface AgentState extends Record<string, any> {
   messages: Array<{ role: string; content: string; name?: string }>;
   userLocation?: { lat: number; lng: number };
   context: Record<string, any>;
   toolCalls: Array<{ tool: string; args: any; result?: any }>;
   retrievedDocs: Array<{ content: string; metadata: any; score?: number }>;
+  itinerary?: any;
   finalResponse?: string;
   error?: string;
 }
@@ -105,6 +107,21 @@ const AVAILABLE_TOOLS = {
         type: "object",
         properties: { lat: "number", lng: "number" },
         description: "Optional starting location",
+      },
+    },
+  },
+  plan_itinerary: {
+    name: "plan_itinerary",
+    description: "Plan an itinerary by building an optimized route through selected places.",
+    parameters: {
+      place_slugs: {
+        type: "array",
+        items: { type: "string" },
+        description: "Array of place IDs to include in the itinerary",
+      },
+      title: {
+        type: "string",
+        description: "Optional title for the itinerary",
       },
     },
   },
@@ -220,6 +237,13 @@ async function executeTool(toolName: string, args: any): Promise<any> {
       return build_route({ places: placeItems, origin: args.origin });
     }
 
+    case "plan_itinerary": {
+      return await plan_itinerary({
+        place_slugs: args.place_slugs,
+        title: args.title,
+      });
+    }
+
     default:
       throw new Error(`Unknown tool: ${toolName}`);
   }
@@ -259,6 +283,17 @@ async function analyzeIntent(state: AgentState): Promise<Partial<AgentState>> {
     });
   }
 
+  if (wantsRoute) {
+    // For route planning, also do vector search if not already
+    if (!hasSearchTerms) {
+      toolsToCall.push({
+        tool: "vector_search",
+        args: { query: content, top_k: 10 },
+      });
+    }
+    // Plan itinerary will be called after vector search in retrieve
+  }
+
   return {
     toolCalls: toolsToCall,
   };
@@ -272,6 +307,12 @@ async function retrieve(state: AgentState): Promise<Partial<AgentState>> {
     metadata: any;
     score?: number;
   }> = [];
+  let additionalTools: Array<{ tool: string; args: any }> = [];
+
+  // Check if we need to plan itinerary
+  const lastMessage = state.messages[state.messages.length - 1];
+  const content = lastMessage?.content?.toLowerCase() || "";
+  const wantsRoute = /(\b(route|plan|itinerary|tour|trip)\b|แผน|เที่ยว)/i.test(content);
 
   // Execute all planned tool calls
   for (const toolCall of state.toolCalls) {
@@ -281,7 +322,6 @@ async function retrieve(state: AgentState): Promise<Partial<AgentState>> {
 
       // If it's a vector search, store as retrieved documents
       if (toolCall.tool === "vector_search") {
-        // 'result' ในที่นี้คือ array ของ documents ที่ได้จาก retrieveDocuments อยู่แล้ว
         retrievedDocs.push(...result);
       }
     } catch (err: any) {
@@ -289,10 +329,37 @@ async function retrieve(state: AgentState): Promise<Partial<AgentState>> {
     }
   }
 
-  return {
+  // After executing tools, check if we should plan itinerary
+  if (wantsRoute && retrievedDocs.length > 0) {
+    const placeIds = retrievedDocs.slice(0, 5).map(d => d.metadata.id);
+    additionalTools.push({
+      tool: "plan_itinerary",
+      args: { place_slugs: placeIds, title: "Suggested Trip" },
+    });
+  }
+
+  // Execute additional tools
+  for (const toolCall of additionalTools) {
+    try {
+      const result = await executeTool(toolCall.tool, toolCall.args);
+      results.push({ ...toolCall, result });
+    } catch (err: any) {
+      results.push({ ...toolCall, result: { error: err.message } });
+    }
+  }
+
+  const newState: Partial<AgentState> = {
     toolCalls: results,
     retrievedDocs: [...state.retrievedDocs, ...retrievedDocs],
   };
+
+  // If plan_itinerary was called, set the itinerary
+  const itineraryResult = results.find(tc => tc.tool === "plan_itinerary" && tc.result && !tc.result.error);
+  if (itineraryResult) {
+    newState.itinerary = itineraryResult.result;
+  }
+
+  return newState;
 }
 
 // LangGraph Node: Generate response using LLM with retrieved context
@@ -320,17 +387,21 @@ async function generate(state: AgentState): Promise<Partial<AgentState>> {
       .join("\n");
 
     // System prompt with RAG context
+    const itineraryInfo = state.itinerary ? `\n\nITINERARY PLANNED:\n${JSON.stringify(state.itinerary, null, 2)}` : "";
+
     const systemPrompt = `You are TripPlannerAI, an expert travel assistant for Bangkok.
 
 RETRIEVED CONTEXT:
 ${contextDocs || "No specific context retrieved."}
 
 TOOL RESULTS:
-${toolResults || "No tools were used."}
+${toolResults || "No tools were used."}${itineraryInfo}
 
 Instructions:
 - Use the retrieved context and tool results to provide accurate, helpful responses
 - Only reference places that appear in the context or tool results
+- If an itinerary has been planned, say "I've created a suggested itinerary for you above. Would you like to save it?"
+- Do not repeat the itinerary details in text - the visual display shows it clearly
 - Be conversational and friendly
 - If the user's language is Thai, respond in Thai
 - Keep responses concise but informative`;
@@ -384,6 +455,7 @@ const AgentStateSchema = z.object({
       score: z.number().optional(),
     })
   ),
+  itinerary: z.any().optional(),
   finalResponse: z.string().optional(),
   error: z.string().optional(),
 });
@@ -398,6 +470,7 @@ const graph = new StateGraph(AgentStateSchema)
     return {
       toolCalls: delta.toolCalls || state.toolCalls,
       retrievedDocs: delta.retrievedDocs || state.retrievedDocs,
+      itinerary: delta.itinerary,
     };
   })
   .addNode("generate", async (state: AgentState) => {
@@ -472,6 +545,13 @@ agent.post(
                     .slice(0, 3)
                     .map((d: any) => d.metadata),
                 }),
+              });
+            }
+            if (evt.retrieve?.itinerary) {
+              console.log("Sending itinerary event");
+              await stream.writeSSE({
+                event: "itinerary",
+                data: JSON.stringify(evt.retrieve.itinerary),
               });
             }
             if (evt.generate?.finalResponse) {
