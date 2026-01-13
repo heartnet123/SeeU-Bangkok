@@ -1,9 +1,11 @@
 "use client";
 import { useState, useEffect } from "react";
 import { TripListColumn } from "@/components/planner/TripListColumn";
-import { MapDetailsColumn } from "@/components/planner/MapDetailsColumn";
 import { ItineraryColumn } from "@/components/planner/ItineraryColumn";
 import { ChatPanel } from "@/components/planner/ChatPanel";
+import MapContainer from "@/components/map/map-container";
+import { CollapsiblePanel } from "@/components/map/collapsible-panel";
+import { MapToolbar } from "@/components/map/map-toolbar";
 import type { Trip, TripStop } from "@/components/planner/mock-data";
 import { mockTrips } from "@/components/planner/mock-data";
 import { toast } from "sonner";
@@ -18,6 +20,15 @@ interface PlaceItem {
   price?: number;
 }
 
+interface ItineraryStop {
+  slug: string;
+  name: string;
+  lat?: number;
+  lng?: number;
+  suggested_time_min?: number;
+  notes?: string;
+}
+
 export default function TripPlannerPage() {
   const [trips, setTrips] = useState<Trip[]>(mockTrips);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(
@@ -29,6 +40,12 @@ export default function TripPlannerPage() {
   >();
   const [foundPlaces, setFoundPlaces] = useState<PlaceItem[]>([]);
   const [agentItinerary, setAgentItinerary] = useState<any | null>(null);
+
+  // Panel visibility states
+  const [isTripsPanelOpen, setIsTripsPanelOpen] = useState(true);
+  const [isItineraryPanelOpen, setIsItineraryPanelOpen] = useState(true);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
 
 
   const selectedTrip = trips.find((t) => t.id === selectedTripId) || null;
@@ -177,10 +194,113 @@ export default function TripPlannerPage() {
     );
   };
 
+  // Transform places for map display
+  const transformPlacesForMap = (places: PlaceItem[]): any[] => {
+    return places
+      .filter((place) => place.lat && place.lng)
+      .map((place) => ({
+        id: place.id,
+        name: place.name,
+        description: place.tags?.join(", ") || "No description available",
+        tags: place.tags || [],
+        lat: place.lat!,
+        lng: place.lng!,
+        address: place.slug || "Address not available",
+        price: place.price || 0,
+        image_url: "",
+        slug: place.slug || place.id,
+      }));
+  };
+
+  // Transform trip stops for map
+  const transformTripStopsForMap = (trip: Trip | null): any[] => {
+    if (!trip || !trip.stops) return [];
+    return trip.stops
+      .filter((stop) => stop.lat && stop.lng)
+      .map((stop) => ({
+        id: stop.id,
+        name: stop.name,
+        description: `${stop.category} - ${stop.address}`,
+        tags: [stop.category],
+        lat: stop.lat,
+        lng: stop.lng,
+        address: stop.address,
+        price: 0,
+        image_url: "",
+        slug: stop.id,
+      }));
+  };
+
+  const transformItineraryStopsForMap = (stops: ItineraryStop[]): any[] => {
+    return stops
+      .filter((stop) => stop.lat && stop.lng)
+      .map((stop) => ({
+        id: `itinerary-${stop.slug}`,
+        name: stop.name,
+        description: stop.notes || "Itinerary stop",
+        tags: [],
+        lat: stop.lat!,
+        lng: stop.lng!,
+        address: stop.slug,
+        price: 0,
+        image_url: "",
+        slug: stop.slug,
+      }));
+  };
+
+  const allPlacesForMap = [
+    ...transformPlacesForMap(foundPlaces),
+    ...transformTripStopsForMap(selectedTrip),
+    ...transformItineraryStopsForMap(agentItinerary?.stops || []),
+  ];
+
+  const itineraryStopsForMap = (agentItinerary?.stops || [])
+    .filter((s: ItineraryStop) => s.lat && s.lng)
+    .map((s: ItineraryStop) => ({
+      lat: s.lat!,
+      lng: s.lng!,
+      slug: s.slug,
+      name: s.name,
+    }));
+
   return (
-    <div className="bg-gray-50 min-h-screen p-4 md:p-6">
-      <div className="w-full max-w-8xl mx-auto h-[calc(100vh-var(--header-height,3rem))] grid grid-cols-1 lg:grid-cols-[350px_1fr_400px] gap-4 md:gap-6">
-        {/* Trip List */}
+    <div className="relative w-full h-screen overflow-hidden">
+      {/* Fullscreen Map Background */}
+      <div className="absolute inset-0 z-0">
+        <MapContainer
+          places={allPlacesForMap}
+          selectedPlace={selectedPlace}
+          onPlaceSelect={setSelectedPlace}
+          onPlaceDeselect={() => setSelectedPlace(null)}
+          userLocation={
+            userLocation ? [userLocation.lat, userLocation.lng] : undefined
+          }
+          initialCenter={[100.5018, 13.7563]}
+          initialZoom={12}
+          itineraryStops={itineraryStopsForMap}
+        />
+      </div>
+
+      {/* Map Toolbar - Central toggle buttons */}
+      <MapToolbar
+        isTripsPanelOpen={isTripsPanelOpen}
+        isItineraryPanelOpen={isItineraryPanelOpen}
+        isChatOpen={isChatOpen}
+        onToggleTripsPanel={() => setIsTripsPanelOpen(!isTripsPanelOpen)}
+        onToggleItineraryPanel={() =>
+          setIsItineraryPanelOpen(!isItineraryPanelOpen)
+        }
+        onToggleChat={() => setIsChatOpen(!isChatOpen)}
+      />
+
+      {/* Left Panel - Trip List */}
+      <CollapsiblePanel
+        isOpen={isTripsPanelOpen}
+        onClose={() => setIsTripsPanelOpen(false)}
+        position="left"
+        title="My Trips"
+        width="w-[380px]"
+      >
         <TripListColumn
           trips={trips}
           selectedTripId={selectedTripId}
@@ -190,24 +310,22 @@ export default function TripPlannerPage() {
           onEditTrip={handleEditTrip}
           onReorderTrips={handleReorderTrips}
         />
+      </CollapsiblePanel>
 
-        {/* Map & Details */}
-        <MapDetailsColumn
-          trip={selectedTrip}
-          isLoading={isLoading}
-          foundPlaces={foundPlaces}
-          itineraryStops={agentItinerary?.stops || []}
-          userLocation={userLocation}
-        />
-
-
-        {/* Itinerary */}
+      {/* Right Panel - Itinerary */}
+      <CollapsiblePanel
+        isOpen={isItineraryPanelOpen}
+        onClose={() => setIsItineraryPanelOpen(false)}
+        position="right"
+        title={selectedTrip?.name || "Itinerary"}
+        width="w-[400px]"
+      >
         <ItineraryColumn
           trip={selectedTrip}
           onEditTrip={handleEditTrip}
           onReorderStops={handleReorderStops}
         />
-      </div>
+      </CollapsiblePanel>
 
       {/* Floating Chat Panel */}
       <ChatPanel
@@ -215,9 +333,8 @@ export default function TripPlannerPage() {
         onAddPlaceToTrip={handleAddPlaceToTrip}
         onItineraryCreated={handleItineraryCreated}
         userLocation={userLocation}
-        defaultOpen={false}
+        defaultOpen={isChatOpen}
       />
-
     </div>
   );
 }
