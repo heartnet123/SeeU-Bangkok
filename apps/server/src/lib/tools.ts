@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { nameToSlug } from './slug-utils'
+import { traceable } from 'langsmith/traceable'
 
 export type LatLng = { lat: number; lng: number }
 
@@ -103,47 +104,50 @@ export interface BuiltRoute {
   total_km: number
 }
 
-export function build_route(params: BuildRouteParams): BuiltRoute {
-  const { places, origin } = params
-  const pts = places.filter((p) => isFiniteNum(p.lat) && isFiniteNum(p.lng))
-  if (pts.length < 2) return { order: pts.map((p) => p.slug), legs: [], total_km: 0 }
+export const build_route = traceable(
+  async (params: BuildRouteParams): Promise<BuiltRoute> => {
+    const { places, origin } = params
+    const pts = places.filter((p) => isFiniteNum(p.lat) && isFiniteNum(p.lng))
+    if (pts.length < 2) return { order: pts.map((p) => p.slug), legs: [], total_km: 0 }
 
-  // Greedy nearest-neighbor from origin or first place
-  const unvisited = new Set(pts.map((p) => p.slug))
-  const bySlug = new Map(pts.map((p) => [p.slug, p]))
+    // Greedy nearest-neighbor from origin or first place
+    const unvisited = new Set(pts.map((p) => p.slug))
+    const bySlug = new Map(pts.map((p) => [p.slug, p]))
 
-  let currentSlug: string
-  if (origin) {
-    // pick closest to origin
-    currentSlug = pts
-      .map((p) => ({ slug: p.slug, d: haversineKm(origin!, { lat: p.lat!, lng: p.lng! }) }))
-      .sort((a, b) => a.d - b.d)[0].slug
-  } else {
-    currentSlug = pts[0].slug
-  }
-
-  const order: string[] = [currentSlug]
-  unvisited.delete(currentSlug)
-  const legs: RouteLeg[] = []
-
-  while (unvisited.size) {
-    const curr = bySlug.get(currentSlug)!
-    let best: { slug: string; d: number } | null = null
-    for (const s of unvisited) {
-      const p = bySlug.get(s)!
-      const d = haversineKm({ lat: curr.lat!, lng: curr.lng! }, { lat: p.lat!, lng: p.lng! })
-      if (!best || d < best.d) best = { slug: s, d }
+    let currentSlug: string
+    if (origin) {
+      // pick closest to origin
+      currentSlug = pts
+        .map((p) => ({ slug: p.slug, d: haversineKm(origin!, { lat: p.lat!, lng: p.lng! }) }))
+        .sort((a, b) => a.d - b.d)[0].slug
+    } else {
+      currentSlug = pts[0].slug
     }
-    if (!best) break
-    legs.push({ from: currentSlug, to: best.slug, distance_km: round1(best.d) })
-    currentSlug = best.slug
-    order.push(currentSlug)
-    unvisited.delete(currentSlug)
-  }
 
-  const total_km = round1(legs.reduce((s, l) => s + l.distance_km, 0))
-  return { order, legs, total_km }
-}
+    const order: string[] = [currentSlug]
+    unvisited.delete(currentSlug)
+    const legs: RouteLeg[] = []
+
+    while (unvisited.size) {
+      const curr = bySlug.get(currentSlug)!
+      let best: { slug: string; d: number } | null = null
+      for (const s of unvisited) {
+        const p = bySlug.get(s)!
+        const d = haversineKm({ lat: curr.lat!, lng: curr.lng! }, { lat: p.lat!, lng: p.lng! })
+        if (!best || d < best.d) best = { slug: s, d }
+      }
+      if (!best) break
+      legs.push({ from: currentSlug, to: best.slug, distance_km: round1(best.d) })
+      currentSlug = best.slug
+      order.push(currentSlug)
+      unvisited.delete(currentSlug)
+    }
+
+    const total_km = round1(legs.reduce((s, l) => s + l.distance_km, 0))
+    return { order, legs, total_km }
+  },
+  { name: 'tools.build_route', run_type: 'tool' }
+)
 
 export interface MapViewport {
   center: LatLng
@@ -202,37 +206,38 @@ export interface PlanItineraryParams {
   title?: string
 }
 
-export async function plan_itinerary(params: PlanItineraryParams): Promise<any> {
-  const { place_slugs, title = "Suggested Itinerary" } = params
+export const plan_itinerary = traceable(
+  async (params: PlanItineraryParams): Promise<any> => {
+    const { place_slugs, title = "Suggested Itinerary" } = params
 
-  // Fetch places with descriptions
-  const { data: places, error } = await supabase
-    .from("bangkok_unseen")
-    .select("id, name, description, tags")
-    .in("id", place_slugs)
+    // Fetch places with descriptions
+    const { data: places, error } = await supabase
+      .from("bangkok_unseen")
+      .select("id, name, description, tags")
+      .in("id", place_slugs)
 
-  if (error || !places) throw new Error("Failed to fetch places")
+    if (error || !places) throw new Error("Failed to fetch places")
 
-  const placeItems = places.map(p => ({
-    id: p.id,
-    name: p.name,
-    slug: nameToSlug(p.name),
-    lat: 0, lng: 0, // not needed for route
-    tags: p.tags || [],
-    price: 0,
-    image_url: "",
-    description: p.description
-  }))
+    const placeItems = places.map(p => ({
+      id: p.id,
+      name: p.name,
+      slug: nameToSlug(p.name),
+      lat: 0, lng: 0, // not needed for route
+      tags: p.tags || [],
+      price: 0,
+      image_url: "",
+      description: p.description
+    }))
 
-  // Build route (need lat/lng for routing)
-  const { data: placesWithCoords, error: err2 } = await supabase
-    .from("bangkok_unseen")
-    .select("id, lat, lng")
-    .in("id", place_slugs)
+    // Build route (need lat/lng for routing)
+    const { data: placesWithCoords, error: err2 } = await supabase
+      .from("bangkok_unseen")
+      .select("id, lat, lng")
+      .in("id", place_slugs)
 
-  if (err2 || !placesWithCoords) throw new Error("Failed to fetch coordinates")
+    if (err2 || !placesWithCoords) throw new Error("Failed to fetch coordinates")
 
-  const coordMap = new Map(placesWithCoords.map(p => [p.id, { lat: p.lat, lng: p.lng }]))
+    const coordMap = new Map(placesWithCoords.map(p => [p.id, { lat: p.lat, lng: p.lng }]))
 
   const placesForRoute = placeItems.map(p => ({
     ...p,
@@ -240,29 +245,37 @@ export async function plan_itinerary(params: PlanItineraryParams): Promise<any> 
     lng: coordMap.get(p.id)?.lng
   })).filter(p => p.lat && p.lng)
 
-  const route = build_route({ places: placesForRoute })
+  const route = await build_route({ places: placesForRoute })
+
+  const coordsBySlug = new Map(placesForRoute.map(p => [p.slug, { lat: p.lat!, lng: p.lng! }]))
 
   // Create a map of slug to place for lookup
   const placeBySlug = new Map(places.map(p => [nameToSlug(p.name), p]))
 
-  // Enrich stops
-  const stops = route.order.map((slug, idx) => {
-    const place = placeBySlug.get(slug)!
-    const leg = route.legs.find(l => l.to === slug)
-    return {
-      slug,
-      name: place.name,
-      suggested_time_min: 60, // default
-      notes: place.description ? place.description.slice(0, 100) + "..." : "",
-      distance_from_prev_km: leg ? leg.distance_km : 0
-    }
-  })
 
-  return {
-    title,
-    stops,
-    total_distance_km: route.total_km,
-    total_minutes: stops.length * 60
-  }
-}
+    // Enrich stops
+    const stops = route.order.map((slug) => {
+      const place = placeBySlug.get(slug)!
+      const leg = route.legs.find(l => l.to === slug)
+      const coords = coordsBySlug.get(slug)
+      return {
+        slug,
+        name: place.name,
+        lat: coords?.lat,
+        lng: coords?.lng,
+        suggested_time_min: 60, // default
+        notes: place.description ? place.description.slice(0, 100) + "..." : "",
+        distance_from_prev_km: leg ? leg.distance_km : 0
+      }
+    })
+
+    return {
+      title,
+      stops,
+      total_distance_km: route.total_km,
+      total_minutes: stops.length * 60
+    }
+  },
+  { name: 'tools.plan_itinerary', run_type: 'tool' }
+)
 

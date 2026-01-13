@@ -2,6 +2,28 @@
  * OpenAI client wrappers for text generation and embeddings
  */
 import OpenAI from 'openai'
+import { wrapOpenAI } from 'langsmith/wrappers/openai'
+
+let rawClient: OpenAI | null = null
+let wrappedClient: ReturnType<typeof wrapOpenAI> | null = null
+
+function getRawOpenAIClient() {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) throw new Error('OPENAI_API_KEY is not set')
+  if (!rawClient) {
+    const baseURL = process.env.OPENAI_BASE_URL
+    rawClient = new OpenAI({ apiKey, baseURL })
+  }
+  return rawClient
+}
+
+function getWrappedOpenAIClient() {
+  if (!wrappedClient) {
+    wrappedClient = wrapOpenAI(getRawOpenAIClient())
+  }
+  return wrappedClient
+}
+
 
 export interface OpenAIOptions {
   model?: string
@@ -13,12 +35,8 @@ export interface OpenAIOptions {
 }
 
 export async function openaiGenerateText(input: string, opts: OpenAIOptions = {}): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY
   const model = opts.model || 'gpt-4o-mini'
-  if (!apiKey) throw new Error('OPENAI_API_KEY is not set')
-
-  const baseURL = process.env.OPENAI_BASE_URL // optional (Azure/proxy)
-  const client = new OpenAI({ apiKey, baseURL })
+  const client = getWrappedOpenAIClient()
 
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = []
   if (opts.system) {
@@ -41,6 +59,7 @@ export async function openaiGenerateText(input: string, opts: OpenAIOptions = {}
   return JSON.stringify(res)
 }
 
+
 function delay(ms: number) { return new Promise((r) => setTimeout(r, ms)) }
 
 // Embeddings via OpenAI Embeddings API
@@ -50,12 +69,9 @@ export interface OpenAIEmbedOptions {
 }
 
 export async function openaiEmbed(text: string, opts: OpenAIEmbedOptions = {}): Promise<number[]> {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) throw new Error('OPENAI_API_KEY is not set')
-  const baseURL = process.env.OPENAI_BASE_URL // optional (Azure/proxy)
   const model = opts.model || process.env.OPENAI_EMBED_MODEL || 'text-embedding-3-small'
+  const client = getRawOpenAIClient()
 
-  const client = new OpenAI({ apiKey, baseURL })
   const requestOptions: any = {}
   if (opts.timeout_ms) requestOptions.timeout = opts.timeout_ms
 

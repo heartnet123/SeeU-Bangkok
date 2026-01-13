@@ -28,6 +28,8 @@ export default function TripPlannerPage() {
     { lat: number; lng: number } | undefined
   >();
   const [foundPlaces, setFoundPlaces] = useState<PlaceItem[]>([]);
+  const [agentItinerary, setAgentItinerary] = useState<any | null>(null);
+
 
   const selectedTrip = trips.find((t) => t.id === selectedTripId) || null;
 
@@ -53,6 +55,12 @@ export default function TripPlannerPage() {
     setFoundPlaces(places);
     console.log("Found places from chat:", places);
   };
+
+  const handleItineraryCreated = (itinerary: any) => {
+    setAgentItinerary(itinerary);
+    console.log("Received itinerary from agent:", itinerary);
+  };
+
 
   const handleAddPlaceToTrip = (place: PlaceItem) => {
     if (!selectedTripId) {
@@ -188,8 +196,10 @@ export default function TripPlannerPage() {
           trip={selectedTrip}
           isLoading={isLoading}
           foundPlaces={foundPlaces}
+          itineraryStops={agentItinerary?.stops || []}
           userLocation={userLocation}
         />
+
 
         {/* Itinerary */}
         <ItineraryColumn
@@ -203,9 +213,11 @@ export default function TripPlannerPage() {
       <ChatPanel
         onPlacesFound={handlePlacesFound}
         onAddPlaceToTrip={handleAddPlaceToTrip}
+        onItineraryCreated={handleItineraryCreated}
         userLocation={userLocation}
         defaultOpen={false}
       />
+
     </div>
   );
 }

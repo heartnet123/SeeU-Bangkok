@@ -15,7 +15,7 @@
 	},
 	"dependencies": {
 		"@huggingface/inference": "^2.8.0",
-		"openai": "^4.73.0",
+		"openai": "^4.88.0",
 		"@hono/standard-validator": "^0.1.5",
 		"@scalar/hono-api-reference": "^0.9.18",
 		"@supabase/supabase-js": "^2.39.3",
@@ -23,6 +23,7 @@
 		"drizzle-orm": "^0.44.2",
 		"hono": "^4.8.2",
 		"hono-openapi": "^1.0.7",
+		"langsmith": "^0.4.5",
 		"pg": "^8.14.1",
 		"zod": "^4.0.2"
 	},

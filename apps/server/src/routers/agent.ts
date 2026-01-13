@@ -14,6 +14,8 @@ import {
   type PlaceItem,
 } from "../lib/tools";
 import { StateGraph, START, END } from "@langchain/langgraph";
+import { traceable } from "langsmith/traceable";
+
 
 const agent = new Hono();
 
@@ -250,146 +252,159 @@ async function executeTool(toolName: string, args: any): Promise<any> {
 }
 
 // LangGraph Node: Analyze user intent and decide on tools
-async function analyzeIntent(state: AgentState): Promise<Partial<AgentState>> {
-  const lastMessage = state.messages[state.messages.length - 1];
-  if (lastMessage.role !== "user") {
-    return {};
-  }
+const analyzeIntent = traceable(
+  async (state: AgentState): Promise<Partial<AgentState>> => {
+    const lastMessage = state.messages[state.messages.length - 1];
+    if (lastMessage.role !== "user") {
+      return {};
+    }
 
-  const content = lastMessage.content.toLowerCase();
-  const toolsToCall: Array<{ tool: string; args: any }> = [];
+    const content = lastMessage.content.toLowerCase();
+    const toolsToCall: Array<{ tool: string; args: any }> = [];
 
-  // Intent detection patterns
-  const hasLocation = state.userLocation !== undefined;
-  const wantsNearby = /(\b(near|nearby|around|close)\b|ใกล้|แถว)/i.test(
-    content
-  );
-  const wantsRoute = /(\b(route|plan|itinerary|tour|trip)\b|แผน|เที่ยว)/i.test(
-    content
-  );
-  const hasSearchTerms = content.length > 3;
+    // Intent detection patterns
+    const hasLocation = state.userLocation !== undefined;
+    const wantsNearby = /(\b(near|nearby|around|close)\b|ใกล้|แถว)/i.test(
+      content
+    );
+    const wantsRoute = /(\b(route|plan|itinerary|tour|trip)\b|แผน|เที่ยว)/i.test(
+      content
+    );
+    const hasSearchTerms = content.length > 3;
 
-  // Determine which tools to use
-  if (wantsNearby && hasLocation) {
-    toolsToCall.push({
-      tool: "nearby_places",
-      args: { location: state.userLocation, radius_km: 5, limit: 10 },
-    });
-  } else if (hasSearchTerms) {
-    // Always do vector search for semantic understanding
-    toolsToCall.push({
-      tool: "vector_search",
-      args: { query: content, top_k: 10 },
-    });
-  }
-
-  if (wantsRoute) {
-    // For route planning, also do vector search if not already
-    if (!hasSearchTerms) {
+    // Determine which tools to use
+    if (wantsNearby && hasLocation) {
+      toolsToCall.push({
+        tool: "nearby_places",
+        args: { location: state.userLocation, radius_km: 5, limit: 10 },
+      });
+    } else if (hasSearchTerms) {
+      // Always do vector search for semantic understanding
       toolsToCall.push({
         tool: "vector_search",
         args: { query: content, top_k: 10 },
       });
     }
-    // Plan itinerary will be called after vector search in retrieve
-  }
 
-  return {
-    toolCalls: toolsToCall,
-  };
-}
+    if (wantsRoute) {
+      // For route planning, also do vector search if not already
+      if (!hasSearchTerms) {
+        toolsToCall.push({
+          tool: "vector_search",
+          args: { query: content, top_k: 10 },
+        });
+      }
+      // Plan itinerary will be called after vector search in retrieve
+    }
+
+    return {
+      toolCalls: toolsToCall,
+    };
+  },
+  { name: "agent.analyze", run_type: "chain" }
+);
+
 
 // LangGraph Node: Retrieve information using tools and RAG
-async function retrieve(state: AgentState): Promise<Partial<AgentState>> {
-  const results: Array<{ tool: string; args: any; result: any }> = [];
-  const retrievedDocs: Array<{
-    content: string;
-    metadata: any;
-    score?: number;
-  }> = [];
-  let additionalTools: Array<{ tool: string; args: any }> = [];
+const retrieve = traceable(
+  async (state: AgentState): Promise<Partial<AgentState>> => {
+    const results: Array<{ tool: string; args: any; result: any }> = [];
+    const retrievedDocs: Array<{
+      content: string;
+      metadata: any;
+      score?: number;
+    }> = [];
+    let additionalTools: Array<{ tool: string; args: any }> = [];
 
-  // Check if we need to plan itinerary
-  const lastMessage = state.messages[state.messages.length - 1];
-  const content = lastMessage?.content?.toLowerCase() || "";
-  const wantsRoute = /(\b(route|plan|itinerary|tour|trip)\b|แผน|เที่ยว)/i.test(content);
+    // Check if we need to plan itinerary
+    const lastMessage = state.messages[state.messages.length - 1];
+    const content = lastMessage?.content?.toLowerCase() || "";
+    const wantsRoute = /(\b(route|plan|itinerary|tour|trip)\b|แผน|เที่ยว)/i.test(content);
 
-  // Execute all planned tool calls
-  for (const toolCall of state.toolCalls) {
-    try {
-      const result = await executeTool(toolCall.tool, toolCall.args);
-      results.push({ ...toolCall, result });
+    // Execute all planned tool calls
+    for (const toolCall of state.toolCalls) {
+      try {
+        const result = await executeTool(toolCall.tool, toolCall.args);
+        results.push({ ...toolCall, result });
 
-      // If it's a vector search, store as retrieved documents
-      if (toolCall.tool === "vector_search") {
-        retrievedDocs.push(...result);
+        // If it's a vector search, store as retrieved documents
+        if (toolCall.tool === "vector_search") {
+          retrievedDocs.push(...result);
+        }
+      } catch (err: any) {
+        results.push({ ...toolCall, result: { error: err.message } });
       }
-    } catch (err: any) {
-      results.push({ ...toolCall, result: { error: err.message } });
     }
-  }
 
-  // After executing tools, check if we should plan itinerary
-  if (wantsRoute && retrievedDocs.length > 0) {
-    const placeIds = retrievedDocs.slice(0, 5).map(d => d.metadata.id);
-    additionalTools.push({
-      tool: "plan_itinerary",
-      args: { place_slugs: placeIds, title: "Suggested Trip" },
-    });
-  }
-
-  // Execute additional tools
-  for (const toolCall of additionalTools) {
-    try {
-      const result = await executeTool(toolCall.tool, toolCall.args);
-      results.push({ ...toolCall, result });
-    } catch (err: any) {
-      results.push({ ...toolCall, result: { error: err.message } });
+    // After executing tools, check if we should plan itinerary
+    console.log("[DEBUG retrieve] wantsRoute:", wantsRoute, "retrievedDocs.length:", retrievedDocs.length);
+    if (wantsRoute && retrievedDocs.length > 0) {
+      const placeIds = retrievedDocs.slice(0, 5).map(d => d.metadata.id);
+      console.log("[DEBUG retrieve] Planning itinerary with placeIds:", placeIds);
+      additionalTools.push({
+        tool: "plan_itinerary",
+        args: { place_slugs: placeIds, title: "Suggested Trip" },
+      });
     }
-  }
 
-  const newState: Partial<AgentState> = {
-    toolCalls: results,
-    retrievedDocs: [...state.retrievedDocs, ...retrievedDocs],
-  };
+    // Execute additional tools
+    for (const toolCall of additionalTools) {
+      try {
+        const result = await executeTool(toolCall.tool, toolCall.args);
+        results.push({ ...toolCall, result });
+      } catch (err: any) {
+        results.push({ ...toolCall, result: { error: err.message } });
+      }
+    }
 
-  // If plan_itinerary was called, set the itinerary
-  const itineraryResult = results.find(tc => tc.tool === "plan_itinerary" && tc.result && !tc.result.error);
-  if (itineraryResult) {
-    newState.itinerary = itineraryResult.result;
-  }
+    const newState: Partial<AgentState> = {
+      toolCalls: results,
+      retrievedDocs: [...state.retrievedDocs, ...retrievedDocs],
+    };
 
-  return newState;
-}
+    // If plan_itinerary was called, set the itinerary
+    const itineraryResult = results.find(tc => tc.tool === "plan_itinerary" && tc.result && !tc.result.error);
+    console.log("[DEBUG retrieve] itineraryResult:", itineraryResult ? "found" : "not found", itineraryResult?.result?.stops?.length || 0, "stops");
+    if (itineraryResult) {
+      newState.itinerary = itineraryResult.result;
+      console.log("[DEBUG retrieve] Setting newState.itinerary with", itineraryResult.result.stops?.length, "stops");
+    }
+
+    return newState;
+  },
+  { name: "agent.retrieve", run_type: "chain" }
+);
+
 
 // LangGraph Node: Generate response using LLM with retrieved context
-async function generate(state: AgentState): Promise<Partial<AgentState>> {
-  try {
-    // Build context from retrieved documents
-    const contextDocs = state.retrievedDocs
-      .slice(0, 5)
-      .map((doc, i) => `[${i + 1}] ${doc.content}`)
-      .join("\n");
+const generate = traceable(
+  async (state: AgentState): Promise<Partial<AgentState>> => {
+    try {
+      // Build context from retrieved documents
+      const contextDocs = state.retrievedDocs
+        .slice(0, 5)
+        .map((doc, i) => `[${i + 1}] ${doc.content}`)
+        .join("\n");
 
-    // Build tool results summary
-    const toolResults = state.toolCalls
-      .filter((tc) => tc.result && !tc.result.error)
-      .map((tc) => {
-        const res = tc.result;
-        if (Array.isArray(res)) {
-          return `${tc.tool} found ${res.length} results: ${res
-            .slice(0, 3)
-            .map((r: any) => r.name || r.slug || JSON.stringify(r))
-            .join(", ")}`;
-        }
-        return `${tc.tool}: ${JSON.stringify(res).slice(0, 100)}`;
-      })
-      .join("\n");
+      // Build tool results summary
+      const toolResults = state.toolCalls
+        .filter((tc) => tc.result && !tc.result.error)
+        .map((tc) => {
+          const res = tc.result;
+          if (Array.isArray(res)) {
+            return `${tc.tool} found ${res.length} results: ${res
+              .slice(0, 3)
+              .map((r: any) => r.name || r.slug || JSON.stringify(r))
+              .join(", ")}`;
+          }
+          return `${tc.tool}: ${JSON.stringify(res).slice(0, 100)}`;
+        })
+        .join("\n");
 
-    // System prompt with RAG context
-    const itineraryInfo = state.itinerary ? `\n\nITINERARY PLANNED:\n${JSON.stringify(state.itinerary, null, 2)}` : "";
+      // System prompt with RAG context
+      const itineraryInfo = state.itinerary ? `\n\nITINERARY PLANNED:\n${JSON.stringify(state.itinerary, null, 2)}` : "";
 
-    const systemPrompt = `You are TripPlannerAI, an expert travel assistant for Bangkok.
+      const systemPrompt = `You are TripPlannerAI, an expert travel assistant for Bangkok.
 
 RETRIEVED CONTEXT:
 ${contextDocs || "No specific context retrieved."}
@@ -406,33 +421,36 @@ Instructions:
 - If the user's language is Thai, respond in Thai
 - Keep responses concise but informative`;
 
-    // Get conversation history
-    const conversationHistory = state.messages
-      .slice(-5) // Last 5 messages
-      .map((m) => `${m.role}: ${m.content}`)
-      .join("\n");
+      // Get conversation history
+      const conversationHistory = state.messages
+        .slice(-5) // Last 5 messages
+        .map((m) => `${m.role}: ${m.content}`)
+        .join("\n");
 
-    const userPrompt = `${conversationHistory}\n\nBased on the context and tool results above, provide a helpful response.`;
+      const userPrompt = `${conversationHistory}\n\nBased on the context and tool results above, provide a helpful response.`;
 
-    // Generate response
-    const response = await openaiGenerateText(userPrompt, {
-      system: systemPrompt,
-      max_completion_tokens: 300,
-      temperature: 1,
-      retries: 2,
-      timeout_ms: 20000,
-    });
+      // Generate response
+      const response = await openaiGenerateText(userPrompt, {
+        system: systemPrompt,
+        max_completion_tokens: 300,
+        temperature: 1,
+        retries: 2,
+        timeout_ms: 20000,
+      });
 
-    return {
-      finalResponse: response,
-      messages: [...state.messages, { role: "assistant", content: response }],
-    };
-  } catch (err: any) {
-    return {
-      error: err.message || "Failed to generate response",
-    };
-  }
-}
+      return {
+        finalResponse: response,
+        messages: [...state.messages, { role: "assistant", content: response }],
+      };
+    } catch (err: any) {
+      return {
+        error: err.message || "Failed to generate response",
+      };
+    }
+  },
+  { name: "agent.generate", run_type: "chain" }
+);
+
 
 // Define Zod schema for LangGraph and build graph
 const AgentStateSchema = z.object({
@@ -547,12 +565,53 @@ agent.post(
                 }),
               });
             }
+            // Send suggestions event for search_places, nearby_places, and vector_search results
+            if (evt.retrieve?.toolCalls || evt.retrieve?.retrievedDocs) {
+              const toolCalls = evt.retrieve?.toolCalls || [];
+              
+              // Get places from search_places and nearby_places
+              const placesResults = toolCalls
+                .filter((tc: any) => 
+                  (tc.tool === "search_places" || tc.tool === "nearby_places") && 
+                  Array.isArray(tc.result) && 
+                  tc.result.length > 0
+                )
+                .flatMap((tc: any) => tc.result);
+              
+              // Get places from vector_search (retrievedDocs)
+              const vectorSearchPlaces = (evt.retrieve?.retrievedDocs || [])
+                .filter((doc: any) => doc.metadata?.id && doc.metadata?.lat && doc.metadata?.lng)
+                .map((doc: any) => ({
+                  id: doc.metadata.id,
+                  name: doc.metadata.name,
+                  slug: doc.metadata.id,
+                  lat: doc.metadata.lat,
+                  lng: doc.metadata.lng,
+                  tags: doc.metadata.tags || [],
+                }));
+              
+              // Combine and deduplicate by id
+              const allPlaces = [...placesResults, ...vectorSearchPlaces];
+              const uniquePlaces = allPlaces.filter((place, index, self) => 
+                index === self.findIndex((p) => p.id === place.id || p.slug === place.slug)
+              );
+              
+              if (uniquePlaces.length > 0) {
+                console.log("Sending suggestions event with", uniquePlaces.length, "places (from tools:", placesResults.length, ", from vector:", vectorSearchPlaces.length, ")");
+                await stream.writeSSE({
+                  event: "suggestions",
+                  data: JSON.stringify({ places: uniquePlaces }),
+                });
+              }
+            }
             if (evt.retrieve?.itinerary) {
-              console.log("Sending itinerary event");
+              console.log("[DEBUG stream] Sending itinerary event with", evt.retrieve.itinerary.stops?.length, "stops");
               await stream.writeSSE({
                 event: "itinerary",
                 data: JSON.stringify(evt.retrieve.itinerary),
               });
+            } else {
+              console.log("[DEBUG stream] evt.retrieve?.itinerary is falsy. evt.retrieve keys:", evt.retrieve ? Object.keys(evt.retrieve) : "no retrieve");
             }
             if (evt.generate?.finalResponse) {
               console.log("Sending message event");

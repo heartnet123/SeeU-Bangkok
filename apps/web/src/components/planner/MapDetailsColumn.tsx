@@ -18,14 +18,26 @@ interface PlaceItem {
   price?: number;
 }
 
+interface ItineraryStop {
+  slug: string;
+  name: string;
+  lat?: number;
+  lng?: number;
+  suggested_time_min?: number;
+  notes?: string;
+}
+
 interface Props {
   trip: Trip | null;
   isLoading?: boolean;
   foundPlaces?: PlaceItem[];
+  itineraryStops?: ItineraryStop[];
   userLocation?: { lat: number; lng: number };
 }
 
-export function MapDetailsColumn({ trip, isLoading = false, foundPlaces = [], userLocation }: Props) {
+
+export function MapDetailsColumn({ trip, isLoading = false, foundPlaces = [], itineraryStops = [], userLocation }: Props) {
+
   const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
 
   // Transform places data for MapContainer
@@ -65,6 +77,24 @@ export function MapDetailsColumn({ trip, isLoading = false, foundPlaces = [], us
       }));
   };
 
+  const transformItineraryStopsForMap = (stops: ItineraryStop[]): any[] => {
+    return stops
+      .filter(stop => stop.lat && stop.lng)
+      .map(stop => ({
+        id: `itinerary-${stop.slug}`,
+        name: stop.name,
+        description: stop.notes || 'Itinerary stop',
+        tags: [],
+        lat: stop.lat!,
+        lng: stop.lng!,
+        address: stop.slug,
+        price: 0,
+        image_url: '',
+        slug: stop.slug,
+      }));
+  };
+
+
   const handlePlaceSelect = (place: any) => {
     setSelectedPlace(place);
   };
@@ -77,7 +107,9 @@ export function MapDetailsColumn({ trip, isLoading = false, foundPlaces = [], us
   const allPlacesForMap = [
     ...transformPlacesForMap(foundPlaces),
     ...transformTripStopsForMap(trip),
+    ...transformItineraryStopsForMap(itineraryStops),
   ];
+
   // Loading state
   if (isLoading) {
     return (
@@ -135,6 +167,12 @@ export function MapDetailsColumn({ trip, isLoading = false, foundPlaces = [], us
               userLocation={userLocation ? [userLocation.lat, userLocation.lng] : undefined}
               initialCenter={[100.5018, 13.7563]} // Bangkok center
               initialZoom={12}
+              itineraryStops={itineraryStops.filter(s => s.lat && s.lng).map(s => ({
+                lat: s.lat!,
+                lng: s.lng!,
+                slug: s.slug,
+                name: s.name,
+              }))}
             />
           </div>
         </CardContent>

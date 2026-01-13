@@ -134,4 +134,114 @@ itineraries.post('/', authMiddleware, zValidator('json', createSchema), async (c
   }
 })
 
+// Update an itinerary (title and stops)
+itineraries.put('/:id', authMiddleware, zValidator('json', createSchema), async (c) => {
+  const user = c.get('user')
+  const itineraryId = c.req.param('id')
+  const { title, stops } = c.req.valid('json')
+  try {
+    // Verify ownership
+    const { data: existing, error: checkErr } = await supabase
+      .from('itineraries')
+      .select('user_id')
+      .eq('id', itineraryId)
+      .single()
+    if (checkErr || !existing) {
+      return c.json({ success: false, error: 'Itinerary not found' }, 404)
+    }
+    if (existing.user_id !== user.id) {
+      return c.json({ success: false, error: 'Unauthorized' }, 403)
+    }
+
+    // Resolve slugs to place IDs
+    const resolved: { place_id: string; position: number; suggested_time_min?: number; notes?: string }[] = []
+    let pos = 1
+    for (const s of stops) {
+      const name = slugToName(s.slug)
+      let { data: place, error } = await supabase
+        .from('bangkok_unseen')
+        .select('id, name')
+        .ilike('name', name)
+        .single()
+      if (error && (error as any).code === 'PGRST116') {
+        const fuzzy = `%${name.replace(/\s+/g, '%')}%`
+        const { data: p2, error: e2 } = await supabase
+          .from('bangkok_unseen')
+          .select('id, name')
+          .ilike('name', fuzzy)
+          .limit(1)
+          .single()
+        if (e2 || !p2) throw new Error(`Place not found for slug: ${s.slug}`)
+        place = p2
+      } else if (error || !place) {
+        throw new Error(`Place not found for slug: ${s.slug}`)
+      }
+      resolved.push({ place_id: place.id, position: pos++, suggested_time_min: s.suggested_time_min, notes: s.notes })
+    }
+
+    // Update itinerary
+    const { error: updateErr } = await supabase
+      .from('itineraries')
+      .update({ title })
+      .eq('id', itineraryId)
+    if (updateErr) throw updateErr
+
+    // Delete existing stops
+    const { error: delErr } = await supabase
+      .from('itinerary_stops')
+      .delete()
+      .eq('itinerary_id', itineraryId)
+    if (delErr) throw delErr
+
+    // Insert new stops
+    const payload = resolved.map((r) => ({ ...r, itinerary_id: itineraryId }))
+    const { error: stopErr } = await supabase
+      .from('itinerary_stops')
+      .insert(payload)
+    if (stopErr) throw stopErr
+
+    return c.json({ success: true, data: { id: itineraryId, title } })
+  } catch (e: any) {
+    return c.json({ success: false, error: e?.message || 'Failed to update itinerary' }, 500)
+  }
+})
+
+// Delete an itinerary
+itineraries.delete('/:id', authMiddleware, async (c) => {
+  const user = c.get('user')
+  const itineraryId = c.req.param('id')
+  try {
+    // Verify ownership
+    const { data: existing, error: checkErr } = await supabase
+      .from('itineraries')
+      .select('user_id')
+      .eq('id', itineraryId)
+      .single()
+    if (checkErr || !existing) {
+      return c.json({ success: false, error: 'Itinerary not found' }, 404)
+    }
+    if (existing.user_id !== user.id) {
+      return c.json({ success: false, error: 'Unauthorized' }, 403)
+    }
+
+    // Delete stops first (cascade)
+    const { error: delStopsErr } = await supabase
+      .from('itinerary_stops')
+      .delete()
+      .eq('itinerary_id', itineraryId)
+    if (delStopsErr) throw delStopsErr
+
+    // Delete itinerary
+    const { error: delErr } = await supabase
+      .from('itineraries')
+      .delete()
+      .eq('id', itineraryId)
+    if (delErr) throw delErr
+
+    return c.json({ success: true, data: { id: itineraryId } })
+  } catch (e: any) {
+    return c.json({ success: false, error: e?.message || 'Failed to delete itinerary' }, 500)
+  }
+})
+
 export default itineraries

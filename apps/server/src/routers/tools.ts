@@ -69,7 +69,7 @@ tools.post(
   ),
   async (c) => {
     const params = c.req.valid('json')
-    const data = build_route(params as any)
+    const data = await build_route(params as any)
     return c.json({ success: true, data })
   },
 )

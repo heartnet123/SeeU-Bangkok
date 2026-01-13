@@ -4,7 +4,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MessageSquare, Send, Loader2, X, Minimize2, Maximize2, Save } from "lucide-react";
+import { MessageSquare, Send, Loader2, X, Minimize2, Maximize2, Save, Check } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { nameToSlug } from "@/lib/slug-utils";
 
@@ -31,17 +31,21 @@ interface PlaceItem {
 interface ChatPanelProps {
   onPlacesFound?: (places: PlaceItem[]) => void;
   onAddPlaceToTrip?: (place: PlaceItem) => void;
+  onItineraryCreated?: (itinerary: any) => void;
   userLocation?: { lat: number; lng: number };
   defaultOpen?: boolean;
 }
 
-export function ChatPanel({ onPlacesFound, onAddPlaceToTrip, userLocation, defaultOpen = false }: ChatPanelProps) {
+
+export function ChatPanel({ onPlacesFound, onAddPlaceToTrip, onItineraryCreated, userLocation, defaultOpen = false }: ChatPanelProps) {
+
    const [isOpen, setIsOpen] = useState(defaultOpen);
    const [isMinimized, setIsMinimized] = useState(false);
    const [input, setInput] = useState("");
    const [events, setEvents] = useState<ChatEvent[]>([]);
    const [isStreaming, setIsStreaming] = useState(false);
    const [isSavingItinerary, setIsSavingItinerary] = useState(false);
+   const [isItinerarySaved, setIsItinerarySaved] = useState(false);
    const controllerRef = useRef<AbortController | null>(null);
    const messagesEndRef = useRef<HTMLDivElement>(null);
    const { session } = useAuth();
@@ -71,6 +75,7 @@ export function ChatPanel({ onPlacesFound, onAddPlaceToTrip, userLocation, defau
 
   const itineraryInfo = useMemo(() => {
     const ev = [...events].reverse().find((e) => e.type === "itinerary") as any;
+    console.log("[DEBUG ChatPanel] itineraryInfo useMemo - found event:", ev ? "yes" : "no", ev?.data);
     return ev?.data || null;
   }, [events]);
 
@@ -79,6 +84,16 @@ export function ChatPanel({ onPlacesFound, onAddPlaceToTrip, userLocation, defau
       onPlacesFound(suggestions);
     }
   }, [suggestions, onPlacesFound]);
+
+  useEffect(() => {
+    console.log("[DEBUG ChatPanel] itineraryInfo useEffect triggered:", itineraryInfo);
+    if (itineraryInfo && onItineraryCreated) {
+      console.log("[DEBUG ChatPanel] Calling onItineraryCreated with:", itineraryInfo);
+      onItineraryCreated(itineraryInfo);
+      setIsItinerarySaved(false); // Reset saved state for new itinerary
+    }
+  }, [itineraryInfo, onItineraryCreated]);
+
 
   const stop = useCallback(() => {
     controllerRef.current?.abort();
@@ -102,6 +117,7 @@ export function ChatPanel({ onPlacesFound, onAddPlaceToTrip, userLocation, defau
             { role: "system", content: "You are a helpful Bangkok travel assistant." },
             { role: "user", content: input },
           ],
+          stream: true,
         };
         if (userLocation) payload.userLocation = userLocation;
 
@@ -167,8 +183,11 @@ export function ChatPanel({ onPlacesFound, onAddPlaceToTrip, userLocation, defau
               case "itinerary":
                 try {
                   const payload = JSON.parse(joined);
+                  console.log("[DEBUG ChatPanel] Received itinerary event:", payload);
                   setEvents((prev) => [...prev, { type: "itinerary", data: payload }]);
-                } catch (e) {}
+                } catch (e) {
+                  console.log("[DEBUG ChatPanel] Failed to parse itinerary event:", e);
+                }
                 break;
               case "error":
                 setEvents((prev) => [...prev, { type: "error", text: joined }]);
@@ -254,6 +273,7 @@ export function ChatPanel({ onPlacesFound, onAddPlaceToTrip, userLocation, defau
         ...prev,
         { type: "message", text: "✅ Itinerary saved successfully! Check your Saved Trips." },
       ]);
+      setIsItinerarySaved(true);
     } catch (e: any) {
       setEvents((prev) => [
         ...prev,
@@ -410,13 +430,22 @@ export function ChatPanel({ onPlacesFound, onAddPlaceToTrip, userLocation, defau
                       <Button
                         size="sm"
                         onClick={handleSaveItinerary}
-                        disabled={isSavingItinerary}
-                        className="w-full text-xs"
+                        disabled={isSavingItinerary || isItinerarySaved}
+                        className={`w-full text-xs transition-all duration-300 ${
+                          isItinerarySaved 
+                            ? "bg-green-500 hover:bg-green-500 cursor-default" 
+                            : ""
+                        }`}
                       >
                         {isSavingItinerary ? (
                           <>
                             <Loader2 className="w-3 h-3 animate-spin mr-1" />
                             Saving...
+                          </>
+                        ) : isItinerarySaved ? (
+                          <>
+                            <Check className="w-3 h-3 mr-1 animate-in zoom-in duration-300" />
+                            Saved!
                           </>
                         ) : (
                           <>

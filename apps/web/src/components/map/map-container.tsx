@@ -22,6 +22,13 @@ interface Place {
   slug: string;
 }
 
+interface ItineraryStop {
+  lat: number;
+  lng: number;
+  slug: string;
+  name: string;
+}
+
 interface MapContainerProps {
   places: Place[];
   selectedPlace?: Place | null;
@@ -30,6 +37,7 @@ interface MapContainerProps {
   userLocation?: [number, number] | null;
   initialCenter?: [number, number];
   initialZoom?: number;
+  itineraryStops?: ItineraryStop[];
 }
 
 const MapContainer: React.FC<MapContainerProps> = ({
@@ -40,11 +48,13 @@ const MapContainer: React.FC<MapContainerProps> = ({
   userLocation,
   initialCenter = [100.5018, 13.7563], // Bangkok center
   initialZoom = 11,
+  itineraryStops = [],
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const clusterMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  const itineraryMarkersRef = useRef<mapboxgl.Marker[]>([]);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
   
@@ -364,6 +374,249 @@ const MapContainer: React.FC<MapContainerProps> = ({
       .setLngLat(userLocation)
       .addTo(map.current!);
   }, [userLocation, mapLoaded]);
+
+  // Draw itinerary route using Mapbox Directions API
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+
+    const ROUTE_SOURCE_ID = 'itinerary-route-source';
+    const ROUTE_LAYER_ID = 'itinerary-route-layer';
+
+    // Clean up existing route layer/source
+    const cleanup = () => {
+      if (map.current?.getLayer(ROUTE_LAYER_ID)) {
+        map.current.removeLayer(ROUTE_LAYER_ID);
+      }
+      if (map.current?.getSource(ROUTE_SOURCE_ID)) {
+        map.current.removeSource(ROUTE_SOURCE_ID);
+      }
+    };
+
+    // Need at least 2 stops for a route
+    if (itineraryStops.length < 2) {
+      cleanup();
+      return;
+    }
+
+    const fetchAndDrawRoute = async () => {
+      const accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
+      if (!accessToken) {
+        console.error('Mapbox access token not available for directions');
+        return;
+      }
+
+      // Build coordinates string: lng,lat;lng,lat;...
+      const coords = itineraryStops
+        .map(stop => `${stop.lng},${stop.lat}`)
+        .join(';');
+
+      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coords}?geometries=geojson&overview=full&access_token=${accessToken}`;
+
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          console.error('Directions API error:', response.status);
+          return;
+        }
+
+        const data = await response.json();
+        if (!data.routes || data.routes.length === 0) {
+          console.warn('No route found for itinerary stops');
+          return;
+        }
+
+        const routeGeometry = data.routes[0].geometry;
+
+        // Remove existing source/layer before adding new
+        cleanup();
+
+        // Add source
+        map.current?.addSource(ROUTE_SOURCE_ID, {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            properties: {},
+            geometry: routeGeometry,
+          },
+        });
+
+        // Add layer
+        map.current?.addLayer({
+          id: ROUTE_LAYER_ID,
+          type: 'line',
+          source: ROUTE_SOURCE_ID,
+          layout: {
+            'line-join': 'round',
+            'line-cap': 'round',
+          },
+          paint: {
+            'line-color': '#3B82F6',
+            'line-width': 5,
+            'line-opacity': 0.8,
+          },
+        });
+
+        // Fit map to route bounds
+        const coordinates = routeGeometry.coordinates as [number, number][];
+        if (coordinates.length > 0) {
+          const bounds = coordinates.reduce(
+            (bounds, coord) => bounds.extend(coord as [number, number]),
+            new mapboxgl.LngLatBounds(coordinates[0], coordinates[0])
+          );
+          map.current?.fitBounds(bounds, { padding: 60, duration: 1000 });
+        }
+      } catch (error) {
+        console.error('Error fetching directions:', error);
+      }
+    };
+
+    fetchAndDrawRoute();
+
+    return () => {
+      cleanup();
+    };
+  }, [itineraryStops, mapLoaded]);
+
+  // Add numbered markers for itinerary stops
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+
+    // Clear existing itinerary markers
+    itineraryMarkersRef.current.forEach(marker => marker.remove());
+    itineraryMarkersRef.current = [];
+
+    if (itineraryStops.length === 0) return;
+
+    // Add numbered markers for each stop
+    itineraryStops.forEach((stop, index) => {
+      if (!stop.lat || !stop.lng || isNaN(stop.lat) || isNaN(stop.lng)) {
+        console.warn(`Invalid coordinates for itinerary stop:`, stop);
+        return;
+      }
+
+      // Create numbered marker element
+      const markerElement = document.createElement('div');
+      markerElement.className = 'itinerary-stop-marker';
+      markerElement.style.cssText = `
+        width: 36px;
+        height: 36px;
+        background-color: #3B82F6;
+        border: 3px solid white;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        color: white;
+        font-weight: bold;
+        box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+        transition: all 0.2s ease;
+        z-index: 10;
+      `;
+      markerElement.innerHTML = `${index + 1}`;
+
+      // Hover effects
+      markerElement.addEventListener('mouseenter', () => {
+        markerElement.style.transform = 'scale(1.15)';
+        markerElement.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)';
+      });
+
+      markerElement.addEventListener('mouseleave', () => {
+        markerElement.style.transform = 'scale(1)';
+        markerElement.style.boxShadow = '0 3px 8px rgba(0,0,0,0.4)';
+      });
+
+      // Click handler - show popup for itinerary stop
+      markerElement.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showItineraryStopPopup(stop, index);
+      });
+
+      const marker = new mapboxgl.Marker({ element: markerElement, anchor: 'center' })
+        .setLngLat([stop.lng, stop.lat])
+        .addTo(map.current!);
+
+      itineraryMarkersRef.current.push(marker);
+    });
+  }, [itineraryStops, mapLoaded]);
+
+  // Show popup for itinerary stop
+  const showItineraryStopPopup = (stop: ItineraryStop, index: number) => {
+    if (!map.current) return;
+
+    // Remove existing popup
+    if (popupRef.current) {
+      popupRef.current.remove();
+    }
+
+    // Create popup content
+    const popupContent = document.createElement('div');
+    popupContent.innerHTML = `
+      <div class="itinerary-popup" style="min-width: 220px; max-width: 280px;">
+        <div class="popup-header" style="background: linear-gradient(135deg, #3B82F6, #1D4ED8); padding: 16px; border-radius: 8px 8px 0 0;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="width: 32px; height: 32px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #3B82F6; font-size: 16px;">
+              ${index + 1}
+            </div>
+            <h3 style="color: white; font-size: 16px; font-weight: bold; margin: 0;">${stop.name}</h3>
+          </div>
+        </div>
+        <div class="popup-content" style="padding: 16px; background: white; border-radius: 0 0 8px 8px;">
+          <div style="display: flex; gap: 8px;">
+            <button id="view-itinerary-stop-${stop.slug}" 
+                    style="flex: 1; background: #3B82F6; color: white; border: none; padding: 10px 16px; border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: 500;">
+              View Details
+            </button>
+            <button id="directions-itinerary-stop-${stop.slug}" 
+                    style="background: #F3F4F6; color: #374151; border: none; padding: 10px 12px; border-radius: 6px; font-size: 14px; cursor: pointer;">
+              🧭
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Create popup
+    popupRef.current = new mapboxgl.Popup({
+      closeButton: true,
+      closeOnClick: false,
+      anchor: 'bottom',
+      offset: [0, -20],
+    })
+      .setLngLat([stop.lng, stop.lat])
+      .setDOMContent(popupContent)
+      .addTo(map.current);
+
+    // Add event listeners to popup buttons
+    setTimeout(() => {
+      const viewBtn = document.getElementById(`view-itinerary-stop-${stop.slug}`);
+      const directionsBtn = document.getElementById(`directions-itinerary-stop-${stop.slug}`);
+
+      if (viewBtn) {
+        viewBtn.addEventListener('click', () => {
+          window.location.href = `/places/${stop.slug}`;
+        });
+      }
+
+      if (directionsBtn) {
+        directionsBtn.addEventListener('click', () => {
+          if (userLocation) {
+            const url = `https://www.google.com/maps/dir/${userLocation[1]},${userLocation[0]}/${stop.lat},${stop.lng}`;
+            window.open(url, '_blank');
+          } else {
+            const url = `https://www.google.com/maps/search/?api=1&query=${stop.lat},${stop.lng}`;
+            window.open(url, '_blank');
+          }
+        });
+      }
+    }, 100);
+
+    // Handle popup close
+    popupRef.current.on('close', () => {
+      popupRef.current = null;
+    });
+  };
 
   // Handle selected place
   useEffect(() => {
