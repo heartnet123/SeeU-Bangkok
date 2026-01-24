@@ -5,6 +5,7 @@ import { ItineraryColumn } from "@/components/planner/ItineraryColumn";
 import { ChatPanel } from "@/components/planner/ChatPanel";
 import MapContainer from "@/components/map/map-container";
 import { CollapsiblePanel } from "@/components/map/collapsible-panel";
+import { BottomSheet } from "@/components/map/bottom-sheet";
 import { MapToolbar } from "@/components/map/map-toolbar";
 import type { Trip, TripStop } from "@/components/planner/mock-data";
 import { mockTrips } from "@/components/planner/mock-data";
@@ -46,6 +47,7 @@ export default function TripPlannerPage() {
   const [isItineraryPanelOpen, setIsItineraryPanelOpen] = useState(true);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
+  const [isBottomSheetExpanded, setIsBottomSheetExpanded] = useState(true);
 
 
   const selectedTrip = trips.find((t) => t.id === selectedTripId) || null;
@@ -281,51 +283,96 @@ export default function TripPlannerPage() {
         />
       </div>
 
-      {/* Map Toolbar - Central toggle buttons */}
-      <MapToolbar
-        isTripsPanelOpen={isTripsPanelOpen}
-        isItineraryPanelOpen={isItineraryPanelOpen}
-        isChatOpen={isChatOpen}
-        onToggleTripsPanel={() => setIsTripsPanelOpen(!isTripsPanelOpen)}
-        onToggleItineraryPanel={() =>
-          setIsItineraryPanelOpen(!isItineraryPanelOpen)
-        }
-        onToggleChat={() => setIsChatOpen(!isChatOpen)}
-      />
-
-      {/* Left Panel - Trip List */}
-      <CollapsiblePanel
-        isOpen={isTripsPanelOpen}
-        onClose={() => setIsTripsPanelOpen(false)}
-        position="left"
-        title="My Trips"
-        width="w-[380px]"
-      >
-        <TripListColumn
-          trips={trips}
-          selectedTripId={selectedTripId}
-          onSelectTrip={setSelectedTripId}
-          onNewTripClick={handleNewTrip}
-          onDeleteTrip={handleDeleteTrip}
-          onEditTrip={handleEditTrip}
-          onReorderTrips={handleReorderTrips}
+      {/* Map Toolbar - Central toggle buttons (Desktop Only) */}
+      <div className="hidden md:block">
+        <MapToolbar
+          isTripsPanelOpen={isTripsPanelOpen}
+          isItineraryPanelOpen={isItineraryPanelOpen}
+          isChatOpen={isChatOpen}
+          onToggleTripsPanel={() => setIsTripsPanelOpen(!isTripsPanelOpen)}
+          onToggleItineraryPanel={() =>
+            setIsItineraryPanelOpen(!isItineraryPanelOpen)
+          }
+          onToggleChat={() => setIsChatOpen(!isChatOpen)}
         />
-      </CollapsiblePanel>
+      </div>
 
-      {/* Right Panel - Itinerary */}
-      <CollapsiblePanel
-        isOpen={isItineraryPanelOpen}
-        onClose={() => setIsItineraryPanelOpen(false)}
-        position="right"
-        title={selectedTrip?.name || "Itinerary"}
-        width="w-[400px]"
+      {/* Left Panel - Trip List (Desktop Only) */}
+      <div className="hidden md:block">
+        <CollapsiblePanel
+          isOpen={isTripsPanelOpen}
+          onClose={() => setIsTripsPanelOpen(false)}
+          position="left"
+          title="My Trips"
+          width="w-[380px]"
+        >
+          <TripListColumn
+            trips={trips}
+            selectedTripId={selectedTripId}
+            onSelectTrip={setSelectedTripId}
+            onNewTripClick={handleNewTrip}
+            onDeleteTrip={handleDeleteTrip}
+            onEditTrip={handleEditTrip}
+            onReorderTrips={handleReorderTrips}
+          />
+        </CollapsiblePanel>
+      </div>
+
+      {/* Right Panel - Itinerary (Desktop Only) */}
+      <div className="hidden md:block">
+        <CollapsiblePanel
+          isOpen={isItineraryPanelOpen}
+          onClose={() => setIsItineraryPanelOpen(false)}
+          position="right"
+          title={selectedTrip?.name || "Itinerary"}
+          width="w-[400px]"
+        >
+          <ItineraryColumn
+            trip={selectedTrip}
+            onEditTrip={handleEditTrip}
+            onReorderStops={handleReorderStops}
+          />
+        </CollapsiblePanel>
+      </div>
+
+      {/* Bottom Sheet - Trip & Itinerary (Mobile Only) - Always Visible */}
+      <BottomSheet
+        isOpen={isBottomSheetExpanded}
+        onClose={() => setIsBottomSheetExpanded(false)}
+        onOpenChange={setIsBottomSheetExpanded}
+        title={selectedTrip?.name || "My Trip"}
+        peekHeight={120}
       >
-        <ItineraryColumn
-          trip={selectedTrip}
-          onEditTrip={handleEditTrip}
-          onReorderStops={handleReorderStops}
-        />
-      </CollapsiblePanel>
+        <div className="px-4 space-y-6">
+          {/* My Trips Section */}
+          <div>
+            <h3 className="text-sm font-semibold text-slate-700 mb-3">
+              My Trips
+            </h3>
+            <TripListColumn
+              trips={trips}
+              selectedTripId={selectedTripId}
+              onSelectTrip={setSelectedTripId}
+              onNewTripClick={handleNewTrip}
+              onDeleteTrip={handleDeleteTrip}
+              onEditTrip={handleEditTrip}
+              onReorderTrips={handleReorderTrips}
+            />
+          </div>
+
+          {/* Itinerary Section */}
+          <div>
+            <h3 className="text-sm font-semibold text-slate-700 mb-3">
+              Itinerary
+            </h3>
+            <ItineraryColumn
+              trip={selectedTrip}
+              onEditTrip={handleEditTrip}
+              onReorderStops={handleReorderStops}
+            />
+          </div>
+        </div>
+      </BottomSheet>
 
       {/* Floating Chat Panel */}
       <ChatPanel
