@@ -29,7 +29,8 @@
     "@langchain/langgraph": "^1.0.0-alpha.5",
     "@langchain/openai": "^0.6.13",
     "@supabase/ssr": "^0.7.0",
-    "@supabase/supabase-js": "^2.56.0"
+    "@supabase/supabase-js": "^2.56.0",
+    "supercluster": "^8.0.1"
   },
   "devDependencies": {
     "turbo": "^2.5.4"
