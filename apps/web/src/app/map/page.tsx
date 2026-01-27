@@ -509,7 +509,7 @@ export default function TripPlannerPage() {
       </motion.div>
 
       {/* Map Toolbar - Central toggle buttons (Desktop Only) */}
-      <div className="hidden md:block">
+      {/* <div className="hidden md:block">
         <MapToolbar
           isTripsPanelOpen={isTripsPanelOpen}
           isItineraryPanelOpen={isItineraryPanelOpen}
@@ -520,7 +520,7 @@ export default function TripPlannerPage() {
           }
           onToggleChat={() => setIsChatOpen(!isChatOpen)}
         />
-      </div>
+      </div> */}
 
       {/* Left Panel - Trip List (Desktop Only) */}
       <div className="hidden md:block">

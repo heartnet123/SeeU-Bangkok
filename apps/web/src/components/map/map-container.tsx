@@ -91,6 +91,88 @@ const CATEGORY_ICONS: Record<string, string> = {
   default: '📍',
 };
 
+// Marker Content Component
+const MarkerContent: React.FC<{
+  place: Place;
+  isSelected: boolean;
+  color: string;
+  icon: string;
+  onClick: () => void;
+}> = ({ place, isSelected, color, icon, onClick }) => {
+  return (
+    <motion.div
+      className={`place-marker ${isSelected ? 'selected' : ''}`}
+      initial={false}
+      animate={{
+        scale: isSelected ? 1.15 : 1,
+        zIndex: isSelected ? 100 : 10,
+      }}
+      whileHover={{ scale: isSelected ? 1.2 : 1.1 }}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      style={{
+        width: isSelected ? '40px' : '36px',
+        height: isSelected ? '40px' : '36px',
+        backgroundColor: color,
+        border: '3px solid white',
+        borderRadius: '50%',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: isSelected ? '18px' : '16px',
+        boxShadow: isSelected
+          ? '0 4px 12px rgba(0,0,0,0.4)'
+          : '0 2px 8px rgba(0,0,0,0.3)',
+        transition: 'background-color 0.2s, border-color 0.2s',
+      }}
+    >
+      {icon}
+    </motion.div>
+  );
+};
+
+// Cluster Content Component
+const ClusterContent: React.FC<{
+  count: number;
+  color: string;
+  size: number;
+  fontSize: number;
+  onClick: () => void;
+}> = ({ count, color, size, fontSize, onClick }) => {
+  return (
+    <motion.div
+      className="cluster-marker"
+      initial={{ scale: 0 }}
+      animate={{ scale: 1 }}
+      whileHover={{ scale: 1.1 }}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      style={{
+        width: `${size}px`,
+        height: `${size}px`,
+        backgroundColor: color,
+        border: '3px solid white',
+        borderRadius: '50%',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: `${fontSize}px`,
+        color: 'white',
+        fontWeight: 'bold',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+      }}
+    >
+      {count}
+    </motion.div>
+  );
+};
+
 const MapContainer: React.FC<MapContainerProps> = ({
   places,
   selectedPlace,
@@ -111,6 +193,26 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const popupRootRef = useRef<Root | null>(null);
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const superclusterRef = useRef<Supercluster | null>(null);
+  const markerRootsRef = useRef<Map<string, Root>>(new Map());
+  const clusterRootsRef = useRef<Map<number, Root>>(new Map());
+
+  // Callback refs to avoid stale closures in event handlers
+  const onPlaceDeselectRef = useRef(onPlaceDeselect);
+  const onPlaceSelectRef = useRef(onPlaceSelect);
+  const userLocationRef = useRef(userLocation);
+
+  // Keep refs in sync with props
+  useEffect(() => {
+    onPlaceDeselectRef.current = onPlaceDeselect;
+  }, [onPlaceDeselect]);
+
+  useEffect(() => {
+    onPlaceSelectRef.current = onPlaceSelect;
+  }, [onPlaceSelect]);
+
+  useEffect(() => {
+    userLocationRef.current = userLocation;
+  }, [userLocation]);
 
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -157,7 +259,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
     ) as SuperclusterFeature[];
   }, [places, currentBounds, currentZoom, placesToFeatures]);
 
-  // Initialize map
+  // Initialize map - only runs once on mount (best practice: empty dependency array)
   useEffect(() => {
     const accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
 
@@ -166,14 +268,16 @@ const MapContainer: React.FC<MapContainerProps> = ({
       return;
     }
 
+    // Guard against double initialization (React StrictMode)
     if (map.current) return;
+    if (!mapContainer.current) return;
 
     try {
       mapboxgl.accessToken = accessToken;
       initSupercluster();
 
-map.current = new mapboxgl.Map({
-        container: mapContainer.current!,
+      map.current = new mapboxgl.Map({
+        container: mapContainer.current,
         style: 'mapbox://styles/mapbox/dark-v11',
         center: initialCenter,
         zoom: initialZoom,
@@ -188,8 +292,10 @@ map.current = new mapboxgl.Map({
         antialias: true,
       });
 
+      const mapInstance = map.current;
+
       // Map event listeners
-      map.current.on('load', () => {
+      const handleLoad = () => {
         setMapLoaded(true);
         updateBounds();
 
@@ -197,18 +303,15 @@ map.current = new mapboxgl.Map({
         if (show3D && map.current) {
           add3DBuildingLayer();
         }
-      });
+      };
 
-      map.current.on('zoom', () => {
+      const handleZoom = () => {
         if (map.current) {
           setCurrentZoom(map.current.getZoom());
         }
-      });
+      };
 
-      map.current.on('moveend', updateBounds);
-      map.current.on('zoomend', updateBounds);
-
-      map.current.on('click', (e) => {
+      const handleClick = (e: mapboxgl.MapMouseEvent) => {
         // Check if click was on a marker
         const features = map.current?.queryRenderedFeatures(e.point, {
           layers: [],
@@ -216,17 +319,24 @@ map.current = new mapboxgl.Map({
 
         if (!features?.length) {
           closePopup();
-          onPlaceDeselect();
+          onPlaceDeselectRef.current();
         }
-      });
+      };
 
-      map.current.on('error', (e) => {
+      const handleError = (e: mapboxgl.ErrorEvent) => {
         console.error('Map error:', e);
         setMapError('Failed to load map');
-      });
+      };
+
+      mapInstance.on('load', handleLoad);
+      mapInstance.on('zoom', handleZoom);
+      mapInstance.on('moveend', updateBounds);
+      mapInstance.on('zoomend', updateBounds);
+      mapInstance.on('click', handleClick);
+      mapInstance.on('error', handleError);
 
       // Navigation controls
-      map.current.addControl(
+      mapInstance.addControl(
         new mapboxgl.NavigationControl({ visualizePitch: true }),
         'top-right'
       );
@@ -238,10 +348,10 @@ map.current = new mapboxgl.Map({
         showUserHeading: true,
       });
 
-      map.current.addControl(geolocateControl, 'top-right');
+      mapInstance.addControl(geolocateControl, 'top-right');
 
       // Scale control
-      map.current.addControl(
+      mapInstance.addControl(
         new mapboxgl.ScaleControl({ maxWidth: 100 }),
         'bottom-left'
       );
@@ -250,13 +360,56 @@ map.current = new mapboxgl.Map({
       setMapError('Failed to initialize map');
     }
 
+    // Cleanup function - comprehensive cleanup on unmount
     return () => {
+      // Clear all place markers
+      markersRef.current.forEach((marker) => marker.remove());
+      markersRef.current.clear();
+
+      // Clear all cluster markers  
+      clusterMarkersRef.current.forEach((marker) => marker.remove());
+      clusterMarkersRef.current.clear();
+
+      // Clear itinerary markers
+      itineraryMarkersRef.current.forEach((marker) => marker.remove());
+      itineraryMarkersRef.current = [];
+
+      // Remove user marker
+      userMarkerRef.current?.remove();
+      userMarkerRef.current = null;
+
+      // Close popup and cleanup React root
+      if (popupRef.current) {
+        popupRef.current.remove();
+        popupRef.current = null;
+      }
+      if (popupRootRef.current) {
+        const root = popupRootRef.current;
+        popupRootRef.current = null;
+        // Defer unmount to avoid React 18 synchronous unmount warning
+        queueMicrotask(() => root.unmount());
+      }
+
+      // Unmount all marker roots
+      markerRootsRef.current.forEach((root) => {
+        queueMicrotask(() => root.unmount());
+      });
+      markerRootsRef.current.clear();
+
+      // Unmount all cluster roots
+      clusterRootsRef.current.forEach((root) => {
+        queueMicrotask(() => root.unmount());
+      });
+      clusterRootsRef.current.clear();
+
+      // Remove map instance
       if (map.current) {
         map.current.remove();
         map.current = null;
       }
     };
-  }, [initialCenter, initialZoom, onPlaceDeselect, show3D, initSupercluster]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency array - map should only initialize once
 
   // Update bounds
   const updateBounds = useCallback(() => {
@@ -348,32 +501,38 @@ map.current = new mapboxgl.Map({
     setIsTrafficEnabled(newValue);
 
     if (newValue) {
-      map.current.addSource('traffic', {
-        type: 'vector',
-        url: 'mapbox://mapbox.mapbox-traffic-v1',
-      });
+      // Check if source already exists before adding
+      if (!map.current.getSource('traffic')) {
+        map.current.addSource('traffic', {
+          type: 'vector',
+          url: 'mapbox://mapbox.mapbox-traffic-v1',
+        });
+      }
 
-      map.current.addLayer({
-        id: 'traffic-line',
-        type: 'line',
-        source: 'traffic',
-        'source-layer': 'traffic',
-        paint: {
-          'line-color': [
-            'case',
-            ['==', ['get', 'congestion'], 'low'],
-            '#4CAF50',
-            ['==', ['get', 'congestion'], 'moderate'],
-            '#FFC107',
-            ['==', ['get', 'congestion'], 'heavy'],
-            '#FF5722',
-            ['==', ['get', 'congestion'], 'severe'],
-            '#F44336',
-            '#9E9E9E',
-          ],
-          'line-width': 2,
-        },
-      });
+      // Check if layer already exists before adding
+      if (!map.current.getLayer('traffic-line')) {
+        map.current.addLayer({
+          id: 'traffic-line',
+          type: 'line',
+          source: 'traffic',
+          'source-layer': 'traffic',
+          paint: {
+            'line-color': [
+              'case',
+              ['==', ['get', 'congestion'], 'low'],
+              '#4CAF50',
+              ['==', ['get', 'congestion'], 'moderate'],
+              '#FFC107',
+              ['==', ['get', 'congestion'], 'heavy'],
+              '#FF5722',
+              ['==', ['get', 'congestion'], 'severe'],
+              '#F44336',
+              '#9E9E9E',
+            ],
+            'line-width': 2,
+          },
+        });
+      }
     } else {
       if (map.current.getLayer('traffic-line')) {
         map.current.removeLayer('traffic-line');
@@ -384,7 +543,7 @@ map.current = new mapboxgl.Map({
     }
   }, [isTrafficEnabled]);
 
-// Update map style
+  // Update map style
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
 
@@ -404,15 +563,17 @@ map.current = new mapboxgl.Map({
     });
   }, [mapStyle, mapLoaded, is3DEnabled, add3DBuildingLayer]);
 
-  // Close popup
+  // Close popup - with proper React 18 root cleanup
   const closePopup = useCallback(() => {
     if (popupRef.current) {
       popupRef.current.remove();
       popupRef.current = null;
     }
     if (popupRootRef.current) {
-      popupRootRef.current.unmount();
+      // Defer unmount to avoid React 18 synchronous unmount warning
+      const root = popupRootRef.current;
       popupRootRef.current = null;
+      queueMicrotask(() => root.unmount());
     }
   }, []);
 
@@ -467,10 +628,12 @@ map.current = new mapboxgl.Map({
 
       popupRef.current.on('close', () => {
         if (popupRootRef.current) {
-          popupRootRef.current.unmount();
+          const root = popupRootRef.current;
           popupRootRef.current = null;
+          // Defer unmount to avoid React 18 synchronous unmount warning
+          queueMicrotask(() => root.unmount());
         }
-        onPlaceDeselect();
+        onPlaceDeselectRef.current();
       });
     },
     [closePopup, onPlaceDeselect, userLocation]
@@ -508,96 +671,24 @@ map.current = new mapboxgl.Map({
     return '#DC2626';
   }, []);
 
-  // Create marker element
+  // Create marker element container
   const createMarkerElement = useCallback(
-    (place: Place, isSelected: boolean = false): HTMLElement => {
+    (isSelected: boolean = false): HTMLElement => {
       const el = document.createElement('div');
-      el.className = `place-marker ${isSelected ? 'selected' : ''}`;
-
-      const color = getMarkerColor(place);
-      const icon = getMarkerIcon(place);
-
-      el.style.cssText = `
-        width: ${isSelected ? '40px' : '36px'};
-        height: ${isSelected ? '40px' : '36px'};
-        background-color: ${color};
-        border: 3px solid white;
-        border-radius: 50%;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: ${isSelected ? '18px' : '16px'};
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-        transform: ${isSelected ? 'scale(1.15)' : 'scale(1)'};
-        z-index: ${isSelected ? '100' : '10'};
-      `;
-
-      el.innerHTML = icon;
-
-      // Hover effects
-      el.addEventListener('mouseenter', () => {
-        if (!isSelected) {
-          el.style.transform = 'scale(1.1)';
-          el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
-        }
-      });
-
-      el.addEventListener('mouseleave', () => {
-        if (!isSelected) {
-          el.style.transform = 'scale(1)';
-          el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
-        }
-      });
-
+      el.className = `marker-container ${isSelected ? 'selected' : ''}`;
       return el;
     },
-    [getMarkerColor, getMarkerIcon]
+    []
   );
 
-  // Create cluster marker element
+  // Create cluster marker container
   const createClusterElement = useCallback(
-    (count: number): HTMLElement => {
+    (): HTMLElement => {
       const el = document.createElement('div');
-      el.className = 'cluster-marker';
-
-      const size = Math.min(60, Math.max(36, 28 + count * 1.5));
-      const color = getClusterColor(count);
-
-      el.style.cssText = `
-        width: ${size}px;
-        height: ${size}px;
-        background-color: ${color};
-        border: 3px solid white;
-        border-radius: 50%;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: ${Math.max(12, Math.min(18, 10 + count * 0.5))}px;
-        color: white;
-        font-weight: bold;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-      `;
-
-      el.innerHTML = `${count}`;
-
-      // Hover effects
-      el.addEventListener('mouseenter', () => {
-        el.style.transform = 'scale(1.1)';
-        el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
-      });
-
-      el.addEventListener('mouseleave', () => {
-        el.style.transform = 'scale(1)';
-        el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
-      });
-
+      el.className = 'cluster-container';
       return el;
     },
-    [getClusterColor]
+    []
   );
 
   // Update markers based on clustered features
@@ -613,43 +704,54 @@ map.current = new mapboxgl.Map({
       const props = feature.properties;
 
       if ('cluster' in props && props.cluster === true) {
-        // Cluster marker - TypeScript now knows props has cluster properties
         const clusterProps = props as { cluster: true; cluster_id: number; point_count: number; point_count_abbreviated: string | number };
         const clusterId = clusterProps.cluster_id;
         const count = clusterProps.point_count;
         currentClusterIds.add(clusterId);
 
-        if (!clusterMarkersRef.current.has(clusterId)) {
-          const el = createClusterElement(count);
+        let marker = clusterMarkersRef.current.get(clusterId);
+        let root = clusterRootsRef.current.get(clusterId);
 
-          // Click handler - zoom into cluster
-          el.addEventListener('click', (e) => {
-            e.stopPropagation();
-
-            if (superclusterRef.current && map.current) {
-              const expansionZoom = Math.min(
-                superclusterRef.current.getClusterExpansionZoom(clusterId),
-                18
-              );
-
-map.current.flyTo({
-                center: [lng, lat],
-                zoom: expansionZoom,
-                duration: 800,
-                easing: (t) => t * (2 - t), // easeOutQuad
-              });
-            }
-          });
-
-          const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+        if (!marker) {
+          const el = createClusterElement();
+          marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
             .setLngLat([lng, lat])
             .addTo(map.current!);
 
+          root = createRoot(el);
           clusterMarkersRef.current.set(clusterId, marker);
+          clusterRootsRef.current.set(clusterId, root);
         } else {
-          // Update position
-          clusterMarkersRef.current.get(clusterId)?.setLngLat([lng, lat]);
+          marker.setLngLat([lng, lat]);
         }
+
+        const size = Math.min(60, Math.max(36, 28 + count * 1.5));
+        const color = getClusterColor(count);
+        const fontSize = Math.max(12, Math.min(18, 10 + count * 0.5));
+
+        root?.render(
+          <ClusterContent
+            count={count}
+            color={color}
+            size={size}
+            fontSize={fontSize}
+            onClick={() => {
+              if (superclusterRef.current && map.current) {
+                const expansionZoom = Math.min(
+                  superclusterRef.current.getClusterExpansionZoom(clusterId),
+                  18
+                );
+
+                map.current.flyTo({
+                  center: [lng, lat],
+                  zoom: expansionZoom,
+                  duration: 800,
+                  easing: (t) => t * (2 - t),
+                });
+              }
+            }}
+          />
+        );
       } else {
         // Individual place marker
         const place = feature.properties as Place;
@@ -657,38 +759,37 @@ map.current.flyTo({
         currentMarkerIds.add(markerId);
 
         const isSelected = selectedPlace?.id === place.id;
+        let marker = markersRef.current.get(markerId);
+        let root = markerRootsRef.current.get(markerId);
 
-        if (!markersRef.current.has(markerId)) {
-          const el = createMarkerElement(place, isSelected);
-
-          // Click handler
-          el.addEventListener('click', (e) => {
-            e.stopPropagation();
-            showPlacePopup(place);
-            onPlaceSelect(place);
-          });
-
-          const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+        if (!marker) {
+          const el = createMarkerElement(isSelected);
+          marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
             .setLngLat([lng, lat])
             .addTo(map.current!);
 
+          root = createRoot(el);
           markersRef.current.set(markerId, marker);
+          markerRootsRef.current.set(markerId, root);
         } else {
-          // Update selection state
-          const marker = markersRef.current.get(markerId);
-          if (marker) {
-            const el = marker.getElement();
-            if (isSelected) {
-              el.classList.add('selected');
-              el.style.transform = 'scale(1.15)';
-              el.style.zIndex = '100';
-            } else {
-              el.classList.remove('selected');
-              el.style.transform = 'scale(1)';
-              el.style.zIndex = '10';
-            }
-          }
+          marker.setLngLat([lng, lat]);
         }
+
+        const color = getMarkerColor(place);
+        const icon = getMarkerIcon(place);
+
+        root?.render(
+          <MarkerContent
+            place={place}
+            isSelected={isSelected}
+            color={color}
+            icon={icon}
+            onClick={() => {
+              showPlacePopup(place);
+              onPlaceSelect(place);
+            }}
+          />
+        );
       }
     });
 
@@ -697,6 +798,12 @@ map.current.flyTo({
       if (!currentMarkerIds.has(id)) {
         marker.remove();
         markersRef.current.delete(id);
+
+        const root = markerRootsRef.current.get(id);
+        if (root) {
+          queueMicrotask(() => root.unmount());
+          markerRootsRef.current.delete(id);
+        }
       }
     });
 
@@ -704,6 +811,12 @@ map.current.flyTo({
       if (!currentClusterIds.has(id)) {
         marker.remove();
         clusterMarkersRef.current.delete(id);
+
+        const root = clusterRootsRef.current.get(id);
+        if (root) {
+          queueMicrotask(() => root.unmount());
+          clusterRootsRef.current.delete(id);
+        }
       }
     });
   }, [
@@ -908,7 +1021,7 @@ map.current.flyTo({
     });
   }, [itineraryStops, mapLoaded]);
 
-// Fly to selected place with enhanced animation
+  // Fly to selected place with enhanced animation
   useEffect(() => {
     if (!map.current || !mapLoaded || !selectedPlace) return;
 
@@ -927,7 +1040,7 @@ map.current.flyTo({
     showPlacePopup(selectedPlace);
   }, [selectedPlace, mapLoaded, showPlacePopup, is3DEnabled]);
 
-// Map control handlers
+  // Map control handlers
   const handleStyleChange = useCallback((style: 'dark' | 'light' | 'satellite') => {
     setMapStyle(style);
   }, []);
@@ -940,7 +1053,7 @@ map.current.flyTo({
     map.current?.zoomOut();
   }, []);
 
-const handleFlyToUserLocation = useCallback(() => {
+  const handleFlyToUserLocation = useCallback(() => {
     if (map.current && userLocation) {
       map.current.flyTo({
         center: userLocation,
