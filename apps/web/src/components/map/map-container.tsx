@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import { PlacePopup } from './place-popup';
+import Supercluster from 'supercluster';
 import { MapControls } from './map-controls';
+import { PlacePopupContent } from './place-popup-content';
+import { createRoot } from 'react-dom/client';
+import type { Root } from 'react-dom/client';
+import { motion, AnimatePresence } from 'motion/react';
 
-// Import CSS for Mapbox GL JS
-import 'mapbox-gl/dist/mapbox-gl.css';
-
+// Types
 interface Place {
   id: string;
   name: string;
@@ -38,7 +40,56 @@ interface MapContainerProps {
   initialCenter?: [number, number];
   initialZoom?: number;
   itineraryStops?: ItineraryStop[];
+  show3D?: boolean;
 }
+
+// Feature type for Supercluster
+type PointFeature = {
+  type: 'Feature';
+  geometry: {
+    type: 'Point';
+    coordinates: [number, number];
+  };
+  properties: Place & { cluster?: boolean };
+};
+
+type ClusterFeature = {
+  type: 'Feature';
+  geometry: {
+    type: 'Point';
+    coordinates: [number, number];
+  };
+  properties: {
+    cluster: true;
+    cluster_id: number;
+    point_count: number;
+    point_count_abbreviated: string | number;
+  };
+};
+
+type SuperclusterFeature = PointFeature | ClusterFeature;
+
+// Category colors for markers
+const CATEGORY_COLORS: Record<string, string> = {
+  temple: '#F59E0B',
+  market: '#EF4444',
+  restaurant: '#10B981',
+  park: '#059669',
+  museum: '#8B5CF6',
+  shopping: '#EC4899',
+  default: '#3B82F6',
+};
+
+// Category icons
+const CATEGORY_ICONS: Record<string, string> = {
+  temple: '🏛️',
+  market: '🛍️',
+  restaurant: '🍽️',
+  park: '🌳',
+  museum: '🏛️',
+  shopping: '🛒',
+  default: '📍',
+};
 
 const MapContainer: React.FC<MapContainerProps> = ({
   places,
@@ -49,86 +100,155 @@ const MapContainer: React.FC<MapContainerProps> = ({
   initialCenter = [100.5018, 13.7563], // Bangkok center
   initialZoom = 11,
   itineraryStops = [],
+  show3D = false,
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
-  const markersRef = useRef<mapboxgl.Marker[]>([]);
-  const clusterMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  const markersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
+  const clusterMarkersRef = useRef<Map<number, mapboxgl.Marker>>(new Map());
   const itineraryMarkersRef = useRef<mapboxgl.Marker[]>([]);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const popupRootRef = useRef<Root | null>(null);
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
-  
+  const superclusterRef = useRef<Supercluster | null>(null);
+
   const [mapLoaded, setMapLoaded] = useState(false);
-  const [mapStyle, setMapStyle] = useState<'streets' | 'satellite'>('streets');
-  const [clusteredPlaces, setClusteredPlaces] = useState<any[]>([]);
+  const [mapError, setMapError] = useState<string | null>(null);
+  const [mapStyle, setMapStyle] = useState<'dark' | 'light' | 'satellite'>('dark');
   const [currentZoom, setCurrentZoom] = useState(initialZoom);
+  const [currentBounds, setCurrentBounds] = useState<[number, number, number, number] | null>(null);
+  const [is3DEnabled, setIs3DEnabled] = useState(show3D);
+  const [isTrafficEnabled, setIsTrafficEnabled] = useState(false);
+
+  // Initialize Supercluster
+  const initSupercluster = useCallback(() => {
+    superclusterRef.current = new Supercluster({
+      radius: 60,
+      maxZoom: 16,
+      minZoom: 0,
+      minPoints: 2,
+    });
+  }, []);
+
+  // Convert places to GeoJSON features for Supercluster
+  const placesToFeatures = useCallback((places: Place[]): PointFeature[] => {
+    return places
+      .filter((p) => isFiniteNumber(p.lat) && isFiniteNumber(p.lng))
+      .map((place) => ({
+        type: 'Feature' as const,
+        geometry: {
+          type: 'Point' as const,
+          coordinates: [place.lng, place.lat] as [number, number],
+        },
+        properties: place,
+      }));
+  }, []);
+
+  // Get clustered features
+  const clusteredFeatures = useMemo(() => {
+    if (!superclusterRef.current || !currentBounds) return [];
+
+    const features = placesToFeatures(places);
+    superclusterRef.current.load(features);
+
+    return superclusterRef.current.getClusters(
+      currentBounds,
+      Math.floor(currentZoom)
+    ) as SuperclusterFeature[];
+  }, [places, currentBounds, currentZoom, placesToFeatures]);
 
   // Initialize map
   useEffect(() => {
     const accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
-    
+
     if (!accessToken) {
-      console.error('Mapbox access token is not configured');
+      setMapError('Mapbox access token is not configured');
       return;
     }
 
-    if (map.current) return; // Initialize map only once
+    if (map.current) return;
 
-    mapboxgl.accessToken = accessToken;
+    try {
+      mapboxgl.accessToken = accessToken;
+      initSupercluster();
 
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current!,
-      style: 'mapbox://styles/mapbox/streets-v12',
-      center: initialCenter,
-      zoom: initialZoom,
-      pitch: 0,
-      bearing: 0,
-      maxBounds: [
-        [100.1, 13.4], // Southwest coordinates (Bangkok bounds)
-        [100.9, 14.1], // Northeast coordinates
-      ],
-      minZoom: 8,
-      maxZoom: 18,
-    });
+map.current = new mapboxgl.Map({
+        container: mapContainer.current!,
+        style: 'mapbox://styles/mapbox/dark-v11',
+        center: initialCenter,
+        zoom: initialZoom,
+        pitch: show3D ? 45 : 0,
+        bearing: 0,
+        maxBounds: [
+          [100.1, 13.4],
+          [100.9, 14.1],
+        ],
+        minZoom: 8,
+        maxZoom: 18,
+        antialias: true,
+      });
 
-    // Map event listeners
-    map.current.on('load', () => {
-      setMapLoaded(true);
-      console.log('Map loaded successfully');
-    });
+      // Map event listeners
+      map.current.on('load', () => {
+        setMapLoaded(true);
+        updateBounds();
 
-    map.current.on('zoom', () => {
-      if (map.current) {
-        setCurrentZoom(map.current.getZoom());
-      }
-    });
+        // Add 3D building layer if enabled
+        if (show3D && map.current) {
+          add3DBuildingLayer();
+        }
+      });
 
-    map.current.on('click', () => {
-      // Close popup when clicking on empty areas
-      if (popupRef.current) {
-        popupRef.current.remove();
-        popupRef.current = null;
-      }
-      onPlaceDeselect();
-    });
+      map.current.on('zoom', () => {
+        if (map.current) {
+          setCurrentZoom(map.current.getZoom());
+        }
+      });
 
-    map.current.on('error', (e) => {
-      console.error('Map error:', e);
-    });
+      map.current.on('moveend', updateBounds);
+      map.current.on('zoomend', updateBounds);
 
-    // Navigation controls
-    map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
+      map.current.on('click', (e) => {
+        // Check if click was on a marker
+        const features = map.current?.queryRenderedFeatures(e.point, {
+          layers: [],
+        });
 
-    // Geolocate control
-    const geolocateControl = new mapboxgl.GeolocateControl({
-      positionOptions: {
-        enableHighAccuracy: true,
-      },
-      trackUserLocation: true,
-      showUserHeading: true,
-    });
-    
-    map.current.addControl(geolocateControl, 'top-right');
+        if (!features?.length) {
+          closePopup();
+          onPlaceDeselect();
+        }
+      });
+
+      map.current.on('error', (e) => {
+        console.error('Map error:', e);
+        setMapError('Failed to load map');
+      });
+
+      // Navigation controls
+      map.current.addControl(
+        new mapboxgl.NavigationControl({ visualizePitch: true }),
+        'top-right'
+      );
+
+      // Geolocate control
+      const geolocateControl = new mapboxgl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: true,
+        showUserHeading: true,
+      });
+
+      map.current.addControl(geolocateControl, 'top-right');
+
+      // Scale control
+      map.current.addControl(
+        new mapboxgl.ScaleControl({ maxWidth: 100 }),
+        'bottom-left'
+      );
+    } catch (error) {
+      console.error('Map initialization error:', error);
+      setMapError('Failed to initialize map');
+    }
 
     return () => {
       if (map.current) {
@@ -136,263 +256,514 @@ const MapContainer: React.FC<MapContainerProps> = ({
         map.current = null;
       }
     };
-  }, [initialCenter, initialZoom, onPlaceDeselect]);
+  }, [initialCenter, initialZoom, onPlaceDeselect, show3D, initSupercluster]);
 
-  // Update map style
+  // Update bounds
+  const updateBounds = useCallback(() => {
+    if (!map.current) return;
+
+    const bounds = map.current.getBounds();
+    if (bounds) {
+      setCurrentBounds([
+        bounds.getWest(),
+        bounds.getSouth(),
+        bounds.getEast(),
+        bounds.getNorth(),
+      ]);
+    }
+  }, []);
+
+  // Add 3D building layer
+  const add3DBuildingLayer = useCallback(() => {
+    if (!map.current) return;
+
+    const layers = map.current.getStyle().layers;
+    const labelLayerId = layers?.find(
+      (layer) =>
+        layer.type === 'symbol' && layer.layout?.['text-field']
+    )?.id;
+
+    if (map.current.getLayer('3d-buildings')) {
+      map.current.removeLayer('3d-buildings');
+    }
+
+    map.current.addLayer(
+      {
+        id: '3d-buildings',
+        source: 'composite',
+        'source-layer': 'building',
+        filter: ['==', 'extrude', 'true'],
+        type: 'fill-extrusion',
+        minzoom: 14,
+        paint: {
+          'fill-extrusion-color': '#aaa',
+          'fill-extrusion-height': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            14,
+            0,
+            14.5,
+            ['get', 'height'],
+          ],
+          'fill-extrusion-base': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            14,
+            0,
+            14.5,
+            ['get', 'min_height'],
+          ],
+          'fill-extrusion-opacity': 0.6,
+        },
+      },
+      labelLayerId
+    );
+  }, []);
+
+  // Toggle 3D buildings
+  const toggle3D = useCallback(() => {
+    if (!map.current) return;
+
+    const newValue = !is3DEnabled;
+    setIs3DEnabled(newValue);
+
+    if (newValue) {
+      map.current.easeTo({ pitch: 45, duration: 500 });
+      add3DBuildingLayer();
+    } else {
+      map.current.easeTo({ pitch: 0, duration: 500 });
+      if (map.current.getLayer('3d-buildings')) {
+        map.current.removeLayer('3d-buildings');
+      }
+    }
+  }, [is3DEnabled, add3DBuildingLayer]);
+
+  // Toggle traffic layer
+  const toggleTraffic = useCallback(() => {
+    if (!map.current) return;
+
+    const newValue = !isTrafficEnabled;
+    setIsTrafficEnabled(newValue);
+
+    if (newValue) {
+      map.current.addSource('traffic', {
+        type: 'vector',
+        url: 'mapbox://mapbox.mapbox-traffic-v1',
+      });
+
+      map.current.addLayer({
+        id: 'traffic-line',
+        type: 'line',
+        source: 'traffic',
+        'source-layer': 'traffic',
+        paint: {
+          'line-color': [
+            'case',
+            ['==', ['get', 'congestion'], 'low'],
+            '#4CAF50',
+            ['==', ['get', 'congestion'], 'moderate'],
+            '#FFC107',
+            ['==', ['get', 'congestion'], 'heavy'],
+            '#FF5722',
+            ['==', ['get', 'congestion'], 'severe'],
+            '#F44336',
+            '#9E9E9E',
+          ],
+          'line-width': 2,
+        },
+      });
+    } else {
+      if (map.current.getLayer('traffic-line')) {
+        map.current.removeLayer('traffic-line');
+      }
+      if (map.current.getSource('traffic')) {
+        map.current.removeSource('traffic');
+      }
+    }
+  }, [isTrafficEnabled]);
+
+// Update map style
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
 
-    const styleUrl = mapStyle === 'satellite' 
-      ? 'mapbox://styles/mapbox/satellite-streets-v12'
-      : 'mapbox://styles/mapbox/streets-v12';
-    
-    map.current.setStyle(styleUrl);
-  }, [mapStyle, mapLoaded]);
+    const styleUrls: Record<'dark' | 'light' | 'satellite', string> = {
+      dark: 'mapbox://styles/mapbox/dark-v11',
+      light: 'mapbox://styles/mapbox/streets-v12',
+      satellite: 'mapbox://styles/mapbox/satellite-streets-v12',
+    };
 
-  // Clustering algorithm
-  const clusterPlaces = (places: Place[], zoom: number) => {
-    const clusterRadius = Math.max(50, 100 - zoom * 5); // Dynamic radius based on zoom
-    const clusters: any[] = [];
-    const processed = new Set<string>();
+    map.current.setStyle(styleUrls[mapStyle]);
 
-    places.forEach((place) => {
-      if (processed.has(place.id)) return;
+    // Re-add 3D buildings after style change if enabled
+    map.current.once('style.load', () => {
+      if (is3DEnabled) {
+        add3DBuildingLayer();
+      }
+    });
+  }, [mapStyle, mapLoaded, is3DEnabled, add3DBuildingLayer]);
 
-      const cluster = {
-        id: `cluster-${place.id}`,
-        lat: place.lat,
-        lng: place.lng,
-        places: [place],
-        isCluster: false,
-      };
+  // Close popup
+  const closePopup = useCallback(() => {
+    if (popupRef.current) {
+      popupRef.current.remove();
+      popupRef.current = null;
+    }
+    if (popupRootRef.current) {
+      popupRootRef.current.unmount();
+      popupRootRef.current = null;
+    }
+  }, []);
 
-      // Find nearby places to cluster
-      places.forEach((otherPlace) => {
-        if (place.id === otherPlace.id || processed.has(otherPlace.id)) return;
+  // Show place popup with React component
+  const showPlacePopup = useCallback(
+    (place: Place) => {
+      if (!map.current) return;
 
-        const distance = getDistance(
-          { lat: place.lat, lng: place.lng },
-          { lat: otherPlace.lat, lng: otherPlace.lng }
-        );
+      closePopup();
 
-        // Convert distance to pixels approximately
-        const pixelDistance = distance * (156543.03 * Math.cos(place.lat * Math.PI / 180)) / Math.pow(2, zoom);
-        
-        if (pixelDistance < clusterRadius) {
-          cluster.places.push(otherPlace);
-          processed.add(otherPlace.id);
+      // Create popup container
+      const popupContainer = document.createElement('div');
+      popupContainer.className = 'place-popup-container';
+
+      // Create React root and render component
+      popupRootRef.current = createRoot(popupContainer);
+      popupRootRef.current.render(
+        <PlacePopupContent
+          place={place}
+          onViewDetails={() => {
+            window.location.href = `/places/${place.slug}`;
+          }}
+          onGetDirections={() => {
+            if (userLocation) {
+              const url = `https://www.google.com/maps/dir/${userLocation[1]},${userLocation[0]}/${place.lat},${place.lng}`;
+              window.open(url, '_blank');
+            } else {
+              const url = `https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`;
+              window.open(url, '_blank');
+            }
+          }}
+          onClose={() => {
+            closePopup();
+            onPlaceDeselect();
+          }}
+          userLocation={userLocation}
+        />
+      );
+
+      // Create Mapbox popup
+      popupRef.current = new mapboxgl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        anchor: 'bottom',
+        offset: [0, -20],
+        maxWidth: 'none',
+        className: 'mapbox-popup-custom',
+      })
+        .setLngLat([place.lng, place.lat])
+        .setDOMContent(popupContainer)
+        .addTo(map.current);
+
+      popupRef.current.on('close', () => {
+        if (popupRootRef.current) {
+          popupRootRef.current.unmount();
+          popupRootRef.current = null;
+        }
+        onPlaceDeselect();
+      });
+    },
+    [closePopup, onPlaceDeselect, userLocation]
+  );
+
+  // Get marker color based on tags
+  const getMarkerColor = useCallback((place: Place): string => {
+    const tags = place.tags.map((tag) => tag.toLowerCase());
+
+    for (const [category, color] of Object.entries(CATEGORY_COLORS)) {
+      if (tags.some((tag) => tag.includes(category))) {
+        return color;
+      }
+    }
+    return CATEGORY_COLORS.default;
+  }, []);
+
+  // Get marker icon based on tags
+  const getMarkerIcon = useCallback((place: Place): string => {
+    const tags = place.tags.map((tag) => tag.toLowerCase());
+
+    for (const [category, icon] of Object.entries(CATEGORY_ICONS)) {
+      if (tags.some((tag) => tag.includes(category))) {
+        return icon;
+      }
+    }
+    return CATEGORY_ICONS.default;
+  }, []);
+
+  // Get cluster color based on count
+  const getClusterColor = useCallback((count: number): string => {
+    if (count < 5) return '#3B82F6';
+    if (count < 10) return '#8B5CF6';
+    if (count < 25) return '#EF4444';
+    return '#DC2626';
+  }, []);
+
+  // Create marker element
+  const createMarkerElement = useCallback(
+    (place: Place, isSelected: boolean = false): HTMLElement => {
+      const el = document.createElement('div');
+      el.className = `place-marker ${isSelected ? 'selected' : ''}`;
+
+      const color = getMarkerColor(place);
+      const icon = getMarkerIcon(place);
+
+      el.style.cssText = `
+        width: ${isSelected ? '40px' : '36px'};
+        height: ${isSelected ? '40px' : '36px'};
+        background-color: ${color};
+        border: 3px solid white;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: ${isSelected ? '18px' : '16px'};
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        transform: ${isSelected ? 'scale(1.15)' : 'scale(1)'};
+        z-index: ${isSelected ? '100' : '10'};
+      `;
+
+      el.innerHTML = icon;
+
+      // Hover effects
+      el.addEventListener('mouseenter', () => {
+        if (!isSelected) {
+          el.style.transform = 'scale(1.1)';
+          el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
         }
       });
 
-      // Mark as cluster if it has multiple places
-      if (cluster.places.length > 1) {
-        cluster.isCluster = true;
-        // Calculate center of cluster
-        const centerLat = cluster.places.reduce((sum, p) => sum + p.lat, 0) / cluster.places.length;
-        const centerLng = cluster.places.reduce((sum, p) => sum + p.lng, 0) / cluster.places.length;
-        cluster.lat = centerLat;
-        cluster.lng = centerLng;
-      }
+      el.addEventListener('mouseleave', () => {
+        if (!isSelected) {
+          el.style.transform = 'scale(1)';
+          el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
+        }
+      });
 
-      clusters.push(cluster);
-      processed.add(place.id);
-    });
+      return el;
+    },
+    [getMarkerColor, getMarkerIcon]
+  );
 
-    return clusters;
-  };
+  // Create cluster marker element
+  const createClusterElement = useCallback(
+    (count: number): HTMLElement => {
+      const el = document.createElement('div');
+      el.className = 'cluster-marker';
 
-  // Calculate distance between two coordinates
-  const getDistance = (coord1: {lat: number, lng: number}, coord2: {lat: number, lng: number}) => {
-    const R = 6371; // Earth's radius in kilometers
-    const dLat = (coord2.lat - coord1.lat) * Math.PI / 180;
-    const dLng = (coord2.lng - coord1.lng) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(coord1.lat * Math.PI / 180) * Math.cos(coord2.lat * Math.PI / 180) * 
-      Math.sin(dLng/2) * Math.sin(dLng/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-  };
+      const size = Math.min(60, Math.max(36, 28 + count * 1.5));
+      const color = getClusterColor(count);
 
-  // Add/update place markers with clustering
+      el.style.cssText = `
+        width: ${size}px;
+        height: ${size}px;
+        background-color: ${color};
+        border: 3px solid white;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: ${Math.max(12, Math.min(18, 10 + count * 0.5))}px;
+        color: white;
+        font-weight: bold;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      `;
+
+      el.innerHTML = `${count}`;
+
+      // Hover effects
+      el.addEventListener('mouseenter', () => {
+        el.style.transform = 'scale(1.1)';
+        el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
+      });
+
+      el.addEventListener('mouseleave', () => {
+        el.style.transform = 'scale(1)';
+        el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
+      });
+
+      return el;
+    },
+    [getClusterColor]
+  );
+
+  // Update markers based on clustered features
   useEffect(() => {
-    if (!map.current || !mapLoaded || !places.length) return;
+    if (!map.current || !mapLoaded) return;
 
-    // Clear existing markers
-    markersRef.current.forEach(marker => marker.remove());
-    markersRef.current = [];
-    clusterMarkersRef.current.forEach(marker => marker.remove());
-    clusterMarkersRef.current = [];
+    const currentMarkerIds = new Set<string>();
+    const currentClusterIds = new Set<number>();
 
-    // Apply clustering based on zoom level
-    const shouldCluster = currentZoom < 14;
-    const clusters = shouldCluster ? clusterPlaces(places, currentZoom) : 
-      places.map(place => ({ id: place.id, lat: place.lat, lng: place.lng, places: [place], isCluster: false }));
+    // Process clustered features
+    clusteredFeatures.forEach((feature) => {
+      const [lng, lat] = feature.geometry.coordinates;
+      const props = feature.properties;
 
-    setClusteredPlaces(clusters);
+      if ('cluster' in props && props.cluster === true) {
+        // Cluster marker - TypeScript now knows props has cluster properties
+        const clusterProps = props as { cluster: true; cluster_id: number; point_count: number; point_count_abbreviated: string | number };
+        const clusterId = clusterProps.cluster_id;
+        const count = clusterProps.point_count;
+        currentClusterIds.add(clusterId);
 
-    // Add markers for clusters/individual places
-    clusters.forEach((cluster) => {
-      if (!cluster.lat || !cluster.lng || isNaN(cluster.lat) || isNaN(cluster.lng)) {
-        console.warn(`Invalid coordinates for cluster:`, cluster);
-        return;
-      }
+        if (!clusterMarkersRef.current.has(clusterId)) {
+          const el = createClusterElement(count);
 
-      // Create marker element
-      const markerElement = document.createElement('div');
-      markerElement.className = cluster.isCluster ? 'cluster-marker' : 'place-marker';
-      
-      if (cluster.isCluster) {
-        // Cluster marker styling
-        const count = cluster.places.length;
-        const size = Math.min(60, Math.max(32, 24 + count * 2));
-        const color = getClusterColor(count);
-        
-        markerElement.style.cssText = `
-          width: ${size}px;
-          height: ${size}px;
-          background-color: ${color};
-          border: 3px solid white;
-          border-radius: 50%;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: ${Math.max(12, Math.min(18, 10 + count))}px;
-          color: white;
-          font-weight: bold;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-          transition: all 0.2s ease;
-          position: relative;
-        `;
-        
-        markerElement.innerHTML = `${count}`;
-        
-        // Cluster hover effects - avoid transform scale to prevent positioning issues
-        markerElement.addEventListener('mouseenter', () => {
-          markerElement.style.opacity = '0.8';
-          markerElement.style.filter = 'brightness(1.2)';
-        });
+          // Click handler - zoom into cluster
+          el.addEventListener('click', (e) => {
+            e.stopPropagation();
 
-        markerElement.addEventListener('mouseleave', () => {
-          markerElement.style.opacity = '1';
-          markerElement.style.filter = 'brightness(1)';
-        });
-        
-        // Cluster click handler - zoom in to expand
-        markerElement.addEventListener('click', (e) => {
-          e.stopPropagation();
-          if (map.current) {
-            map.current.flyTo({
-              center: [cluster.lng, cluster.lat],
-              zoom: Math.min(18, currentZoom + 3),
-              duration: 800,
-            });
-          }
-        });
-        
-        clusterMarkersRef.current.push(
-          new mapboxgl.Marker({ element: markerElement, anchor: 'center' })
-            .setLngLat([cluster.lng, cluster.lat])
-            .addTo(map.current!)
-        );
+            if (superclusterRef.current && map.current) {
+              const expansionZoom = Math.min(
+                superclusterRef.current.getClusterExpansionZoom(clusterId),
+                18
+              );
+
+map.current.flyTo({
+                center: [lng, lat],
+                zoom: expansionZoom,
+                duration: 800,
+                easing: (t) => t * (2 - t), // easeOutQuad
+              });
+            }
+          });
+
+          const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+            .setLngLat([lng, lat])
+            .addTo(map.current!);
+
+          clusterMarkersRef.current.set(clusterId, marker);
+        } else {
+          // Update position
+          clusterMarkersRef.current.get(clusterId)?.setLngLat([lng, lat]);
+        }
       } else {
         // Individual place marker
-        const place = cluster.places[0];
-        markerElement.style.cssText = `
-          width: 32px;
-          height: 32px;
-          background-color: ${getMarkerColor(place)};
-          border: 3px solid white;
-          border-radius: 50%;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 14px;
-          color: white;
-          font-weight: bold;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-          transition: all 0.2s ease;
-        `;
-        
-        // Add icon or first letter of name
-        const icon = getPlaceIcon(place);
-        markerElement.innerHTML = icon;
+        const place = feature.properties as Place;
+        const markerId = place.id;
+        currentMarkerIds.add(markerId);
 
-        // Hover effects - avoid transform scale to prevent positioning issues
-        markerElement.addEventListener('mouseenter', () => {
-          markerElement.style.opacity = '0.8';
-          markerElement.style.filter = 'brightness(1.2)';
-        });
+        const isSelected = selectedPlace?.id === place.id;
 
-        markerElement.addEventListener('mouseleave', () => {
-          markerElement.style.opacity = '1';
-          markerElement.style.filter = 'brightness(1)';
-        });
+        if (!markersRef.current.has(markerId)) {
+          const el = createMarkerElement(place, isSelected);
 
-        // Click handler
-        markerElement.addEventListener('click', (e) => {
-          e.stopPropagation();
-          handleMarkerClick(place);
-        });
+          // Click handler
+          el.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showPlacePopup(place);
+            onPlaceSelect(place);
+          });
 
-        markersRef.current.push(
-          new mapboxgl.Marker({ element: markerElement, anchor: 'center' })
-            .setLngLat([place.lng, place.lat])
-            .addTo(map.current!)
-        );
+          const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+            .setLngLat([lng, lat])
+            .addTo(map.current!);
+
+          markersRef.current.set(markerId, marker);
+        } else {
+          // Update selection state
+          const marker = markersRef.current.get(markerId);
+          if (marker) {
+            const el = marker.getElement();
+            if (isSelected) {
+              el.classList.add('selected');
+              el.style.transform = 'scale(1.15)';
+              el.style.zIndex = '100';
+            } else {
+              el.classList.remove('selected');
+              el.style.transform = 'scale(1)';
+              el.style.zIndex = '10';
+            }
+          }
+        }
       }
     });
-  }, [places, mapLoaded, currentZoom]);
+
+    // Remove markers that are no longer visible
+    markersRef.current.forEach((marker, id) => {
+      if (!currentMarkerIds.has(id)) {
+        marker.remove();
+        markersRef.current.delete(id);
+      }
+    });
+
+    clusterMarkersRef.current.forEach((marker, id) => {
+      if (!currentClusterIds.has(id)) {
+        marker.remove();
+        clusterMarkersRef.current.delete(id);
+      }
+    });
+  }, [
+    clusteredFeatures,
+    mapLoaded,
+    selectedPlace,
+    createMarkerElement,
+    createClusterElement,
+    showPlacePopup,
+    onPlaceSelect,
+  ]);
 
   // Add user location marker
   useEffect(() => {
     if (!map.current || !mapLoaded || !userLocation) return;
 
-    // Remove existing user marker
     if (userMarkerRef.current) {
       userMarkerRef.current.remove();
     }
 
-    // Create user location marker
-    const userMarkerElement = document.createElement('div');
-    userMarkerElement.className = 'user-location-marker';
-    userMarkerElement.style.cssText = `
+    const el = document.createElement('div');
+    el.className = 'user-location-marker';
+    el.style.cssText = `
       width: 20px;
       height: 20px;
       background-color: #3B82F6;
       border: 3px solid white;
       border-radius: 50%;
       box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+      animation: pulse 2s infinite;
     `;
 
     userMarkerRef.current = new mapboxgl.Marker({
-      element: userMarkerElement,
+      element: el,
       anchor: 'center',
     })
       .setLngLat(userLocation)
-      .addTo(map.current!);
+      .addTo(map.current);
   }, [userLocation, mapLoaded]);
 
-  // Draw itinerary route using Mapbox Directions API
+  // Draw itinerary route
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
 
     const ROUTE_SOURCE_ID = 'itinerary-route-source';
     const ROUTE_LAYER_ID = 'itinerary-route-layer';
+    const ROUTE_OUTLINE_LAYER_ID = 'itinerary-route-outline-layer';
 
-    // Clean up existing route layer/source
     const cleanup = () => {
       if (map.current?.getLayer(ROUTE_LAYER_ID)) {
         map.current.removeLayer(ROUTE_LAYER_ID);
+      }
+      if (map.current?.getLayer(ROUTE_OUTLINE_LAYER_ID)) {
+        map.current.removeLayer(ROUTE_OUTLINE_LAYER_ID);
       }
       if (map.current?.getSource(ROUTE_SOURCE_ID)) {
         map.current.removeSource(ROUTE_SOURCE_ID);
       }
     };
 
-    // Need at least 2 stops for a route
     if (itineraryStops.length < 2) {
       cleanup();
       return;
@@ -400,37 +771,25 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
     const fetchAndDrawRoute = async () => {
       const accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
-      if (!accessToken) {
-        console.error('Mapbox access token not available for directions');
-        return;
-      }
+      if (!accessToken) return;
 
-      // Build coordinates string: lng,lat;lng,lat;...
       const coords = itineraryStops
-        .map(stop => `${stop.lng},${stop.lat}`)
+        .map((stop) => `${stop.lng},${stop.lat}`)
         .join(';');
 
       const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coords}?geometries=geojson&overview=full&access_token=${accessToken}`;
 
       try {
         const response = await fetch(url);
-        if (!response.ok) {
-          console.error('Directions API error:', response.status);
-          return;
-        }
+        if (!response.ok) return;
 
         const data = await response.json();
-        if (!data.routes || data.routes.length === 0) {
-          console.warn('No route found for itinerary stops');
-          return;
-        }
+        if (!data.routes?.length) return;
 
         const routeGeometry = data.routes[0].geometry;
 
-        // Remove existing source/layer before adding new
         cleanup();
 
-        // Add source
         map.current?.addSource(ROUTE_SOURCE_ID, {
           type: 'geojson',
           data: {
@@ -440,7 +799,23 @@ const MapContainer: React.FC<MapContainerProps> = ({
           },
         });
 
-        // Add layer
+        // Route outline (for better visibility)
+        map.current?.addLayer({
+          id: ROUTE_OUTLINE_LAYER_ID,
+          type: 'line',
+          source: ROUTE_SOURCE_ID,
+          layout: {
+            'line-join': 'round',
+            'line-cap': 'round',
+          },
+          paint: {
+            'line-color': '#1D4ED8',
+            'line-width': 8,
+            'line-opacity': 0.4,
+          },
+        });
+
+        // Main route line
         map.current?.addLayer({
           id: ROUTE_LAYER_ID,
           type: 'line',
@@ -451,8 +826,8 @@ const MapContainer: React.FC<MapContainerProps> = ({
           },
           paint: {
             'line-color': '#3B82F6',
-            'line-width': 5,
-            'line-opacity': 0.8,
+            'line-width': 4,
+            'line-opacity': 0.9,
           },
         });
 
@@ -460,10 +835,10 @@ const MapContainer: React.FC<MapContainerProps> = ({
         const coordinates = routeGeometry.coordinates as [number, number][];
         if (coordinates.length > 0) {
           const bounds = coordinates.reduce(
-            (bounds, coord) => bounds.extend(coord as [number, number]),
+            (bounds, coord) => bounds.extend(coord),
             new mapboxgl.LngLatBounds(coordinates[0], coordinates[0])
           );
-          map.current?.fitBounds(bounds, { padding: 60, duration: 1000 });
+          map.current?.fitBounds(bounds, { padding: 80, duration: 1000 });
         }
       } catch (error) {
         console.error('Error fetching directions:', error);
@@ -472,35 +847,28 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
     fetchAndDrawRoute();
 
-    return () => {
-      cleanup();
-    };
+    return cleanup;
   }, [itineraryStops, mapLoaded]);
 
-  // Add numbered markers for itinerary stops
+  // Add itinerary stop markers
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
 
-    // Clear existing itinerary markers
-    itineraryMarkersRef.current.forEach(marker => marker.remove());
+    // Clear existing markers
+    itineraryMarkersRef.current.forEach((marker) => marker.remove());
     itineraryMarkersRef.current = [];
 
     if (itineraryStops.length === 0) return;
 
-    // Add numbered markers for each stop
     itineraryStops.forEach((stop, index) => {
-      if (!stop.lat || !stop.lng || isNaN(stop.lat) || isNaN(stop.lng)) {
-        console.warn(`Invalid coordinates for itinerary stop:`, stop);
-        return;
-      }
+      if (!isFiniteNumber(stop.lat) || !isFiniteNumber(stop.lng)) return;
 
-      // Create numbered marker element
-      const markerElement = document.createElement('div');
-      markerElement.className = 'itinerary-stop-marker';
-      markerElement.style.cssText = `
-        width: 36px;
-        height: 36px;
-        background-color: #3B82F6;
+      const el = document.createElement('div');
+      el.className = 'itinerary-stop-marker';
+      el.style.cssText = `
+        width: 40px;
+        height: 40px;
+        background: linear-gradient(135deg, #3B82F6, #1D4ED8);
         border: 3px solid white;
         border-radius: 50%;
         cursor: pointer;
@@ -510,30 +878,29 @@ const MapContainer: React.FC<MapContainerProps> = ({
         font-size: 16px;
         color: white;
         font-weight: bold;
-        box-shadow: 0 3px 8px rgba(0,0,0,0.4);
-        transition: all 0.2s ease;
-        z-index: 10;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        z-index: 20;
       `;
-      markerElement.innerHTML = `${index + 1}`;
+      el.innerHTML = `${index + 1}`;
 
       // Hover effects
-      markerElement.addEventListener('mouseenter', () => {
-        markerElement.style.transform = 'scale(1.15)';
-        markerElement.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)';
+      el.addEventListener('mouseenter', () => {
+        el.style.transform = 'scale(1.15)';
+        el.style.boxShadow = '0 6px 16px rgba(0,0,0,0.5)';
       });
 
-      markerElement.addEventListener('mouseleave', () => {
-        markerElement.style.transform = 'scale(1)';
-        markerElement.style.boxShadow = '0 3px 8px rgba(0,0,0,0.4)';
+      el.addEventListener('mouseleave', () => {
+        el.style.transform = 'scale(1)';
+        el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
       });
 
-      // Click handler - show popup for itinerary stop
-      markerElement.addEventListener('click', (e) => {
+      el.addEventListener('click', (e) => {
         e.stopPropagation();
-        showItineraryStopPopup(stop, index);
+        window.location.href = `/places/${stop.slug}`;
       });
 
-      const marker = new mapboxgl.Marker({ element: markerElement, anchor: 'center' })
+      const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
         .setLngLat([stop.lng, stop.lat])
         .addTo(map.current!);
 
@@ -541,284 +908,148 @@ const MapContainer: React.FC<MapContainerProps> = ({
     });
   }, [itineraryStops, mapLoaded]);
 
-  // Show popup for itinerary stop
-  const showItineraryStopPopup = (stop: ItineraryStop, index: number) => {
-    if (!map.current) return;
-
-    // Remove existing popup
-    if (popupRef.current) {
-      popupRef.current.remove();
-    }
-
-    // Create popup content
-    const popupContent = document.createElement('div');
-    popupContent.innerHTML = `
-      <div class="itinerary-popup" style="min-width: 220px; max-width: 280px;">
-        <div class="popup-header" style="background: linear-gradient(135deg, #3B82F6, #1D4ED8); padding: 16px; border-radius: 8px 8px 0 0;">
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <div style="width: 32px; height: 32px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #3B82F6; font-size: 16px;">
-              ${index + 1}
-            </div>
-            <h3 style="color: white; font-size: 16px; font-weight: bold; margin: 0;">${stop.name}</h3>
-          </div>
-        </div>
-        <div class="popup-content" style="padding: 16px; background: white; border-radius: 0 0 8px 8px;">
-          <div style="display: flex; gap: 8px;">
-            <button id="view-itinerary-stop-${stop.slug}" 
-                    style="flex: 1; background: #3B82F6; color: white; border: none; padding: 10px 16px; border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: 500;">
-              View Details
-            </button>
-            <button id="directions-itinerary-stop-${stop.slug}" 
-                    style="background: #F3F4F6; color: #374151; border: none; padding: 10px 12px; border-radius: 6px; font-size: 14px; cursor: pointer;">
-              🧭
-            </button>
-          </div>
-        </div>
-      </div>
-    `;
-
-    // Create popup
-    popupRef.current = new mapboxgl.Popup({
-      closeButton: true,
-      closeOnClick: false,
-      anchor: 'bottom',
-      offset: [0, -20],
-    })
-      .setLngLat([stop.lng, stop.lat])
-      .setDOMContent(popupContent)
-      .addTo(map.current);
-
-    // Add event listeners to popup buttons
-    setTimeout(() => {
-      const viewBtn = document.getElementById(`view-itinerary-stop-${stop.slug}`);
-      const directionsBtn = document.getElementById(`directions-itinerary-stop-${stop.slug}`);
-
-      if (viewBtn) {
-        viewBtn.addEventListener('click', () => {
-          window.location.href = `/places/${stop.slug}`;
-        });
-      }
-
-      if (directionsBtn) {
-        directionsBtn.addEventListener('click', () => {
-          if (userLocation) {
-            const url = `https://www.google.com/maps/dir/${userLocation[1]},${userLocation[0]}/${stop.lat},${stop.lng}`;
-            window.open(url, '_blank');
-          } else {
-            const url = `https://www.google.com/maps/search/?api=1&query=${stop.lat},${stop.lng}`;
-            window.open(url, '_blank');
-          }
-        });
-      }
-    }, 100);
-
-    // Handle popup close
-    popupRef.current.on('close', () => {
-      popupRef.current = null;
-    });
-  };
-
-  // Handle selected place
+// Fly to selected place with enhanced animation
   useEffect(() => {
-    if (!map.current || !mapLoaded) return;
+    if (!map.current || !mapLoaded || !selectedPlace) return;
 
-    if (selectedPlace) {
-      // Fly to selected place
-      map.current.flyTo({
-        center: [selectedPlace.lng, selectedPlace.lat],
-        zoom: 15,
-        duration: 1000,
-      });
-
-      // Show popup for selected place
-      showPlacePopup(selectedPlace);
-    }
-  }, [selectedPlace, mapLoaded]);
-
-  const getClusterColor = (count: number): string => {
-    if (count < 5) return '#3B82F6'; // Blue
-    if (count < 10) return '#8B5CF6'; // Purple
-    if (count < 25) return '#EF4444'; // Red
-    return '#DC2626'; // Dark red
-  };
-
-  const getMarkerColor = (place: Place): string => {
-    // Color based on place category/tags
-    const tags = place.tags.map(tag => tag.toLowerCase());
-    
-    if (tags.some(tag => tag.includes('temple'))) return '#F59E0B'; // Orange
-    if (tags.some(tag => tag.includes('market'))) return '#EF4444'; // Red
-    if (tags.some(tag => tag.includes('restaurant'))) return '#10B981'; // Green
-    if (tags.some(tag => tag.includes('park'))) return '#059669'; // Emerald
-    if (tags.some(tag => tag.includes('museum'))) return '#8B5CF6'; // Violet
-    if (tags.some(tag => tag.includes('shopping'))) return '#EC4899'; // Pink
-    
-    return '#3B82F6'; // Default blue
-  };
-
-  const getPlaceIcon = (place: Place): string => {
-    const tags = place.tags.map(tag => tag.toLowerCase());
-    
-    if (tags.some(tag => tag.includes('temple'))) return '🏛️';
-    if (tags.some(tag => tag.includes('market'))) return '🛍️';
-    if (tags.some(tag => tag.includes('restaurant'))) return '🍽️';
-    if (tags.some(tag => tag.includes('park'))) return '🌳';
-    if (tags.some(tag => tag.includes('museum'))) return '🏛️';
-    if (tags.some(tag => tag.includes('shopping'))) return '🛒';
-    
-    return '📍'; // Default pin
-  };
-
-  const handleMarkerClick = (place: Place) => {
-    // Don't call onPlaceSelect to avoid triggering fly-to behavior
-    // Just show the popup directly
-    showPlacePopup(place);
-  };
-
-  const showPlacePopup = (place: Place) => {
-    if (!map.current) return;
-
-    // Remove existing popup
-    if (popupRef.current) {
-      popupRef.current.remove();
-    }
-
-    // Create popup content
-    const popupContent = document.createElement('div');
-    popupContent.innerHTML = `
-      <div class="place-popup" style="min-width: 250px; max-width: 300px;">
-        <div class="popup-header" style="position: relative; height: 120px; background: linear-gradient(45deg, #3B82F6, #8B5CF6); border-radius: 8px 8px 0 0; overflow: hidden;">
-          ${place.image_url ? `
-            <img src="${place.image_url}" alt="${place.name}" 
-                 style="width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0;" 
-                 onerror="this.style.display='none'">
-          ` : ''}
-          <div style="position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(transparent, rgba(0,0,0,0.7)); padding: 16px;">
-            <h3 style="color: white; font-size: 16px; font-weight: bold; margin: 0;">${place.name}</h3>
-          </div>
-        </div>
-        <div class="popup-content" style="padding: 16px;">
-          <p style="color: #6B7280; font-size: 14px; margin: 0 0 12px 0; line-height: 1.4;">
-            ${place.description.length > 100 ? place.description.substring(0, 100) + '...' : place.description}
-          </p>
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <span style="color: #059669; font-weight: bold; font-size: 16px;">
-              ${place.price > 0 ? `₿${place.price}` : 'Free'}
-            </span>
-            <div style="display: flex; gap: 4px;">
-              ${place.tags.slice(0, 2).map(tag => 
-                `<span style="background: #E5E7EB; color: #374151; padding: 2px 8px; border-radius: 12px; font-size: 12px;">${tag}</span>`
-              ).join('')}
-            </div>
-          </div>
-          <div style="display: flex; gap: 8px;">
-            <button id="view-details-${place.id}" 
-                    style="flex: 1; background: #3B82F6; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-size: 14px; cursor: pointer;">
-              View Details
-            </button>
-            <button id="get-directions-${place.id}" 
-                    style="background: #F3F4F6; color: #374151; border: none; padding: 8px 12px; border-radius: 6px; font-size: 14px; cursor: pointer;">
-              Directions
-            </button>
-          </div>
-        </div>
-      </div>
-    `;
-
-    // Create popup
-    popupRef.current = new mapboxgl.Popup({
-      closeButton: true,
-      closeOnClick: false,
-      anchor: 'bottom',
-      offset: [0, -10],
-    })
-      .setLngLat([place.lng, place.lat])
-      .setDOMContent(popupContent)
-      .addTo(map.current);
-
-    // Add event listeners to popup buttons
-    setTimeout(() => {
-      const viewDetailsBtn = document.getElementById(`view-details-${place.id}`);
-      const directionsBtn = document.getElementById(`get-directions-${place.id}`);
-
-      if (viewDetailsBtn) {
-        viewDetailsBtn.addEventListener('click', () => {
-          window.location.href = `/places/${place.slug}`;
-        });
-      }
-
-      if (directionsBtn) {
-        directionsBtn.addEventListener('click', () => {
-          if (userLocation) {
-            const url = `https://www.google.com/maps/dir/${userLocation[1]},${userLocation[0]}/${place.lat},${place.lng}`;
-            window.open(url, '_blank');
-          } else {
-            const url = `https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`;
-            window.open(url, '_blank');
-          }
-        });
-      }
-    }, 100);
-
-    // Handle popup close
-    popupRef.current.on('close', () => {
-      onPlaceDeselect();
-      popupRef.current = null;
+    // Enhanced flyTo with smooth easing and optional 3D pitch
+    map.current.flyTo({
+      center: [selectedPlace.lng, selectedPlace.lat],
+      zoom: 16,
+      pitch: is3DEnabled ? 50 : 0,
+      bearing: 0,
+      duration: 1200,
+      essential: true,
+      // easeOutQuad for smooth deceleration
+      easing: (t) => t * (2 - t),
     });
-  };
 
-  const handleStyleChange = (style: 'streets' | 'satellite') => {
+    showPlacePopup(selectedPlace);
+  }, [selectedPlace, mapLoaded, showPlacePopup, is3DEnabled]);
+
+// Map control handlers
+  const handleStyleChange = useCallback((style: 'dark' | 'light' | 'satellite') => {
     setMapStyle(style);
-  };
+  }, []);
 
-  const handleZoomIn = () => {
-    if (map.current) {
-      map.current.zoomIn();
-    }
-  };
+  const handleZoomIn = useCallback(() => {
+    map.current?.zoomIn();
+  }, []);
 
-  const handleZoomOut = () => {
-    if (map.current) {
-      map.current.zoomOut();
-    }
-  };
+  const handleZoomOut = useCallback(() => {
+    map.current?.zoomOut();
+  }, []);
 
-  const handleFlyToUserLocation = () => {
+const handleFlyToUserLocation = useCallback(() => {
     if (map.current && userLocation) {
       map.current.flyTo({
         center: userLocation,
-        zoom: 15,
+        zoom: 16,
         duration: 1000,
+        easing: (t) => t * (2 - t), // easeOutQuad
       });
     }
-  };
+  }, [userLocation]);
+
+  // Error fallback
+  if (mapError) {
+    return (
+      <div className="relative w-full h-full bg-gray-100 flex items-center justify-center">
+        <div className="text-center p-8">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center">
+            <svg
+              className="w-8 h-8 text-red-500"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
+            </svg>
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            Map Loading Error
+          </h3>
+          <p className="text-gray-600">{mapError}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full h-full">
       {/* Map container */}
       <div ref={mapContainer} className="w-full h-full" />
-      
+
       {/* Map controls */}
       <MapControls
         onStyleChange={handleStyleChange}
         onZoomIn={handleZoomIn}
         onZoomOut={handleZoomOut}
         onFlyToUserLocation={handleFlyToUserLocation}
+        onToggle3D={toggle3D}
+        onToggleTraffic={toggleTraffic}
         currentStyle={mapStyle}
         hasUserLocation={!!userLocation}
+        is3DEnabled={is3DEnabled}
+        isTrafficEnabled={isTrafficEnabled}
       />
-      
+
       {/* Loading overlay */}
-      {!mapLoaded && (
-        <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-            <p className="text-gray-600">Initializing map...</p>
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {!mapLoaded && (
+          <motion.div
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="absolute inset-0 bg-gray-100 flex items-center justify-center"
+          >
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4" />
+              <p className="text-gray-600">Initializing map...</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Custom popup styles */}
+      <style jsx global>{`
+        .mapbox-popup-custom {
+          max-width: none !important;
+        }
+        .mapbox-popup-custom .mapboxgl-popup-content {
+          padding: 0;
+          background: transparent;
+          box-shadow: none;
+          border-radius: 12px;
+          overflow: hidden;
+        }
+        .mapbox-popup-custom .mapboxgl-popup-tip {
+          display: none;
+        }
+        @keyframes pulse {
+          0% {
+            box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+          }
+          70% {
+            box-shadow: 0 0 0 10px rgba(59, 130, 246, 0);
+          }
+          100% {
+            box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+          }
+        }
+      `}</style>
     </div>
   );
 };
+
+// Helper function
+function isFiniteNumber(n: unknown): n is number {
+  return typeof n === 'number' && isFinite(n);
+}
 
 export default MapContainer;
