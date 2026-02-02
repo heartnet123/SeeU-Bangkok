@@ -1,0 +1,37 @@
+{
+  "nav": {
+    "home": "หน้าแรก",
+    "places": "สถานที่ท่องเที่ยว",
+    "map": "แผนที่",
+    "savedTrips": "ทริปที่บันทึก",
+    "admin": "ผู้ดูแลระบบ",
+    "current": "ปัจจุบัน",
+    "all": "ทั้งหมด"
+  },
+  "categories": {
+    "restaurants": "ร้านอาหาร",
+    "temples": "วัด",
+    "shopping": "ช้อปปิ้ง",
+    "parks": "สวน",
+    "museums": "พิพิธภัณฑ์",
+    "cafes": "ร้านกาแฟ",
+    "nightlife": "บันเทิงกลางคืน",
+    "attractions": "สถานที่ท่องเที่ยว"
+  },
+  "auth": {
+    "login": "เข้าสู่ระบบ",
+    "logout": "ออกจากระบบ",
+    "profile": "โปรไฟล์"
+  },
+  "map": {
+    "searchPlaceholder": "ค้นหาสถานที่ วัด ร้านอาหาร..."
+  },
+  "errors": {
+    "selectTrip": "กรุณาเลือกทริปก่อน",
+    "noLocation": "สถานที่นี้ไม่มีข้อมูลตำแหน่ง",
+    "searchFailed": "ค้นหาไม่สำเร็จ กรุณาลองอีกครั้ง"
+  },
+  "actions": {
+    "addedToTrip": "เพิ่ม {place} ไปยัง {trip}"
+  }
+}

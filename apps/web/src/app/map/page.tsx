@@ -50,20 +50,24 @@ interface ItineraryStop {
   notes?: string;
 }
 
-// Category definitions with icons
-const CATEGORIES = [
-  { id: 'all', label: 'All', icon: Globe },
-  { id: 'restaurant', label: 'Restaurants', icon: Utensils },
-  { id: 'temple', label: 'Temples', icon: Landmark },
-  { id: 'shopping', label: 'Shopping', icon: ShoppingBag },
-  { id: 'park', label: 'Parks', icon: TreePine },
-  { id: 'museum', label: 'Museums', icon: Building2 },
-  { id: 'cafe', label: 'Cafes', icon: Coffee },
-  { id: 'nightlife', label: 'Nightlife', icon: Music },
-  { id: 'attraction', label: 'Attractions', icon: Camera },
+// Category definitions with icons (labels will use translations inside component)
+const DEFAULT_CATEGORIES = [
+  { id: 'all', key: 'nav.all', icon: Globe },
+  { id: 'restaurant', key: 'categories.restaurants', icon: Utensils },
+  { id: 'temple', key: 'categories.temples', icon: Landmark },
+  { id: 'shopping', key: 'categories.shopping', icon: ShoppingBag },
+  { id: 'park', key: 'categories.parks', icon: TreePine },
+  { id: 'museum', key: 'categories.museums', icon: Building2 },
+  { id: 'cafe', key: 'categories.cafes', icon: Coffee },
+  { id: 'nightlife', key: 'categories.nightlife', icon: Music },
+  { id: 'attraction', key: 'categories.attractions', icon: Camera },
 ];
 
+
+import { useTranslation } from "@/contexts/language-context";
+
 export default function TripPlannerPage() {
+  const { t, locale } = useTranslation();
   const [trips, setTrips] = useState<Trip[]>(mockTrips);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(
     mockTrips[0]?.id || null
@@ -89,6 +93,8 @@ export default function TripPlannerPage() {
   const [isBottomSheetExpanded, setIsBottomSheetExpanded] = useState(true);
 
   const selectedTrip = trips.find((t) => t.id === selectedTripId) || null;
+
+  const CATEGORIES = useMemo(() => DEFAULT_CATEGORIES.map(c => ({ ...c, label: t(c.key) })), [t]);
 
   // Get user location on mount
   useEffect(() => {
@@ -127,6 +133,7 @@ export default function TripPlannerPage() {
         params.append('categories', category);
       }
       params.append('limit', '20');
+      params.append('locale', locale);
 
       const response = await fetch(`${serverUrl}/api/places?${params.toString()}`);
       
@@ -149,7 +156,7 @@ export default function TripPlannerPage() {
       }
     } catch (error) {
       console.error('Search error:', error);
-      toast.error('Search failed. Please try again.');
+      toast.error(t("errors.searchFailed"));
     } finally {
       setIsSearching(false);
     }
@@ -176,12 +183,12 @@ export default function TripPlannerPage() {
 
   const handleAddPlaceToTrip = (place: PlaceItem) => {
     if (!selectedTripId) {
-      toast.error("Please select a trip first");
+      toast.error(t("errors.selectTrip"));
       return;
     }
 
     if (!place.lat || !place.lng) {
-      toast.error("This place doesn't have location data");
+      toast.error(t("errors.noLocation"));
       return;
     }
 
@@ -209,7 +216,7 @@ export default function TripPlannerPage() {
             0
           );
 
-          toast.success(`Added ${place.name} to ${trip.name}`);
+          toast.success(t("actions.addedToTrip").replace("{place}", place.name).replace("{trip}", trip.name));
 
           return {
             ...trip,
@@ -381,7 +388,7 @@ export default function TripPlannerPage() {
             <Search className="absolute left-4 text-gray-400 h-5 w-5 pointer-events-none" />
             <Input
               type="text"
-              placeholder="Search places, temples, restaurants..."
+              placeholder={t("map.searchPlaceholder") }
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-12 pr-12 h-12 rounded-full shadow-xl border-0 bg-white/95 backdrop-blur-md text-gray-900 placeholder:text-gray-500 focus-visible:ring-2 focus-visible:ring-blue-500"
