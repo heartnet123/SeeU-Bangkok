@@ -4,9 +4,11 @@ import { TextEffect, InView, AnimatedGroup, Magnetic } from "@/components/core";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { MapPin, MessageCircle, Heart } from "lucide-react";
+import { useTranslation } from "@/contexts/language-context"; 
 
 
 export default function Home() {
+	const { t } = useTranslation();
 	return (
 		<div className="min-h-screen bg-white">
 			{/* Hero Section */}
@@ -26,7 +28,7 @@ export default function Home() {
 								per="word"
 								className="text-5xl md:text-7xl lg:text-8xl font-bold text-white mb-4 leading-tight"
 							>
-								Discover Bangkok's
+								{t("home.title1")}
 							</TextEffect>
 							<TextEffect
 								as="h1"
@@ -35,7 +37,7 @@ export default function Home() {
 								delay={0.3}
 								className="text-5xl md:text-7xl lg:text-8xl font-bold text-orange-500 mb-8 leading-tight"
 							>
-								Hidden Gems
+								{t("home.title2")}
 							</TextEffect>
 						</div>
 					</InView>
@@ -47,7 +49,7 @@ export default function Home() {
 						<Magnetic intensity={0.3} range={80}>
 							<Button className="bg-blue-600 hover:bg-blue-700 text-white px-12 py-6 text-xl font-semibold rounded-lg transition-all duration-300 flex items-center gap-3 shadow-lg hover:shadow-xl">
 								<MapPin className="w-6 h-6" />
-								Explore Map
+							{t("home.exploreMap")}
 							</Button>
 						</Magnetic>
 						
@@ -57,7 +59,7 @@ export default function Home() {
 								className="bg-transparent border-2 border-white text-white hover:bg-white hover:text-gray-900 px-12 py-6 text-xl font-semibold rounded-lg transition-all duration-300 flex items-center gap-3 shadow-lg hover:shadow-xl"
 							>
 								<MessageCircle className="w-6 h-6" />
-								Trip Planner
+								{t("home.tripPlanner")}
 							</Button>
 						</Magnetic>
 					</AnimatedGroup>
@@ -82,7 +84,7 @@ export default function Home() {
 								per="word"
 								className="text-4xl md:text-5xl font-bold text-gray-900 mb-6"
 							>
-								Explore Bangkok Like Never Before
+								{t("features.title")}
 							</TextEffect>
 							<TextEffect
 								as="p"
@@ -91,7 +93,7 @@ export default function Home() {
 								delay={0.3}
 								className="text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed"
 							>
-								Discover authentic experiences, local favorites, and off-the-beaten-path destinations with our AI-powered travel companion.
+								{t("features.subtitle")}
 							</TextEffect>
 						</div>
 					</InView>
@@ -105,24 +107,24 @@ export default function Home() {
 							<div className="w-16 h-16 mx-auto mb-6 bg-blue-100 rounded-full flex items-center justify-center group-hover:bg-blue-200 transition-colors">
 								<MapPin className="w-8 h-8 text-blue-600" />
 							</div>
-							<h3 className="text-xl font-semibold text-gray-900 mb-4">Interactive Map</h3>
-							<p className="text-gray-600 leading-relaxed">Navigate Bangkok with our interactive map featuring real-time information and personalized recommendations.</p>
+<h3 className="text-xl font-semibold text-gray-900 mb-4">{t("features.cards.interactiveMap.title")}</h3>
+								<p className="text-gray-600 leading-relaxed">{t("features.cards.interactiveMap.desc")}</p>
 						</Card>
 
 						<Card className="p-8 text-center hover:shadow-lg transition-all duration-300 border-0 bg-white group">
 							<div className="w-16 h-16 mx-auto mb-6 bg-orange-100 rounded-full flex items-center justify-center group-hover:bg-orange-200 transition-colors">
 								<MessageCircle className="w-8 h-8 text-orange-600" />
 							</div>
-							<h3 className="text-xl font-semibold text-gray-900 mb-4">Trip Planner</h3>
-							<p className="text-gray-600 leading-relaxed">Get instant answers and personalized travel advice from our intelligent Trip Planner trained on local knowledge.</p>
+<h3 className="text-xl font-semibold text-gray-900 mb-4">{t("features.cards.tripPlanner.title")}</h3>
+								<p className="text-gray-600 leading-relaxed">{t("features.cards.tripPlanner.desc")}</p>
 						</Card>
 
 						<Card className="p-8 text-center hover:shadow-lg transition-all duration-300 border-0 bg-white group">
 							<div className="w-16 h-16 mx-auto mb-6 bg-green-100 rounded-full flex items-center justify-center group-hover:bg-green-200 transition-colors">
 								<Heart className="w-8 h-8 text-green-600" />
 							</div>
-							<h3 className="text-xl font-semibold text-gray-900 mb-4">Hidden Gems</h3>
-							<p className="text-gray-600 leading-relaxed">Discover secret spots, local favorites, and authentic experiences that only locals know about.</p>
+<h3 className="text-xl font-semibold text-gray-900 mb-4">{t("features.cards.hiddenGems.title")}</h3>
+								<p className="text-gray-600 leading-relaxed">{t("features.cards.hiddenGems.desc")}</p>
 						</Card>
 					</AnimatedGroup>
 				</div>
