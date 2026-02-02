@@ -27,6 +27,7 @@
     "@langchain/community": "^0.3.56",
     "@langchain/core": "^1.0.0-alpha.7",
     "@langchain/langgraph": "^1.0.0-alpha.5",
+    "@langchain/langgraph-supervisor": "^0.0.10",
     "@langchain/openai": "^0.6.13",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.56.0"
