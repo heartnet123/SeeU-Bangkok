@@ -39,7 +39,7 @@ function useSSEStream() {
     setStreaming(false)
   }, [])
 
-  const start = useCallback(async (payload: any, endpoint: 'chat' | 'agent' = 'chat') => {
+  const start = useCallback(async (payload: any, endpoint: 'chat' | 'agent' | 'agent/v2' = 'agent/v2') => {
     if (isStreaming) stop()
     setEvents([])
     setStreaming(true)
@@ -79,6 +79,17 @@ function useSSEStream() {
           const joined = data.join('\n')
           if (!event) continue
           switch (event) {
+            case 'start':
+              // v2 API start event
+              console.log('[Agent v2] Started:', joined)
+              break
+            case 'agent':
+              // v2 API agent routing event
+              try {
+                const payload = JSON.parse(joined)
+                setEvents((prev) => [...prev, { type: 'status', text: `Agent: ${payload.agent}` }])
+              } catch (e) {}
+              break
             case 'message':
               setEvents((prev) => [...prev, { type: 'message', text: joined }])
               break
@@ -192,7 +203,7 @@ export default function ChatTestPage() {
     }
     if (coords) payload.userLocation = coords
     if (forceNoMatch) payload.force_no_match = true
-    start(payload, useAgent ? 'agent' : 'chat')
+    start(payload, useAgent ? 'agent/v2' : 'chat')
   }, [input, coords, forceNoMatch, useAgent, start])
 
   const handleLocate = useCallback(() => {
@@ -233,7 +244,7 @@ export default function ChatTestPage() {
 
       {useAgent && (
         <div className="p-3 rounded-md bg-blue-50 border border-blue-200 text-sm text-blue-800">
-          <strong>RAG Agent Mode:</strong> Uses LangGraph workflow with vector search, tool calling, and retrieval-augmented generation.
+          <strong>RAG Agent v2 Mode:</strong> Uses multi-agent supervisor with vector search, specialized researcher/planner/critic agents, and memory management.
         </div>
       )}
 

@@ -11,10 +11,10 @@ import { PlaceCard } from "@/components/map/place-card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import type { Trip, TripStop } from "@/components/planner/mock-data";
-import { mockTrips } from "@/components/planner/mock-data";
+import type { Trip, TripStop } from "@/types/trip";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
+
 import { 
   Search, 
   X, 
@@ -64,12 +64,11 @@ const CATEGORIES = [
 ];
 
 export default function TripPlannerPage() {
-  const [trips, setTrips] = useState<Trip[]>(mockTrips);
-  const [selectedTripId, setSelectedTripId] = useState<string | null>(
-    mockTrips[0]?.id || null
-  );
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [userLocation, setUserLocation] = useState<
+
     { lat: number; lng: number } | undefined
   >();
   const [foundPlaces, setFoundPlaces] = useState<PlaceItem[]>([]);

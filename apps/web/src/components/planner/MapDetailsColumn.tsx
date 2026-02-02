@@ -6,9 +6,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, Edit, Clock, Navigation, Wallet, Search } from "lucide-react";
 import MapContainer from "@/components/map/map-container";
-import type { Trip } from "./mock-data";
+import type { Trip } from "@/types/trip";
 
 interface PlaceItem {
+
   id: string;
   name: string;
   slug: string;

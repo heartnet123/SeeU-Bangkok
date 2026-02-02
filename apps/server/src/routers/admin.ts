@@ -16,12 +16,10 @@ export const placeSchema = z.object({
   description: z.string().optional().default(""),
   tags: z.array(z.string()).optional().default([]),
   lat: z.number({
-    required_error: "Latitude is required",
-    invalid_type_error: "Latitude must be a number",
+    error: "Latitude is required and must be a number",
   }).min(-90).max(90),
   lng: z.number({
-    required_error: "Longitude is required",
-    invalid_type_error: "Longitude must be a number",
+    error: "Longitude is required and must be a number",
   }).min(-180).max(180),
   address: z.string().optional().default(""),
   price: z.number().int().nonnegative().nullable().optional(),
@@ -33,6 +31,7 @@ export const placeSchema = z.object({
 
 const updatePlaceSchema = z.object({
   name: z.string().min(1).optional(),
+  area: z.string().optional(),
   description: z.string().optional(),
   tags: z.array(z.string()).optional(),
   lat: z.number().optional(),
@@ -184,13 +183,22 @@ admin.post('/places', zValidator('json', placeSchema), async (c) => {
   try {
     let embedding = body.embedding
     if ((!embedding || embedding.length === 0) && body.compute_embedding) {
-      const text = `${body.name}\n\n${body.description || ''}`.trim()
+      // Build a rich text representation for embedding
+      const text = `
+Name: ${body.name}
+Area: ${body.area || 'Unknown'}
+Description: ${body.description || ''}
+Tags: ${body.tags ? body.tags.join(', ') : ''}
+Address: ${body.address || ''}
+Price: ${body.price ? body.price + ' Baht' : 'Free'}
+      `.trim()
+      
       embedding = await hfEmbed(text)
     }
 
     const slug = (body.slug && body.slug.length > 0) 
       ? body.slug 
-      : body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g,'')
+      : nameToSlug(body.name)
 
     const payload: any = {
       name: body.name,
@@ -253,6 +261,7 @@ admin.put('/places/:id', zValidator('json', updatePlaceSchema), async (c) => {
     const updatePayload: any = {}
     
     if (body.name !== undefined) updatePayload.name = body.name
+    if (body.area !== undefined) updatePayload.area = body.area
     if (body.description !== undefined) updatePayload.description = body.description
     if (body.tags !== undefined) updatePayload.tags = body.tags
     if (body.lat !== undefined) updatePayload.lat = body.lat
@@ -264,7 +273,23 @@ admin.put('/places/:id', zValidator('json', updatePlaceSchema), async (c) => {
     // Handle embedding
     let embedding = body.embedding
     if ((!embedding || embedding.length === 0) && body.compute_embedding) {
-      const text = `${body.name || existingPlace.name}\n\n${body.description || existingPlace.description || ''}`.trim()
+      // Use existing values if not provided in update
+      const name = body.name || existingPlace.name
+      const area = body.area !== undefined ? body.area : (existingPlace.area || 'Unknown')
+      const description = body.description !== undefined ? body.description : (existingPlace.description || '')
+      const tags = body.tags !== undefined ? body.tags : (existingPlace.tags || [])
+      const address = body.address !== undefined ? body.address : (existingPlace.address || '')
+      const price = body.price !== undefined ? body.price : existingPlace.price
+
+      const text = `
+Name: ${name}
+Area: ${area}
+Description: ${description}
+Tags: ${Array.isArray(tags) ? tags.join(', ') : ''}
+Address: ${address}
+Price: ${price ? price + ' Baht' : 'Free'}
+      `.trim()
+      
       embedding = await hfEmbed(text)
     }
     if (embedding && Array.isArray(embedding) && embedding.length) {
