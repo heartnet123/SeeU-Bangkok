@@ -41,6 +41,7 @@ interface MapContainerProps {
   initialZoom?: number;
   itineraryStops?: ItineraryStop[];
   show3D?: boolean;
+  tripRoute?: [number, number][]; // Array of [lng, lat] coordinates for the route
 }
 
 // Feature type for Supercluster
@@ -183,6 +184,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   initialZoom = 11,
   itineraryStops = [],
   show3D = false,
+  tripRoute = [],
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -542,6 +544,178 @@ const MapContainer: React.FC<MapContainerProps> = ({
       }
     }
   }, [isTrafficEnabled]);
+
+  // Draw trip route following actual roads using Mapbox Directions API
+  useEffect(() => {
+    if (!map.current || !mapLoaded || !tripRoute || tripRoute.length < 2) {
+      // Remove route layer if trip route is empty
+      if (map.current?.getLayer('trip-route')) {
+        map.current.removeLayer('trip-route');
+      }
+      if (map.current?.getSource('trip-route')) {
+        map.current.removeSource('trip-route');
+      }
+      return;
+    }
+
+    const fetchRouteDirections = async () => {
+      try {
+        const accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
+        if (!accessToken) {
+          console.error('Mapbox access token not found');
+          drawStraightRoute();
+          return;
+        }
+
+        // Build coordinates string for API: lng,lat;lng,lat;lng,lat
+        const coordinatesString = tripRoute.map(([lng, lat]) => `${lng},${lat}`).join(';');
+        
+        // Build waypoints string - all points should be waypoints so we get a route through all
+        // Format: ?waypoints=0;1;2 for all points
+        const waypointIndices = Array.from({ length: tripRoute.length }, (_, i) => i).join(';');
+
+        const directionsUrl = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordinatesString}?waypoints=${waypointIndices}&access_token=${accessToken}&overview=full&geometries=geojson&exclude=toll,motorway`;
+
+        console.log('Fetching route:', directionsUrl);
+        
+        const response = await fetch(directionsUrl);
+        
+        if (!response.ok) {
+          console.error('Failed to fetch directions:', response.status, response.statusText);
+          drawStraightRoute();
+          return;
+        }
+
+        const data = await response.json();
+        console.log('Route response:', data);
+        
+        if (data.routes && data.routes.length > 0) {
+          const route = data.routes[0];
+          const routeCoordinates = route.geometry.coordinates;
+
+          // Remove existing route layer if it exists
+          if (map.current?.getLayer('trip-route')) {
+            map.current.removeLayer('trip-route');
+          }
+          if (map.current?.getSource('trip-route')) {
+            map.current.removeSource('trip-route');
+          }
+
+          // Create GeoJSON from the actual route
+          const routeGeoJSON: GeoJSON.FeatureCollection = {
+            type: 'FeatureCollection',
+            features: [
+              {
+                type: 'Feature',
+                geometry: {
+                  type: 'LineString',
+                  coordinates: routeCoordinates,
+                },
+                properties: {},
+              },
+            ],
+          };
+
+          // Add the route source
+          map.current!.addSource('trip-route', {
+            type: 'geojson',
+            data: routeGeoJSON,
+          });
+
+          // Add the route layer with solid line (not dashed)
+          map.current!.addLayer({
+            id: 'trip-route',
+            type: 'line',
+            source: 'trip-route',
+            layout: {
+              'line-join': 'round',
+              'line-cap': 'round',
+            },
+            paint: {
+              'line-color': '#3b82f6',
+              'line-width': 4,
+              'line-opacity': 0.85,
+            },
+          });
+
+          // Fit bounds to show entire route with padding
+          if (routeCoordinates.length > 0) {
+            const bounds = routeCoordinates.reduce(
+              (bounds, coord) => bounds.extend(coord as [number, number]),
+              new mapboxgl.LngLatBounds(
+                routeCoordinates[0] as [number, number],
+                routeCoordinates[0] as [number, number]
+              )
+            );
+            map.current!.fitBounds(bounds, { padding: 80, duration: 1000 });
+          }
+        } else {
+          console.warn('No routes found in response');
+          drawStraightRoute();
+        }
+      } catch (error) {
+        console.error('Error fetching route directions:', error);
+        drawStraightRoute();
+      }
+    };
+
+    const drawStraightRoute = () => {
+      if (!map.current) return;
+
+      console.log('Using fallback straight line route');
+
+      // Remove existing route layer if it exists
+      if (map.current.getLayer('trip-route')) {
+        map.current.removeLayer('trip-route');
+      }
+      if (map.current.getSource('trip-route')) {
+        map.current.removeSource('trip-route');
+      }
+
+      // Create a straight line as fallback
+      const routeGeoJSON: GeoJSON.FeatureCollection = {
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'LineString',
+              coordinates: tripRoute,
+            },
+            properties: {},
+          },
+        ],
+      };
+
+      map.current.addSource('trip-route', {
+        type: 'geojson',
+        data: routeGeoJSON,
+      });
+
+      map.current.addLayer({
+        id: 'trip-route',
+        type: 'line',
+        source: 'trip-route',
+        paint: {
+          'line-color': '#3b82f6',
+          'line-width': 4,
+          'line-opacity': 0.8,
+          'line-dasharray': [2, 2],
+        },
+      });
+
+      // Fit bounds
+      if (tripRoute.length > 0) {
+        const bounds = tripRoute.reduce(
+          (bounds, coord) => bounds.extend(coord),
+          new mapboxgl.LngLatBounds(tripRoute[0], tripRoute[0])
+        );
+        map.current.fitBounds(bounds, { padding: 80 });
+      }
+    };
+
+    fetchRouteDirections();
+  }, [tripRoute, mapLoaded]);
 
   // Update map style
   useEffect(() => {

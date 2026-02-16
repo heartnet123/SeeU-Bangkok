@@ -5,8 +5,9 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useAuth } from '@/contexts/auth-context'
-import { MapPin, Clock, ListChecks, Edit, Trash2, X } from 'lucide-react'
+import { MapPin, Clock, ListChecks, Edit, Trash2, X, Plus } from 'lucide-react'
 import { toast } from 'sonner'
+import { NewTripDialog } from '@/components/trips/new-trip-dialog'
 
 type Stop = {
   id: string
@@ -42,6 +43,7 @@ export default function SavedTripsPage() {
   const [editStops, setEditStops] = useState<EditStop[]>([])
   const [isSaving, setIsSaving] = useState(false)
   const [deletingTripId, setDeletingTripId] = useState<string | null>(null)
+  const [isNewTripDialogOpen, setIsNewTripDialogOpen] = useState(false)
 
   const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'
   const isAuthed = !!session?.access_token
@@ -185,7 +187,16 @@ export default function SavedTripsPage() {
     <div className="max-w-5xl mx-auto p-6 space-y-6 text-black">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Saved Trips</h1>
-        <div className="text-sm text-gray-600">{trips.length} Trips</div>
+        <div className="flex items-center gap-4">
+          <div className="text-sm text-gray-600">{trips.length} Trips</div>
+          <Button
+            onClick={() => setIsNewTripDialogOpen(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            New Trip
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -380,6 +391,15 @@ export default function SavedTripsPage() {
           </div>
         </div>
       )}
+
+      {/* New Trip Dialog */}
+      <NewTripDialog
+        isOpen={isNewTripDialogOpen}
+        onClose={() => setIsNewTripDialogOpen(false)}
+        onSuccess={fetchTrips}
+        serverUrl={serverUrl}
+        sessionToken={session?.access_token || ""}
+      />
     </div>
   )
 }

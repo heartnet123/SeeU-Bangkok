@@ -11,6 +11,7 @@ import { PlaceCard } from "@/components/map/place-card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { NewTripDialog } from "@/components/trips/new-trip-dialog";
 import type { Trip, TripStop } from "@/components/planner/mock-data";
 import { mockTrips } from "@/components/planner/mock-data";
 import { toast } from "sonner";
@@ -65,9 +66,13 @@ const DEFAULT_CATEGORIES = [
 
 
 import { useTranslation } from "@/contexts/language-context";
+import { useAuth } from "@/contexts/auth-context";
 
 export default function TripPlannerPage() {
   const { t, locale } = useTranslation();
+  const { session } = useAuth();
+  const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3000";
+  
   const [trips, setTrips] = useState<Trip[]>(mockTrips);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(
     mockTrips[0]?.id || null
@@ -91,10 +96,62 @@ export default function TripPlannerPage() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
   const [isBottomSheetExpanded, setIsBottomSheetExpanded] = useState(true);
+  const [isNewTripDialogOpen, setIsNewTripDialogOpen] = useState(false);
 
   const selectedTrip = trips.find((t) => t.id === selectedTripId) || null;
 
   const CATEGORIES = useMemo(() => DEFAULT_CATEGORIES.map(c => ({ ...c, label: t(c.key) })), [t]);
+
+  // Fetch saved trips from server
+  const fetchSavedTrips = async () => {
+    if (!session?.access_token) return;
+    try {
+      const response = await fetch(`${serverUrl}/api/itineraries`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const contentType = response.headers.get('content-type') || '';
+      const data = contentType.includes('application/json') 
+        ? await response.json() 
+        : { success: false, error: 'Bad response' };
+      
+      if (response.ok && data.success && Array.isArray(data.data)) {
+        // Transform server trip data to match Trip interface
+        const serverTrips = data.data.map((trip: any) => ({
+          id: trip.id,
+          name: trip.title || 'Unnamed Trip',
+          date: trip.created_at ? new Date(trip.created_at).toLocaleDateString() : 'No date',
+          stops: (trip.stops || []).map((stop: any) => ({
+            id: stop.id,
+            name: stop.place?.name || 'Unknown Stop',
+            address: stop.place?.name || 'Address unknown',
+            category: stop.place?.tags?.[0] || 'Viewpoint',
+            suggestedDurationMin: stop.suggested_time_min || 60,
+            lat: stop.place?.lat || 0,
+            lng: stop.place?.lng || 0,
+          })),
+          totalDurationMin: trip.total_minutes || 0,
+          totalDistanceKm: trip.total_distance_km || 0,
+          estimatedBudget: 0,
+          notes: '',
+        }));
+        
+        setTrips(serverTrips);
+        if (serverTrips.length > 0 && !selectedTripId) {
+          setSelectedTripId(serverTrips[0].id);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching saved trips:', error);
+      // Keep mock trips as fallback
+    }
+  };
+
+  // Fetch saved trips when user is authenticated
+  useEffect(() => {
+    if (session?.access_token) {
+      fetchSavedTrips();
+    }
+  }, [session?.access_token]);
 
   // Get user location on mount
   useEffect(() => {
@@ -230,7 +287,13 @@ export default function TripPlannerPage() {
   };
 
   const handleNewTrip = () => {
-    console.log("Create new trip");
+    setIsNewTripDialogOpen(true);
+  };
+
+  const handleNewTripSuccess = () => {
+    // Refetch trips from the server
+    fetchSavedTrips();
+    setIsNewTripDialogOpen(false);
   };
 
   const handleDeleteTrip = (tripId: string) => {
@@ -358,6 +421,16 @@ export default function TripPlannerPage() {
       name: s.name,
     }));
 
+  // Generate trip route coordinates from selected trip stops
+  const tripRoute = useMemo(() => {
+    if (!selectedTrip || !selectedTrip.stops || selectedTrip.stops.length < 2) {
+      return [];
+    }
+    return selectedTrip.stops
+      .filter((stop) => stop.lat && stop.lng)
+      .map((stop) => [stop.lng, stop.lat] as [number, number]);
+  }, [selectedTrip]);
+
   return (
     <div className="relative w-full h-screen overflow-hidden">
       {/* Fullscreen Map Background */}
@@ -373,6 +446,7 @@ export default function TripPlannerPage() {
           initialCenter={[100.5018, 13.7563]}
           initialZoom={12}
           itineraryStops={itineraryStopsForMap}
+          tripRoute={tripRoute}
         />
       </div>
 
@@ -611,6 +685,15 @@ export default function TripPlannerPage() {
         onItineraryCreated={handleItineraryCreated}
         userLocation={userLocation}
         defaultOpen={isChatOpen}
+      />
+
+      {/* New Trip Dialog */}
+      <NewTripDialog
+        isOpen={isNewTripDialogOpen}
+        onClose={() => setIsNewTripDialogOpen(false)}
+        onSuccess={handleNewTripSuccess}
+        serverUrl={process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3000"}
+        sessionToken={session?.access_token || ""}
       />
 
       {/* Custom scrollbar styles */}
