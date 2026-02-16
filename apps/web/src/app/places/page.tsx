@@ -197,9 +197,9 @@ export default function NeighborhoodsPage() {
                 >
                   <CardContent className="p-0 flex flex-col h-full">
                       {/* Always show placeholder image */}
-                      <div className="relative h-48 bg-gradient-to-br from-gray-200 to-gray-300 rounded-t-lg overflow-hidden flex items-center justify-center">
+                      <div className="relative h-48 bg-gradient-to-br from-gray-200 to-gray-300 overflow-hidden flex items-center justify-center">
                 <Image
-                    src="https://i.pinimg.com/736x/5d/60/bb/5d60bb1df532a1c181d55c54e0e19c66.jpg"
+                    src={place.image_url || "https://i.pinimg.com/736x/5d/60/bb/5d60bb1df532a1c181d55c54e0e19c66.jpg"}
                     alt={place.name}
                     fill
                     className="object-cover transition-transform duration-300 group-hover:scale-105"
@@ -220,8 +220,8 @@ export default function NeighborhoodsPage() {
                       </div>
                       
                       {/* Content */}
-                      <div className="p-6 flex flex-col flex-grow">
-                        <p className="text-gray-600 mb-6 leading-relaxed flex-grow">
+                      <div className="px-6 py-5 flex flex-col flex-grow">
+                        <p className="text-gray-600 mb-4 leading-relaxed flex-grow">
                           {place.description}
                         </p>
                         
