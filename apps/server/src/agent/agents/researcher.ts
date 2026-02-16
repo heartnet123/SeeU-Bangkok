@@ -28,7 +28,7 @@ Remember: You are gathering information for trip planning. Focus on relevance an
 // Create the researcher agent
 export function createResearcherAgent(model?: ChatOpenAI) {
 	const llm = model || new ChatOpenAI({
-		modelName: "gpt-4o-mini",
+		modelName: "gpt-5-nano",
 		temperature: 0,
 	});
 

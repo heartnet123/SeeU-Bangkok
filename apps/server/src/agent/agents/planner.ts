@@ -34,7 +34,7 @@ Remember: You are creating practical, enjoyable trip plans. Balance efficiency w
 // Create the planner agent
 export function createPlannerAgent(model?: ChatOpenAI) {
 	const llm = model || new ChatOpenAI({
-		modelName: "gpt-4o-mini",
+		modelName: "gpt-5-nano",
 		temperature: 0,
 	});
 

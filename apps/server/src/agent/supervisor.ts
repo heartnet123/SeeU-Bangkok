@@ -56,7 +56,7 @@ export function createTripPlannerSupervisor(config: SupervisorConfig = {}): any 
 	// Create supervisor workflow
 	const supervisor = createSupervisor({
 		agents: [researcherAgent, plannerAgent, criticAgent],
-		model: llm,
+		llm,
 		prompt: SUPERVISOR_PROMPT,
 	});
 

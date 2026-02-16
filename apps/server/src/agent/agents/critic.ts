@@ -35,7 +35,7 @@ Remember: Your goal is to ensure users get high-quality, feasible trip plans. Be
 // Create the critic agent
 export function createCriticAgent(model?: ChatOpenAI) {
 	const llm = model || new ChatOpenAI({
-		modelName: "gpt-4o-mini",
+		modelName: "gpt-5-nano",
 		temperature: 0,
 	});
 

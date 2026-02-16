@@ -86,6 +86,7 @@ export default function TripPlannerPage() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
   const [isBottomSheetExpanded, setIsBottomSheetExpanded] = useState(true);
+  const [initialPlaces, setInitialPlaces] = useState<PlaceItem[]>([]);
 
   const selectedTrip = trips.find((t) => t.id === selectedTripId) || null;
 
@@ -105,6 +106,38 @@ export default function TripPlannerPage() {
         { enableHighAccuracy: true, maximumAge: 30_000, timeout: 10_000 }
       );
     }
+  }, []);
+
+  // Fetch initial places on mount
+  useEffect(() => {
+    const fetchInitialPlaces = async () => {
+      try {
+        const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3000";
+        const response = await fetch(`${serverUrl}/api/places?limit=50`);
+        
+        if (!response.ok) {
+          throw new Error("Failed to fetch initial places");
+        }
+
+        const data = await response.json();
+        
+        if (data.success && Array.isArray(data.data)) {
+          setInitialPlaces(data.data.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            slug: p.slug || p.id,
+            lat: p.lat,
+            lng: p.lng,
+            tags: p.tags || [],
+            price: p.price,
+          })));
+        }
+      } catch (error) {
+        console.error("Error fetching initial places:", error);
+      }
+    };
+
+    fetchInitialPlaces();
   }, []);
 
   // Debounced search function
@@ -334,12 +367,18 @@ export default function TripPlannerPage() {
   };
 
   // Combine all places for map
-  const allPlacesForMap = useMemo(() => [
-    ...transformPlacesForMap(foundPlaces),
-    ...transformPlacesForMap(searchResults),
-    ...transformTripStopsForMap(selectedTrip),
-    ...transformItineraryStopsForMap(agentItinerary?.stops || []),
-  ], [foundPlaces, searchResults, selectedTrip, agentItinerary]);
+  // Show initial places when no search is active, otherwise show search results
+  const allPlacesForMap = useMemo(() => {
+    const hasActiveSearch = searchQuery.trim() || selectedCategory !== 'all';
+    const placesToShow = hasActiveSearch ? searchResults : initialPlaces;
+    
+    return [
+      ...transformPlacesForMap(foundPlaces),
+      ...transformPlacesForMap(placesToShow),
+      ...transformTripStopsForMap(selectedTrip),
+      ...transformItineraryStopsForMap(agentItinerary?.stops || []),
+    ];
+  }, [foundPlaces, searchResults, initialPlaces, searchQuery, selectedCategory, selectedTrip, agentItinerary]);
 
   const itineraryStopsForMap = (agentItinerary?.stops || [])
     .filter((s: ItineraryStop) => s.lat && s.lng)
