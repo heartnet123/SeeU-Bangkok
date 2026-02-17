@@ -24,7 +24,12 @@ app.route("/api", appRouter);
 app.get('/scalar', Scalar({ url: '/doc', theme: 'purple', pageTitle: 'My API Reference' }))
 // Health check 
 app.get("/", (c) => {
-    return c.text("TripPlanner API - OK");
+	return c.text("TripPlanner API - OK");
 });
 
-export default app;
+const idleTimeout = Number(process.env.BUN_IDLE_TIMEOUT ?? "120");
+
+export default {
+	fetch: app.fetch,
+	idleTimeout: Number.isFinite(idleTimeout) && idleTimeout > 0 ? idleTimeout : 120,
+};

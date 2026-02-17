@@ -41,19 +41,52 @@ agentV2.post(
 		// Streaming mode
 		if (body.stream) {
 			return streamSSE(c, async (stream) => {
+				let completed = false;
+				const writeKeepAlive = async () => {
+					try {
+						await stream.writeSSE({
+							event: "ping",
+							data: "keepalive",
+						});
+					} catch {
+						// Ignore write failures when client disconnected.
+					}
+				};
+				const keepAliveTimer = setInterval(() => {
+					void writeKeepAlive();
+				}, 15000);
 				try {
 					for await (const event of streamAgentExecution(options)) {
 						await stream.writeSSE({
 							event: event.event,
 							data: event.data,
 						});
+						if (event.event === "done") {
+							completed = true;
+						}
 					}
-				} catch (err: any) {
-					await stream.writeSSE({
-						event: "error",
-						data: err.message || "Processing failed",
-					});
+				} catch (err: unknown) {
+					const message = err instanceof Error ? err.message : "Processing failed";
+					try {
+						await stream.writeSSE({
+							event: "error",
+							data: message,
+						});
+					} catch {
+						// Ignore write failures when client disconnected.
+					}
 				} finally {
+					clearInterval(keepAliveTimer);
+					if (!completed) {
+						try {
+							await stream.writeSSE({
+								event: "done",
+								data: "error",
+							});
+						} catch {
+							// Ignore write failures when client disconnected.
+						}
+					}
 					stream.close();
 				}
 			});

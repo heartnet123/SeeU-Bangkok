@@ -728,133 +728,144 @@ export function ChatPanel({
         const decoder = new TextDecoder("utf-8");
         let buffer = "";
 
-        const flush = () => {
-          const chunks = buffer.split("\n\n");
-          buffer = chunks.pop() || "";
-          for (const chunk of chunks) {
-            const lines = chunk.split(/\n|\r\n?/).filter(Boolean);
-            let event: string | null = null;
-            let data: string[] = [];
-            for (const line of lines) {
-              if (line.startsWith("event:")) event = line.slice(6).trim();
-              if (line.startsWith("data:")) data.push(line.slice(5).trim());
-            }
-            const joined = data.join("\n");
-            if (!event) continue;
-            
-            switch (event) {
-              case "start":
-                console.log("[Agent v2] Started:", joined);
-                break;
-              case "agent":
-                try {
-                  const payload = JSON.parse(joined);
-                  // Update workflow with agent routing
-                  setWorkflowSteps(prev => [
-                    { ...prev[0], status: "complete" },
-                    {
-                      type: "search",
-                      label: `Routing to ${payload.agent} agent`,
-                      status: "loading"
-                    }
-                  ]);
-                } catch (e) {}
-                break;
-              case "message":
-                setEvents((prev) => [...prev, { type: "message", text: joined }]);
-                // Calculate latency when first message arrives
-                if (startTime) {
-                  setLatency((Date.now() - startTime) / 1000);
-                }
-                break;
-              case "status":
-                setEvents((prev) => [...prev, { type: "status", text: joined }]);
-                // Add to workflow steps
-                setWorkflowSteps(prev => {
-                  const updated = prev.map(s => ({ ...s, status: "complete" as const }));
-                  return [...updated, {
-                    type: "reasoning",
-                    label: joined,
-                    status: "loading" as const
-                  }];
-                });
-                break;
-              case "suggestions":
-                try {
-                  const payload = JSON.parse(joined);
-                  setEvents((prev) => [...prev, { type: "suggestions", data: payload }]);
-                  // Add to workflow
-                  setWorkflowSteps(prev => {
-                    const updated = prev.map(s => ({ ...s, status: "complete" as const }));
-                    return [...updated, {
-                      type: "location",
-                      label: `Found ${payload.places?.length || 0} places`,
-                      badges: payload.places?.slice(0, 3).map((p: any) => p.name),
-                      status: "complete" as const
-                    }];
-                  });
-                } catch (e) {}
-                break;
-              case "tools":
-                try {
-                  const payload = JSON.parse(joined);
-                  setEvents((prev) => [...prev, { type: "tools", data: payload }]);
-                  // Add tool usage to workflow
-                  const toolNames = payload.tools?.map((t: any) => t.tool) || [];
-                  setWorkflowSteps(prev => {
-                    const updated = prev.map(s => ({ ...s, status: "complete" as const }));
-                    return [...updated, {
-                      type: "search",
-                      label: `Used ${toolNames.length} tool${toolNames.length > 1 ? 's' : ''}`,
-                      badges: toolNames,
-                      status: "complete" as const
-                    }];
-                  });
-                } catch (e) {}
-                break;
-              case "context":
-                try {
-                  const payload = JSON.parse(joined);
-                  setEvents((prev) => [...prev, { type: "context", data: payload }]);
-                  // Add context retrieval to workflow
-                  setWorkflowSteps(prev => {
-                    const updated = prev.map(s => ({ ...s, status: "complete" as const }));
-                    return [...updated, {
-                      type: "retrieve",
-                      label: `Retrieved ${payload.documents || 0} documents`,
-                      status: "complete" as const
-                    }];
-                  });
-                } catch (e) {}
-                break;
-              case "itinerary":
-                try {
-                  const payload = JSON.parse(joined);
-                  setEvents((prev) => [...prev, { type: "itinerary", data: payload }]);
-                  // Add route creation to workflow
-                  setWorkflowSteps(prev => {
-                    const updated = prev.map(s => ({ ...s, status: "complete" as const }));
-                    return [...updated, {
-                      type: "route",
-                      label: `Created itinerary: ${payload.title}`,
-                      badges: [`${payload.stops?.length || 0} stops`],
-                      status: "complete" as const
-                    }];
-                  });
-                } catch (e) {}
-                break;
-              case "error":
-                setEvents((prev) => [...prev, { type: "error", text: joined }]);
-                break;
-              case "done":
-                setEvents((prev) => [...prev, { type: "done" }]);
-                setIsStreaming(false);
-                // Mark all steps complete
-                setWorkflowSteps(prev => prev.map(s => ({ ...s, status: "complete" as const })));
-                break;
-            }
-          }
-        };
+		const parseChunk = (chunk: string) => {
+			const lines = chunk.split(/\r?\n/).filter((line) => line.length > 0);
+			let event: string | null = null;
+			const data: string[] = [];
+			for (const line of lines) {
+				if (line.startsWith("event:")) event = line.slice(6).trim();
+				if (line.startsWith("data:")) data.push(line.slice(5).trim());
+			}
+			const joined = data.join("\n");
+			if (!event) return;
+
+			switch (event) {
+				case "start":
+					console.log("[Agent v2] Started:", joined);
+					break;
+				case "agent":
+					try {
+						const payload = JSON.parse(joined);
+						setWorkflowSteps((prev) => [
+							{ ...prev[0], status: "complete" },
+							{
+								type: "search",
+								label: `Routing to ${payload.agent} agent`,
+								status: "loading",
+							},
+						]);
+					} catch {}
+					break;
+				case "message":
+					setEvents((prev) => [...prev, { type: "message", text: joined }]);
+					if (startTime) {
+						setLatency((Date.now() - startTime) / 1000);
+					}
+					break;
+				case "status":
+					setEvents((prev) => [...prev, { type: "status", text: joined }]);
+					setWorkflowSteps((prev) => {
+						const updated = prev.map((s) => ({ ...s, status: "complete" as const }));
+						return [
+							...updated,
+							{
+								type: "reasoning",
+								label: joined,
+								status: "loading" as const,
+							},
+						];
+					});
+					break;
+				case "suggestions":
+					try {
+						const payload = JSON.parse(joined);
+						setEvents((prev) => [...prev, { type: "suggestions", data: payload }]);
+						setWorkflowSteps((prev) => {
+							const updated = prev.map((s) => ({ ...s, status: "complete" as const }));
+							return [
+								...updated,
+								{
+									type: "location",
+									label: `Found ${payload.places?.length || 0} places`,
+									badges: payload.places?.slice(0, 3).map((p: any) => p.name),
+									status: "complete" as const,
+								},
+							];
+						});
+					} catch {}
+					break;
+				case "tools":
+					try {
+						const payload = JSON.parse(joined);
+						setEvents((prev) => [...prev, { type: "tools", data: payload }]);
+						const toolNames = payload.tools?.map((t: any) => t.tool) || [];
+						setWorkflowSteps((prev) => {
+							const updated = prev.map((s) => ({ ...s, status: "complete" as const }));
+							return [
+								...updated,
+								{
+									type: "search",
+									label: `Used ${toolNames.length} tool${toolNames.length > 1 ? "s" : ""}`,
+									badges: toolNames,
+									status: "complete" as const,
+								},
+							];
+						});
+					} catch {}
+					break;
+				case "context":
+					try {
+						const payload = JSON.parse(joined);
+						setEvents((prev) => [...prev, { type: "context", data: payload }]);
+						setWorkflowSteps((prev) => {
+							const updated = prev.map((s) => ({ ...s, status: "complete" as const }));
+							return [
+								...updated,
+								{
+									type: "retrieve",
+									label: `Retrieved ${payload.documents || 0} documents`,
+									status: "complete" as const,
+								},
+							];
+						});
+					} catch {}
+					break;
+				case "itinerary":
+					try {
+						const payload = JSON.parse(joined);
+						setEvents((prev) => [...prev, { type: "itinerary", data: payload }]);
+						setWorkflowSteps((prev) => {
+							const updated = prev.map((s) => ({ ...s, status: "complete" as const }));
+							return [
+								...updated,
+								{
+									type: "route",
+									label: `Created itinerary: ${payload.title}`,
+									badges: [`${payload.stops?.length || 0} stops`],
+									status: "complete" as const,
+								},
+							];
+						});
+					} catch {}
+					break;
+				case "error":
+					setEvents((prev) => [...prev, { type: "error", text: joined }]);
+					break;
+				case "done":
+					setEvents((prev) => [...prev, { type: "done" }]);
+					setIsStreaming(false);
+					setWorkflowSteps((prev) => prev.map((s) => ({ ...s, status: "complete" as const })));
+					break;
+			}
+		};
+
+		const flush = () => {
+			const chunks = buffer.split(/\r?\n\r?\n/);
+			buffer = chunks.pop() || "";
+			for (const chunk of chunks) {
+				parseChunk(chunk);
+			}
+		};
 
         while (true) {
           const { value, done } = await reader.read();
@@ -862,8 +873,12 @@ export function ChatPanel({
           buffer += decoder.decode(value, { stream: true });
           flush();
         }
-        buffer += decoder.decode();
-        flush();
+		buffer += decoder.decode();
+		flush();
+		if (buffer.trim().length > 0) {
+			parseChunk(buffer);
+			buffer = "";
+		}
       } catch (e: any) {
         if (e?.name !== "AbortError") {
           setEvents((prev) => [...prev, { type: "error", text: e?.message || "Stream error" }]);

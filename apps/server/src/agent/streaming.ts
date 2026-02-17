@@ -1,5 +1,5 @@
 // Streaming module - SSE adapter for the multi-agent supervisor
-import { streamSupervisor } from "./supervisor";
+import { streamSupervisor, invokeSupervisor } from "./supervisor";
 import { MemoryManager } from "./memory";
 import type { Itinerary } from "./state";
 
@@ -31,6 +31,12 @@ export async function* streamAgentExecution(
 ): AsyncGenerator<SSEEvent> {
 	const { messages, userLocation, sessionId, userId } = options;
 
+	// Emit start event immediately to open the SSE stream early.
+	yield {
+		event: "start",
+		data: JSON.stringify({ status: "processing", sessionId }),
+	};
+
 	// Initialize memory manager if we have session/user context
 	const memory = new MemoryManager({ sessionId, userId });
 
@@ -49,12 +55,6 @@ export async function* streamAgentExecution(
 	if (userId) {
 		userPreferences = await memory.getUserPreferences();
 	}
-
-	// Emit start event
-	yield {
-		event: "start",
-		data: JSON.stringify({ status: "processing", sessionId }),
-	};
 
 	// Track state for aggregating results
 	const toolsUsed: Array<{ tool: string; args: any }> = [];
@@ -167,10 +167,49 @@ export async function* streamAgentExecution(
 			data: "ok",
 		};
 	} catch (error: any) {
-		// Emit error event
+		const streamErrorMessage = error?.message || "Agent processing failed";
+		const isStreamInputIssue = /input stream/i.test(streamErrorMessage);
+
+		// Fallback for flaky model streaming/parser errors: run a non-streamed invoke.
+		if (isStreamInputIssue) {
+			try {
+				const fallbackResult = await invokeSupervisor(conversationMessages, {
+					userLocation,
+					sessionId,
+					userId,
+				});
+				const assistantMessage = [...(fallbackResult.messages || [])]
+					.reverse()
+					.find(
+						(msg) =>
+							msg.role === "assistant" &&
+							typeof msg.content === "string" &&
+							msg.content.trim().length > 0
+					);
+
+				if (assistantMessage?.content) {
+					yield {
+						event: "message",
+						data: assistantMessage.content,
+					};
+					yield {
+						event: "done",
+						data: "ok",
+					};
+					return;
+				}
+			} catch {
+				// Continue to standard error emission below.
+			}
+		}
+
 		yield {
 			event: "error",
-			data: error.message || "Agent processing failed",
+			data: streamErrorMessage,
+		};
+		yield {
+			event: "done",
+			data: "error",
 		};
 	}
 }

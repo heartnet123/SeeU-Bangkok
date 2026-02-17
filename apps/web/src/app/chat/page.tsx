@@ -65,77 +65,83 @@ function useSSEStream() {
       const decoder = new TextDecoder('utf-8')
       let buffer = ''
 
+      const parseChunk = (chunk: string) => {
+        const lines = chunk.split(/\r?\n/).filter((line) => line.length > 0)
+        let event: string | null = null
+        const data: string[] = []
+        for (const line of lines) {
+          if (line.startsWith('event:')) event = line.slice(6).trim()
+          if (line.startsWith('data:')) data.push(line.slice(5).trim())
+        }
+        const joined = data.join('\n')
+        if (!event) return
+
+        switch (event) {
+          case 'start':
+            console.log('[Agent v2] Started:', joined)
+            break
+          case 'agent':
+            try {
+              const payload = JSON.parse(joined)
+              setEvents((prev) => [...prev, { type: 'status', text: `Agent: ${payload.agent}` }])
+            } catch {}
+            break
+          case 'message':
+            setEvents((prev) => [...prev, { type: 'message', text: joined }])
+            break
+          case 'status':
+            setEvents((prev) => [...prev, { type: 'status', text: joined }])
+            break
+          case 'suggestions':
+            try {
+              const payload = JSON.parse(joined)
+              setEvents((prev) => [...prev, { type: 'suggestions', data: payload }])
+            } catch {
+              setEvents((prev) => [...prev, { type: 'error', text: 'Bad suggestions payload' }])
+            }
+            break
+          case 'itinerary':
+            try {
+              const payload = JSON.parse(joined)
+              setEvents((prev) => [...prev, { type: 'itinerary', data: payload }])
+            } catch {
+              setEvents((prev) => [...prev, { type: 'error', text: 'Bad itinerary payload' }])
+            }
+            break
+          case 'tools':
+            try {
+              const payload = JSON.parse(joined)
+              setEvents((prev) => [...prev, { type: 'tools', data: payload }])
+            } catch {
+              setEvents((prev) => [...prev, { type: 'error', text: 'Bad tools payload' }])
+            }
+            break
+          case 'context':
+            try {
+              const payload = JSON.parse(joined)
+              setEvents((prev) => [...prev, { type: 'context', data: payload }])
+            } catch {
+              setEvents((prev) => [...prev, { type: 'error', text: 'Bad context payload' }])
+            }
+            break
+          case 'error':
+            setEvents((prev) => [...prev, { type: 'error', text: joined }])
+            break
+          case 'done':
+            setEvents((prev) => [...prev, { type: 'done' }])
+            setStreaming(false)
+            break
+          // Ignore keepalive pings and unknown events
+          default:
+            break
+        }
+      }
+
       const flush = () => {
-        const chunks = buffer.split('\n\n')
+        const chunks = buffer.split(/\r?\n\r?\n/)
         buffer = chunks.pop() || ''
         for (const chunk of chunks) {
-          const lines = chunk.split(/\n|\r\n?/).filter(Boolean)
-          let event: string | null = null
-          let data: string[] = []
-          for (const line of lines) {
-            if (line.startsWith('event:')) event = line.slice(6).trim()
-            if (line.startsWith('data:')) data.push(line.slice(5).trim())
-          }
-          const joined = data.join('\n')
-          if (!event) continue
-          switch (event) {
-            case 'start':
-              // v2 API start event
-              console.log('[Agent v2] Started:', joined)
-              break
-            case 'agent':
-              // v2 API agent routing event
-              try {
-                const payload = JSON.parse(joined)
-                setEvents((prev) => [...prev, { type: 'status', text: `Agent: ${payload.agent}` }])
-              } catch (e) {}
-              break
-            case 'message':
-              setEvents((prev) => [...prev, { type: 'message', text: joined }])
-              break
-            case 'status':
-              setEvents((prev) => [...prev, { type: 'status', text: joined }])
-              break
-            case 'suggestions':
-              try {
-                const payload = JSON.parse(joined)
-                setEvents((prev) => [...prev, { type: 'suggestions', data: payload }])
-              } catch (e) {
-                setEvents((prev) => [...prev, { type: 'error', text: 'Bad suggestions payload' }])
-              }
-              break
-            case 'itinerary':
-              try {
-                const payload = JSON.parse(joined)
-                setEvents((prev) => [...prev, { type: 'itinerary', data: payload }])
-              } catch (e) {
-                setEvents((prev) => [...prev, { type: 'error', text: 'Bad itinerary payload' }])
-              }
-              break
-            case 'tools':
-              try {
-                const payload = JSON.parse(joined)
-                setEvents((prev) => [...prev, { type: 'tools', data: payload }])
-              } catch (e) {
-                setEvents((prev) => [...prev, { type: 'error', text: 'Bad tools payload' }])
-              }
-              break
-            case 'context':
-              try {
-                const payload = JSON.parse(joined)
-                setEvents((prev) => [...prev, { type: 'context', data: payload }])
-              } catch (e) {
-                setEvents((prev) => [...prev, { type: 'error', text: 'Bad context payload' }])
-              }
-              break
-            case 'error':
-              setEvents((prev) => [...prev, { type: 'error', text: joined }])
-              break
-            case 'done':
-              setEvents((prev) => [...prev, { type: 'done' }])
-              setStreaming(false)
-              break
-          }
+          parseChunk(chunk)
         }
       }
 
@@ -146,9 +152,14 @@ function useSSEStream() {
         buffer += decoder.decode(value, { stream: true })
         flush()
       }
-      // Final flush
+      // Flush any remaining bytes from the decoder
       buffer += decoder.decode()
       flush()
+      // Parse any remaining buffer content (prevents partial transfer data loss)
+      if (buffer.trim().length > 0) {
+        parseChunk(buffer)
+        buffer = ''
+      }
     } catch (e: any) {
       if (e?.name !== 'AbortError') {
         setEvents((prev) => [...prev, { type: 'error', text: e?.message || 'Stream error' }])
