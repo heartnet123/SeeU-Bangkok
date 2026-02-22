@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { NewTripDialog } from "@/components/trips/new-trip-dialog";
+import { EditTripDialog } from "@/components/trips/edit-trip-dialog";
 import type { Trip, TripStop } from "@/components/planner/mock-data";
 import { mockTrips } from "@/components/planner/mock-data";
 import { toast } from "sonner";
@@ -91,12 +92,15 @@ export default function TripPlannerPage() {
   const [searchResults, setSearchResults] = useState<PlaceItem[]>([]);
 
   // Panel visibility states
-  const [isTripsPanelOpen, setIsTripsPanelOpen] = useState(true);
-  const [isItineraryPanelOpen, setIsItineraryPanelOpen] = useState(true);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
   const [isBottomSheetExpanded, setIsBottomSheetExpanded] = useState(true);
   const [isNewTripDialogOpen, setIsNewTripDialogOpen] = useState(false);
+  const [isLeftPanelOpen, setIsLeftPanelOpen] = useState(true);
+  const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
+  const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
+  const [routeDistanceKm, setRouteDistanceKm] = useState<number | null>(null);
+  const [routeTravelMin, setRouteTravelMin] = useState<number | null>(null);
 
   const selectedTrip = trips.find((t) => t.id === selectedTripId) || null;
 
@@ -307,7 +311,10 @@ export default function TripPlannerPage() {
   };
 
   const handleEditTrip = (tripId: string) => {
-    console.log("Edit trip:", tripId);
+    const trip = trips.find(t => t.id === tripId);
+    if (trip) {
+      setEditingTrip(trip);
+    }
   };
 
   const handleReorderTrips = (orderedTripIds: string[]) => {
@@ -431,10 +438,15 @@ export default function TripPlannerPage() {
       .map((stop) => [stop.lng, stop.lat] as [number, number]);
   }, [selectedTrip]);
 
+  const stopsSuggestedDuration = useMemo(() => {
+    if (!selectedTrip || !selectedTrip.stops) return 0;
+    return selectedTrip.stops.reduce((sum, s) => sum + (s.suggestedDurationMin || 0), 0);
+  }, [selectedTrip]);
+
   return (
     <div className="relative w-full h-screen overflow-hidden">
-      {/* Fullscreen Map Background */}
-      <div className="absolute inset-0 z-0">
+      {/* Fullscreen Map Background - reserve space for side panels on md+ */}
+      <div className="absolute inset-0 z-0 md:left-[400px] md:right-[400px]">
         <MapContainer
           places={allPlacesForMap}
           selectedPlace={selectedPlace}
@@ -447,12 +459,16 @@ export default function TripPlannerPage() {
           initialZoom={12}
           itineraryStops={itineraryStopsForMap}
           tripRoute={tripRoute}
+          onRouteInfo={({ distanceKm, durationMin }) => {
+            setRouteDistanceKm(distanceKm);
+            setRouteTravelMin(durationMin);
+          }}
         />
       </div>
 
       {/* Perplexity-style Search Bar */}
       <motion.div 
-        className="absolute top-4 left-4 right-4 z-20 md:left-1/2 md:-translate-x-1/2 md:right-auto md:w-[600px]"
+        className="absolute top-4 left-4 right-4 z-20 md:left-[400px] md:right-[400px] md:mx-auto md:w-[600px]"
         initial={{ y: -50, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.5, delay: 0.2 }}
@@ -606,11 +622,11 @@ export default function TripPlannerPage() {
       {/* Left Panel - Trip List (Desktop Only) */}
       <div className="hidden md:block">
         <CollapsiblePanel
-          isOpen={isTripsPanelOpen}
-          onClose={() => setIsTripsPanelOpen(false)}
+          isOpen={isLeftPanelOpen}
+          onClose={() => setIsLeftPanelOpen(false)}
           position="left"
           title="My Trips"
-          width="w-[380px]"
+          width="w-[400px]"
         >
           <TripListColumn
             trips={trips}
@@ -627,8 +643,8 @@ export default function TripPlannerPage() {
       {/* Right Panel - Itinerary (Desktop Only) */}
       <div className="hidden md:block">
         <CollapsiblePanel
-          isOpen={isItineraryPanelOpen}
-          onClose={() => setIsItineraryPanelOpen(false)}
+          isOpen={isRightPanelOpen}
+          onClose={() => setIsRightPanelOpen(false)}
           position="right"
           title={selectedTrip?.name || "Itinerary"}
           width="w-[400px]"
@@ -637,6 +653,8 @@ export default function TripPlannerPage() {
             trip={selectedTrip}
             onEditTrip={handleEditTrip}
             onReorderStops={handleReorderStops}
+            totalDurationMin={(stopsSuggestedDuration || 0) + (routeTravelMin || 0)}
+            totalDistanceKm={routeDistanceKm ?? selectedTrip?.totalDistanceKm ?? 0}
           />
         </CollapsiblePanel>
       </div>
@@ -673,6 +691,8 @@ export default function TripPlannerPage() {
               trip={selectedTrip}
               onEditTrip={handleEditTrip}
               onReorderStops={handleReorderStops}
+              totalDurationMin={(stopsSuggestedDuration || 0) + (routeTravelMin || 0)}
+              totalDistanceKm={routeDistanceKm ?? selectedTrip?.totalDistanceKm ?? 0}
             />
           </div>
         </div>
@@ -692,6 +712,16 @@ export default function TripPlannerPage() {
         isOpen={isNewTripDialogOpen}
         onClose={() => setIsNewTripDialogOpen(false)}
         onSuccess={handleNewTripSuccess}
+        serverUrl={process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3000"}
+        sessionToken={session?.access_token || ""}
+      />
+
+      {/* Edit Trip Dialog */}
+      <EditTripDialog
+        isOpen={editingTrip !== null}
+        onClose={() => setEditingTrip(null)}
+        onSuccess={fetchSavedTrips}
+        trip={editingTrip ? { ...editingTrip, title: editingTrip.name } : null}
         serverUrl={process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3000"}
         sessionToken={session?.access_token || ""}
       />
