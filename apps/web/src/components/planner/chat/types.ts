@@ -66,6 +66,8 @@ export interface ParsedItinerary {
 		suggested_time_min: number;
 		distance_from_prev_km: number;
 		notes: string;
+		lat?: number;
+		lng?: number;
 	}>;
 	total_distance_km: number;
 	total_minutes: number;

@@ -987,6 +987,29 @@ const MapContainer: React.FC<MapContainerProps> = ({
     showPlacePopup(selectedPlace);
   }, [selectedPlace, mapLoaded, showPlacePopup, is3DEnabled]);
 
+  // Auto-fit bounds for itinerary preview
+  useEffect(() => {
+    if (!map.current || !mapLoaded || !previewItinerary?.stops?.length) return;
+
+    const stops = previewItinerary.stops as any[];
+    const coordinates = stops
+      .filter((s) => typeof s.lng === 'number' && typeof s.lat === 'number')
+      .map((s) => [s.lng, s.lat] as [number, number]);
+
+    if (coordinates.length < 2) return;
+
+    const bounds = new mapboxgl.LngLatBounds(coordinates[0], coordinates[0]);
+    for (const coord of coordinates) {
+      bounds.extend(coord);
+    }
+
+    map.current.fitBounds(bounds, {
+      padding: { top: 80, bottom: 80, left: 80, right: 400 }, // right padding for the itinerary panel
+      duration: 1200,
+      maxZoom: 15,
+    });
+  }, [previewItinerary, mapLoaded]);
+
   // Map control handlers
   const handleStyleChange = useCallback((style: 'dark' | 'light' | 'satellite') => {
     setMapStyle(style);

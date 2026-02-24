@@ -39,12 +39,13 @@ export function parsePlacesFromMarkdown(text: string): ParsedPlace[] {
 }
 
 export function isItineraryText(text: string): boolean {
-	if (!/itinerary/i.test(text)) return false;
+	if (!/itinerary|tour|trip plan/i.test(text)) return false;
 	const durCount = (text.match(/\bDuration:/gi) ?? []).length;
-	if (durCount >= 2) return true;
+	const locCount = (text.match(/\bLocation:/gi) ?? []).length;
+	if (durCount >= 2 || locCount >= 2) return true;
 	const hasTotalDuration = /Total Duration/i.test(text);
 	const stopCount = (text.match(/^\d+[\.\)]\s+/gm) ?? []).length;
-	return hasTotalDuration && stopCount >= 2;
+	return (hasTotalDuration || locCount >= 2) && stopCount >= 2;
 }
 
 function parseDurationToMinutes(value: string, unit: string): number {
@@ -53,7 +54,7 @@ function parseDurationToMinutes(value: string, unit: string): number {
 }
 
 export function parseItineraryFromText(text: string): ParsedItinerary | null {
-	const titleMatch = text.match(/^(.+itinerary.+)$/im);
+	const titleMatch = text.match(/^(.+(?:itinerary|tour|trip\splan).+)$/im);
 	const title = titleMatch ? titleMatch[1].replace(/\*\*/g, "").trim() : "Trip Plan";
 
 	const stopSections = text.split(/\n(?=\d+[\.\)]\s+\*{0,2}[A-Z\u0E00-\u0E7F])/);
@@ -72,8 +73,8 @@ export function parseItineraryFromText(text: string): ParsedItinerary | null {
 		const distMatch = section.match(/Distance[^:\d]*[:~]?\s*~?([\d.]+)\s*km/i);
 		const distance_from_prev_km = distMatch ? parseFloat(distMatch[1]) : 0;
 
-		let notes = "";
-		const explicitDesc = section.match(/Description:\s*([^\n]+)/i);
+		let notes = "Trip stop details";
+		const explicitDesc = section.match(/\bDescription\b[^:\n]*:\s*\**([^*]+)\**/i) || section.match(/\bDescription\b[^:\n]*:\s*([^\n]+)/i);
 		if (explicitDesc) {
 			notes = explicitDesc[1].trim();
 		} else {
@@ -86,7 +87,11 @@ export function parseItineraryFromText(text: string): ParsedItinerary | null {
 			}
 		}
 
-		stops.push({ name, suggested_time_min, distance_from_prev_km, notes });
+		const locMatch = section.match(/\bLocation\b[^:\n]*:\s*\**([-\d.]+)[^\d,]*,\s*\**([-\d.]+)/i);
+		const lat = locMatch ? parseFloat(locMatch[1]) : undefined;
+		const lng = locMatch ? parseFloat(locMatch[2]) : undefined;
+
+		stops.push({ name, suggested_time_min, distance_from_prev_km, notes, lat, lng });
 	}
 
 	if (stops.length < 2) return null;
