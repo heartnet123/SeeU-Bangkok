@@ -33,7 +33,8 @@ RESPONSE FORMAT:
 Remember: Your goal is to ensure users get high-quality, feasible trip plans. Be helpful, not overly critical.`;
 
 // Create the critic agent
-export function createCriticAgent(model?: ChatOpenAI) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function createCriticAgent(model?: ChatOpenAI): any {
 	const llm = model || new ChatOpenAI({
 		modelName: "gpt-5-nano",
 		temperature: 0,
@@ -48,4 +49,5 @@ export function createCriticAgent(model?: ChatOpenAI) {
 }
 
 // Pre-built critic agent instance
-export const criticAgent = createCriticAgent();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const criticAgent: any = createCriticAgent();

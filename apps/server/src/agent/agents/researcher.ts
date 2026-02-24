@@ -26,7 +26,8 @@ RESPONSE FORMAT:
 Remember: You are gathering information for trip planning. Focus on relevance and quality.`;
 
 // Create the researcher agent
-export function createResearcherAgent(model?: ChatOpenAI) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function createResearcherAgent(model?: ChatOpenAI): any {
 	const llm = model || new ChatOpenAI({
 		modelName: "gpt-5-nano",
 		temperature: 0,
@@ -41,4 +42,5 @@ export function createResearcherAgent(model?: ChatOpenAI) {
 }
 
 // Pre-built researcher agent instance
-export const researcherAgent = createResearcherAgent();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const researcherAgent: any = createResearcherAgent();

@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { zValidator } from '@hono/zod-validator'
 import { supabase } from '../lib/supabase'
-import { hfEmbed } from '../lib/hf'
+import { openaiEmbed } from '../lib/openai'
 import { nameToSlug } from '../lib/slug-utils'
 
 const admin = new Hono()
@@ -47,7 +47,7 @@ const updatePlaceSchema = z.object({
 admin.post('/embedding', zValidator('json', z.object({ text: z.string().min(1) })), async (c) => {
   const { text } = c.req.valid('json')
   try {
-    const embedding = await hfEmbed(text)
+    const embedding = await openaiEmbed(text)
     return c.json({ success: true, embedding })
   } catch (e: any) {
     return c.json({ success: false, error: e?.message || 'Embedding failed' }, 500)
@@ -58,40 +58,40 @@ admin.post('/embedding', zValidator('json', z.object({ text: z.string().min(1) }
 admin.get('/places', async (c) => {
   try {
     const { search, limit = '20', offset = '0' } = c.req.query()
-    
+
     let query = supabase
       .from('bangkok_unseen')
       .select('*')
       // Order by name to avoid missing timestamp columns
       .order('name', { ascending: true })
-    
+
     // Add search functionality if search parameter is provided
     if (search) {
       query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`)
     }
-    
+
     // Pagination
     const limitNum = parseInt(limit)
     const offsetNum = parseInt(offset)
     query = query.range(offsetNum, offsetNum + limitNum - 1)
-    
+
     const { data, error } = await query
-    
+
     if (error) {
       console.error('Error fetching places:', error)
-      return c.json({ 
-        success: false, 
+      return c.json({
+        success: false,
         message: 'Failed to fetch places',
         data: [],
-        error: error.message 
+        error: error.message
       }, 500)
     }
-    
+
     // Get total count for pagination
     const { count: totalCount } = await supabase
       .from('bangkok_unseen')
       .select('*', { count: 'exact', head: true })
-    
+
     // Clean the data and add slugs
     const cleanData = (data || []).map(place => ({
       ...place,
@@ -100,7 +100,7 @@ admin.get('/places', async (c) => {
       price: typeof place.price === 'number' ? place.price : 0,
       slug: nameToSlug(place.name || 'unknown-place')
     }))
-    
+
     return c.json({
       success: true,
       data: cleanData,
@@ -113,8 +113,8 @@ admin.get('/places', async (c) => {
     })
   } catch (error) {
     console.error('Server error:', error)
-    return c.json({ 
-      success: false, 
+    return c.json({
+      success: false,
       message: 'Internal server error',
       data: [],
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -126,7 +126,7 @@ admin.get('/places', async (c) => {
 admin.get('/places/:id', async (c) => {
   try {
     const id = c.req.param('id')
-    
+
     if (!id) {
       return c.json({
         success: false,
@@ -134,13 +134,13 @@ admin.get('/places/:id', async (c) => {
         data: null
       }, 400)
     }
-    
+
     const { data, error } = await supabase
       .from('bangkok_unseen')
       .select('*')
       .eq('id', id)
       .single()
-    
+
     if (error) {
       console.error('Error fetching place:', error)
       return c.json({
@@ -150,7 +150,7 @@ admin.get('/places/:id', async (c) => {
         error: error.message
       }, error.code === 'PGRST116' ? 404 : 500)
     }
-    
+
     // Clean the data and add slug
     const cleanData = {
       ...data,
@@ -161,7 +161,7 @@ admin.get('/places/:id', async (c) => {
       description: data.description || '',
       slug: nameToSlug(data.name)
     }
-    
+
     return c.json({
       success: true,
       data: cleanData
@@ -192,12 +192,12 @@ Tags: ${body.tags ? body.tags.join(', ') : ''}
 Address: ${body.address || ''}
 Price: ${body.price ? body.price + ' Baht' : 'Free'}
       `.trim()
-      
-      embedding = await hfEmbed(text)
+
+      embedding = await openaiEmbed(text)
     }
 
-    const slug = (body.slug && body.slug.length > 0) 
-      ? body.slug 
+    const slug = (body.slug && body.slug.length > 0)
+      ? body.slug
       : nameToSlug(body.name)
 
     const payload: any = {
@@ -233,7 +233,7 @@ Price: ${body.price ? body.price + ' Baht' : 'Free'}
 admin.put('/places/:id', zValidator('json', updatePlaceSchema), async (c) => {
   const id = c.req.param('id')
   const body = c.req.valid('json')
-  
+
   try {
     if (!id) {
       return c.json({
@@ -259,7 +259,7 @@ admin.put('/places/:id', zValidator('json', updatePlaceSchema), async (c) => {
 
     // Prepare update payload
     const updatePayload: any = {}
-    
+
     if (body.name !== undefined) updatePayload.name = body.name
     if (body.area !== undefined) updatePayload.area = body.area
     if (body.description !== undefined) updatePayload.description = body.description
@@ -269,7 +269,7 @@ admin.put('/places/:id', zValidator('json', updatePlaceSchema), async (c) => {
     if (body.address !== undefined) updatePayload.address = body.address
     if (body.price !== undefined) updatePayload.price = body.price
     if (body.image_url !== undefined) updatePayload.image_url = body.image_url
-    
+
     // Handle embedding
     let embedding = body.embedding
     if ((!embedding || embedding.length === 0) && body.compute_embedding) {
@@ -289,8 +289,8 @@ Tags: ${Array.isArray(tags) ? tags.join(', ') : ''}
 Address: ${address}
 Price: ${price ? price + ' Baht' : 'Free'}
       `.trim()
-      
-      embedding = await hfEmbed(text)
+
+      embedding = await openaiEmbed(text)
     }
     if (embedding && Array.isArray(embedding) && embedding.length) {
       updatePayload.embedding = embedding
@@ -314,7 +314,7 @@ Price: ${price ? price + ' Baht' : 'Free'}
 admin.delete('/places/:id', async (c) => {
   try {
     const id = c.req.param('id')
-    
+
     if (!id) {
       return c.json({
         success: false,
@@ -343,10 +343,10 @@ admin.delete('/places/:id', async (c) => {
       .eq('id', id)
 
     if (error) throw error
-    
-    return c.json({ 
-      success: true, 
-      message: `Place "${existingPlace.name}" has been deleted successfully` 
+
+    return c.json({
+      success: true,
+      message: `Place "${existingPlace.name}" has been deleted successfully`
     })
   } catch (e: any) {
     return c.json({ success: false, error: e?.message || 'Delete failed' }, 500)

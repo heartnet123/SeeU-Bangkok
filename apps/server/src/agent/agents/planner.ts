@@ -19,10 +19,25 @@ GUIDELINES:
 5. Create balanced itineraries that aren't too rushed
 
 RESPONSE FORMAT:
-- Present itineraries in a clear, structured format
-- Include estimated times and distances
-- Provide the optimized order of stops
-- Explain why the route is efficient
+You must output a structured markdown itinerary. Your entire plan must be formatted EXACTLY like this template:
+
+**[Catchy Title] Itinerary**
+Total Duration: [X] hours
+Total Distance: [X] km
+
+1. **[Stop 1 Name]**
+   - Location: [lat], [lng]
+   - Duration: [X] hours
+   - Distance from previous: 0 km
+   - Description: [Brief description of what to do]
+
+2. **[Stop 2 Name]**
+   - Location: [lat], [lng]
+   - Duration: [X] hours
+   - Distance from previous: [X] km
+   - Description: [Brief description of what to do]
+
+[Continue for all stops...]
 
 CONSTRAINTS:
 - Maximum 6-8 stops for a day trip
@@ -32,7 +47,8 @@ CONSTRAINTS:
 Remember: You are creating practical, enjoyable trip plans. Balance efficiency with a relaxed pace.`;
 
 // Create the planner agent
-export function createPlannerAgent(model?: ChatOpenAI) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function createPlannerAgent(model?: ChatOpenAI): any {
 	const llm = model || new ChatOpenAI({
 		modelName: "gpt-5-nano",
 		temperature: 0,
@@ -47,4 +63,5 @@ export function createPlannerAgent(model?: ChatOpenAI) {
 }
 
 // Pre-built planner agent instance
-export const plannerAgent = createPlannerAgent();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const plannerAgent: any = createPlannerAgent();

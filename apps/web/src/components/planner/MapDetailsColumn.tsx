@@ -168,12 +168,11 @@ export function MapDetailsColumn({ trip, isLoading = false, foundPlaces = [], it
               userLocation={userLocation ? [userLocation.lat, userLocation.lng] : undefined}
               initialCenter={[100.5018, 13.7563]} // Bangkok center
               initialZoom={12}
-              itineraryStops={itineraryStops.filter(s => s.lat && s.lng).map(s => ({
-                lat: s.lat!,
-                lng: s.lng!,
-                slug: s.slug,
-                name: s.name,
-              }))}
+              previewItinerary={
+                itineraryStops && itineraryStops.length > 0
+                  ? { stops: itineraryStops }
+                  : null
+              }
             />
           </div>
         </CardContent>

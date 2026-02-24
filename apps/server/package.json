@@ -14,7 +14,6 @@
 		"db:migrate": "drizzle-kit migrate"
 	},
 	"dependencies": {
-		"@huggingface/inference": "^2.8.0",
 		"openai": "^4.88.0",
 		"@hono/standard-validator": "^0.1.5",
 		"@scalar/hono-api-reference": "^0.9.18",

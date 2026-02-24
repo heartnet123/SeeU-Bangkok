@@ -15,13 +15,13 @@ import type { Trip, TripStop } from "@/types/trip";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
 
-import { 
-  Search, 
-  X, 
-  Globe, 
-  Utensils, 
-  Landmark, 
-  Building2, 
+import {
+  Search,
+  X,
+  Globe,
+  Utensils,
+  Landmark,
+  Building2,
   ShoppingBag,
   TreePine,
   Camera,
@@ -87,6 +87,7 @@ export default function TripPlannerPage() {
   const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
   const [isBottomSheetExpanded, setIsBottomSheetExpanded] = useState(true);
   const [initialPlaces, setInitialPlaces] = useState<PlaceItem[]>([]);
+  const [previewItinerary, setPreviewItinerary] = useState<any | null>(null);
 
   const selectedTrip = trips.find((t) => t.id === selectedTripId) || null;
 
@@ -114,13 +115,13 @@ export default function TripPlannerPage() {
       try {
         const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3000";
         const response = await fetch(`${serverUrl}/api/places?limit=50`);
-        
+
         if (!response.ok) {
           throw new Error("Failed to fetch initial places");
         }
 
         const data = await response.json();
-        
+
         if (data.success && Array.isArray(data.data)) {
           setInitialPlaces(data.data.map((p: any) => ({
             id: p.id,
@@ -151,7 +152,7 @@ export default function TripPlannerPage() {
     try {
       const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3000";
       const params = new URLSearchParams();
-      
+
       if (query.trim()) {
         params.append('query', query);
       }
@@ -161,13 +162,13 @@ export default function TripPlannerPage() {
       params.append('limit', '20');
 
       const response = await fetch(`${serverUrl}/api/places?${params.toString()}`);
-      
+
       if (!response.ok) {
         throw new Error('Search failed');
       }
 
       const data = await response.json();
-      
+
       if (data.success && Array.isArray(data.data)) {
         setSearchResults(data.data.map((p: any) => ({
           id: p.id,
@@ -366,28 +367,43 @@ export default function TripPlannerPage() {
       }));
   };
 
-  // Combine all places for map
-  // Show initial places when no search is active, otherwise show search results
+  const enrichedPreviewItinerary = useMemo(() => {
+    const targetItinerary = previewItinerary || agentItinerary;
+    if (!targetItinerary) return null;
+
+    return {
+      ...targetItinerary,
+      stops: targetItinerary.stops.map((stop: any) => {
+        // Try to find the location details in our loaded places
+        const place =
+          foundPlaces.find((p) => p.name === stop.name || p.id === stop.slug) ||
+          initialPlaces.find((p) => p.name === stop.name || p.id === stop.slug) ||
+          searchResults.find((p) => p.name === stop.name || p.id === stop.slug);
+
+        return {
+          ...stop,
+          lat: place?.lat ?? stop.lat,
+          lng: place?.lng ?? stop.lng,
+          slug: place?.id ?? stop.slug ?? stop.name,
+        };
+      })
+    };
+  }, [previewItinerary, agentItinerary, foundPlaces, initialPlaces, searchResults]);
+
   const allPlacesForMap = useMemo(() => {
+    if (enrichedPreviewItinerary) {
+      return transformItineraryStopsForMap(enrichedPreviewItinerary.stops || []);
+    }
+
     const hasActiveSearch = searchQuery.trim() || selectedCategory !== 'all';
     const placesToShow = hasActiveSearch ? searchResults : initialPlaces;
-    
+
     return [
       ...transformPlacesForMap(foundPlaces),
       ...transformPlacesForMap(placesToShow),
       ...transformTripStopsForMap(selectedTrip),
-      ...transformItineraryStopsForMap(agentItinerary?.stops || []),
     ];
-  }, [foundPlaces, searchResults, initialPlaces, searchQuery, selectedCategory, selectedTrip, agentItinerary]);
-
-  const itineraryStopsForMap = (agentItinerary?.stops || [])
-    .filter((s: ItineraryStop) => s.lat && s.lng)
-    .map((s: ItineraryStop) => ({
-      lat: s.lat!,
-      lng: s.lng!,
-      slug: s.slug,
-      name: s.name,
-    }));
+  }, [foundPlaces, searchResults, initialPlaces, searchQuery, selectedCategory, selectedTrip, enrichedPreviewItinerary]);
 
   return (
     <div className="relative w-full h-screen overflow-hidden">
@@ -403,12 +419,12 @@ export default function TripPlannerPage() {
           }
           initialCenter={[100.5018, 13.7563]}
           initialZoom={12}
-          itineraryStops={itineraryStopsForMap}
+          previewItinerary={enrichedPreviewItinerary}
         />
       </div>
 
       {/* Perplexity-style Search Bar */}
-      <motion.div 
+      <motion.div
         className="absolute top-4 left-4 right-4 z-20 md:left-1/2 md:-translate-x-1/2 md:right-auto md:w-[600px]"
         initial={{ y: -50, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -441,7 +457,7 @@ export default function TripPlannerPage() {
         </div>
 
         {/* Category Filters - Perplexity style */}
-        <motion.div 
+        <motion.div
           className="mt-3 flex gap-2 overflow-x-auto pb-2 scrollbar-hide"
           initial={{ y: -20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -450,18 +466,17 @@ export default function TripPlannerPage() {
           {CATEGORIES.map((category) => {
             const Icon = category.icon;
             const isSelected = selectedCategory === category.id;
-            
+
             return (
               <Button
                 key={category.id}
                 variant={isSelected ? "default" : "outline"}
                 size="sm"
                 onClick={() => setSelectedCategory(category.id)}
-                className={`flex items-center gap-2 whitespace-nowrap rounded-full transition-all ${
-                  isSelected 
-                    ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md' 
-                    : 'bg-white/95 backdrop-blur-md hover:bg-gray-50 border-0 shadow-md'
-                }`}
+                className={`flex items-center gap-2 whitespace-nowrap rounded-full transition-all ${isSelected
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md'
+                  : 'bg-white/95 backdrop-blur-md hover:bg-gray-50 border-0 shadow-md'
+                  }`}
               >
                 <Icon className="h-4 w-4" />
                 {category.label}
@@ -470,7 +485,7 @@ export default function TripPlannerPage() {
           })}
         </motion.div>
 
-{/* Search Results Dropdown */}
+        {/* Search Results Dropdown */}
         <AnimatePresence>
           {searchResults.length > 0 && (searchQuery || selectedCategory !== 'all') && (
             <motion.div
@@ -491,7 +506,7 @@ export default function TripPlannerPage() {
                     Clear
                   </Button>
                 </div>
-                
+
                 {/* Rich Place Cards Grid */}
                 <div className="grid grid-cols-2 gap-3 mt-2">
                   {searchResults.slice(0, 6).map((place, index) => (
@@ -531,7 +546,7 @@ export default function TripPlannerPage() {
                     </motion.div>
                   ))}
                 </div>
-                
+
                 {/* Show more results if available */}
                 {searchResults.length > 6 && (
                   <div className="mt-3 text-center">
@@ -640,6 +655,7 @@ export default function TripPlannerPage() {
         onPlacesFound={handlePlacesFound}
         onAddPlaceToTrip={handleAddPlaceToTrip}
         onItineraryCreated={handleItineraryCreated}
+        onPreviewItinerary={setPreviewItinerary}
         userLocation={userLocation}
         defaultOpen={isChatOpen}
       />
