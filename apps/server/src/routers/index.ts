@@ -1,18 +1,16 @@
 import { Hono } from 'hono'
 import auth from './auth'
 import places from './places'
-import chat from './chat'
 import tools from './tools'
 import admin from './admin'
 import itineraries from './itineraries'
-import agent from './agent'
+import agentV2 from './agent-v2'
 
 const appRouter = new Hono()
 
 appRouter.route('/auth', auth)
 appRouter.route('/places', places)
-appRouter.route('/chat', chat)
-appRouter.route('/agent', agent)
+appRouter.route('/agent/v2', agentV2)
 appRouter.route('/tools', tools)
 appRouter.route('/admin', admin)
 appRouter.route('/itineraries', itineraries)

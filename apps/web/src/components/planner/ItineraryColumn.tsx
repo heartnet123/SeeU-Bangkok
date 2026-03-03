@@ -3,8 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Edit, GripVertical, Save, Clock } from "lucide-react";
-import type { Trip, TripStop } from "./mock-data";
+import type { Trip, TripStop } from "@/types/trip";
 import { cn } from "@/lib/utils";
+
 import {
   DndContext,
   KeyboardSensor,
