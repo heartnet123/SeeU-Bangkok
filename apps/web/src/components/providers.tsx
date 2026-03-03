@@ -3,6 +3,7 @@
 import { ThemeProvider } from "./theme-provider";
 import { Toaster } from "./ui/sonner";
 import { AuthProvider } from "@/contexts/auth-context";
+import { LanguageProvider } from "@/contexts/language-context";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
 	return (
@@ -12,10 +13,12 @@ export default function Providers({ children }: { children: React.ReactNode }) {
 			enableSystem
 			disableTransitionOnChange
 		>
-			<AuthProvider>
-				{children}
-				<Toaster richColors />
-			</AuthProvider>
+			<LanguageProvider>
+				<AuthProvider>
+					{children}
+					<Toaster richColors />
+				</AuthProvider>
+			</LanguageProvider>
 		</ThemeProvider>
 	);
 }

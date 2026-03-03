@@ -1,0 +1,61 @@
+{
+  "nav": {
+    "home": "Home",
+    "places": "Places",
+    "map": "Map",
+    "savedTrips": "Saved Trips",
+    "admin": "Admin",
+    "current": "Current",
+    "all": "All"
+  },
+  "categories": {
+    "restaurants": "Restaurants",
+    "temples": "Temples",
+    "shopping": "Shopping",
+    "parks": "Parks",
+    "museums": "Museums",
+    "cafes": "Cafes",
+    "nightlife": "Nightlife",
+    "attractions": "Attractions"
+  },
+  "auth": {
+    "login": "Login",
+    "logout": "Logout",
+    "profile": "Profile"
+  },
+  "map": {
+    "searchPlaceholder": "Search places, temples, restaurants..."
+  },
+  "errors": {
+    "selectTrip": "Please select a trip first",
+    "noLocation": "This place doesn't have location data",
+    "searchFailed": "Search failed. Please try again."
+  },
+  "actions": {
+    "addedToTrip": "Added {place} to {trip}"
+  },
+  "home": {
+    "title1": "Discover Bangkok's",
+    "title2": "Hidden Gems",
+    "exploreMap": "Explore Map",
+    "tripPlanner": "Trip Planner"
+  },
+  "features": {
+    "title": "Explore Bangkok Like Never Before",
+    "subtitle": "Discover authentic experiences, local favorites, and off-the-beaten-path destinations with our AI-powered travel companion.",
+    "cards": {
+      "interactiveMap": {
+        "title": "Interactive Map",
+        "desc": "Navigate Bangkok with our interactive map featuring real-time information and personalized recommendations."
+      },
+      "tripPlanner": {
+        "title": "Trip Planner",
+        "desc": "Get instant answers and personalized travel advice from our intelligent Trip Planner trained on local knowledge."
+      },
+      "hiddenGems": {
+        "title": "Hidden Gems",
+        "desc": "Discover secret spots, local favorites, and authentic experiences that only locals know about."
+      }
+    }
+  }
+} 

@@ -11,6 +11,8 @@ import { PlaceCard } from "@/components/map/place-card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { NewTripDialog } from "@/components/trips/new-trip-dialog";
+import { EditTripDialog } from "@/components/trips/edit-trip-dialog";
 import type { Trip, TripStop } from "@/components/planner/mock-data";
 import { mockTrips } from "@/components/planner/mock-data";
 import { toast } from "sonner";
@@ -50,20 +52,28 @@ interface ItineraryStop {
   notes?: string;
 }
 
-// Category definitions with icons
-const CATEGORIES = [
-  { id: 'all', label: 'All', icon: Globe },
-  { id: 'restaurant', label: 'Restaurants', icon: Utensils },
-  { id: 'temple', label: 'Temples', icon: Landmark },
-  { id: 'shopping', label: 'Shopping', icon: ShoppingBag },
-  { id: 'park', label: 'Parks', icon: TreePine },
-  { id: 'museum', label: 'Museums', icon: Building2 },
-  { id: 'cafe', label: 'Cafes', icon: Coffee },
-  { id: 'nightlife', label: 'Nightlife', icon: Music },
-  { id: 'attraction', label: 'Attractions', icon: Camera },
+// Category definitions with icons (labels will use translations inside component)
+const DEFAULT_CATEGORIES = [
+  { id: 'all', key: 'nav.all', icon: Globe },
+  { id: 'restaurant', key: 'categories.restaurants', icon: Utensils },
+  { id: 'temple', key: 'categories.temples', icon: Landmark },
+  { id: 'shopping', key: 'categories.shopping', icon: ShoppingBag },
+  { id: 'park', key: 'categories.parks', icon: TreePine },
+  { id: 'museum', key: 'categories.museums', icon: Building2 },
+  { id: 'cafe', key: 'categories.cafes', icon: Coffee },
+  { id: 'nightlife', key: 'categories.nightlife', icon: Music },
+  { id: 'attraction', key: 'categories.attractions', icon: Camera },
 ];
 
+
+import { useTranslation } from "@/contexts/language-context";
+import { useAuth } from "@/contexts/auth-context";
+
 export default function TripPlannerPage() {
+  const { t, locale } = useTranslation();
+  const { session } = useAuth();
+  const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3000";
+  
   const [trips, setTrips] = useState<Trip[]>(mockTrips);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(
     mockTrips[0]?.id || null
@@ -82,13 +92,70 @@ export default function TripPlannerPage() {
   const [searchResults, setSearchResults] = useState<PlaceItem[]>([]);
 
   // Panel visibility states
-  const [isTripsPanelOpen, setIsTripsPanelOpen] = useState(true);
-  const [isItineraryPanelOpen, setIsItineraryPanelOpen] = useState(true);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
   const [isBottomSheetExpanded, setIsBottomSheetExpanded] = useState(true);
+  const [isNewTripDialogOpen, setIsNewTripDialogOpen] = useState(false);
+  const [isLeftPanelOpen, setIsLeftPanelOpen] = useState(true);
+  const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
+  const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
+  const [routeDistanceKm, setRouteDistanceKm] = useState<number | null>(null);
+  const [routeTravelMin, setRouteTravelMin] = useState<number | null>(null);
 
   const selectedTrip = trips.find((t) => t.id === selectedTripId) || null;
+
+  const CATEGORIES = useMemo(() => DEFAULT_CATEGORIES.map(c => ({ ...c, label: t(c.key) })), [t]);
+
+  // Fetch saved trips from server
+  const fetchSavedTrips = async () => {
+    if (!session?.access_token) return;
+    try {
+      const response = await fetch(`${serverUrl}/api/itineraries`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const contentType = response.headers.get('content-type') || '';
+      const data = contentType.includes('application/json') 
+        ? await response.json() 
+        : { success: false, error: 'Bad response' };
+      
+      if (response.ok && data.success && Array.isArray(data.data)) {
+        // Transform server trip data to match Trip interface
+        const serverTrips = data.data.map((trip: any) => ({
+          id: trip.id,
+          name: trip.title || 'Unnamed Trip',
+          date: trip.created_at ? new Date(trip.created_at).toLocaleDateString() : 'No date',
+          stops: (trip.stops || []).map((stop: any) => ({
+            id: stop.id,
+            name: stop.place?.name || 'Unknown Stop',
+            address: stop.place?.name || 'Address unknown',
+            category: stop.place?.tags?.[0] || 'Viewpoint',
+            suggestedDurationMin: stop.suggested_time_min || 60,
+            lat: stop.place?.lat || 0,
+            lng: stop.place?.lng || 0,
+          })),
+          totalDurationMin: trip.total_minutes || 0,
+          totalDistanceKm: trip.total_distance_km || 0,
+          estimatedBudget: 0,
+          notes: '',
+        }));
+        
+        setTrips(serverTrips);
+        if (serverTrips.length > 0 && !selectedTripId) {
+          setSelectedTripId(serverTrips[0].id);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching saved trips:', error);
+      // Keep mock trips as fallback
+    }
+  };
+
+  // Fetch saved trips when user is authenticated
+  useEffect(() => {
+    if (session?.access_token) {
+      fetchSavedTrips();
+    }
+  }, [session?.access_token]);
 
   // Get user location on mount
   useEffect(() => {
@@ -127,6 +194,7 @@ export default function TripPlannerPage() {
         params.append('categories', category);
       }
       params.append('limit', '20');
+      params.append('locale', locale);
 
       const response = await fetch(`${serverUrl}/api/places?${params.toString()}`);
       
@@ -149,7 +217,7 @@ export default function TripPlannerPage() {
       }
     } catch (error) {
       console.error('Search error:', error);
-      toast.error('Search failed. Please try again.');
+      toast.error(t("errors.searchFailed"));
     } finally {
       setIsSearching(false);
     }
@@ -176,12 +244,12 @@ export default function TripPlannerPage() {
 
   const handleAddPlaceToTrip = (place: PlaceItem) => {
     if (!selectedTripId) {
-      toast.error("Please select a trip first");
+      toast.error(t("errors.selectTrip"));
       return;
     }
 
     if (!place.lat || !place.lng) {
-      toast.error("This place doesn't have location data");
+      toast.error(t("errors.noLocation"));
       return;
     }
 
@@ -209,7 +277,7 @@ export default function TripPlannerPage() {
             0
           );
 
-          toast.success(`Added ${place.name} to ${trip.name}`);
+          toast.success(t("actions.addedToTrip").replace("{place}", place.name).replace("{trip}", trip.name));
 
           return {
             ...trip,
@@ -223,7 +291,13 @@ export default function TripPlannerPage() {
   };
 
   const handleNewTrip = () => {
-    console.log("Create new trip");
+    setIsNewTripDialogOpen(true);
+  };
+
+  const handleNewTripSuccess = () => {
+    // Refetch trips from the server
+    fetchSavedTrips();
+    setIsNewTripDialogOpen(false);
   };
 
   const handleDeleteTrip = (tripId: string) => {
@@ -237,7 +311,10 @@ export default function TripPlannerPage() {
   };
 
   const handleEditTrip = (tripId: string) => {
-    console.log("Edit trip:", tripId);
+    const trip = trips.find(t => t.id === tripId);
+    if (trip) {
+      setEditingTrip(trip);
+    }
   };
 
   const handleReorderTrips = (orderedTripIds: string[]) => {
@@ -351,10 +428,25 @@ export default function TripPlannerPage() {
       name: s.name,
     }));
 
+  // Generate trip route coordinates from selected trip stops
+  const tripRoute = useMemo(() => {
+    if (!selectedTrip || !selectedTrip.stops || selectedTrip.stops.length < 2) {
+      return [];
+    }
+    return selectedTrip.stops
+      .filter((stop) => stop.lat && stop.lng)
+      .map((stop) => [stop.lng, stop.lat] as [number, number]);
+  }, [selectedTrip]);
+
+  const stopsSuggestedDuration = useMemo(() => {
+    if (!selectedTrip || !selectedTrip.stops) return 0;
+    return selectedTrip.stops.reduce((sum, s) => sum + (s.suggestedDurationMin || 0), 0);
+  }, [selectedTrip]);
+
   return (
     <div className="relative w-full h-screen overflow-hidden">
-      {/* Fullscreen Map Background */}
-      <div className="absolute inset-0 z-0">
+      {/* Fullscreen Map Background - reserve space for side panels on md+ */}
+      <div className="absolute inset-0 z-0 md:left-[400px] md:right-[400px]">
         <MapContainer
           places={allPlacesForMap}
           selectedPlace={selectedPlace}
@@ -366,12 +458,17 @@ export default function TripPlannerPage() {
           initialCenter={[100.5018, 13.7563]}
           initialZoom={12}
           itineraryStops={itineraryStopsForMap}
+          tripRoute={tripRoute}
+          onRouteInfo={({ distanceKm, durationMin }) => {
+            setRouteDistanceKm(distanceKm);
+            setRouteTravelMin(durationMin);
+          }}
         />
       </div>
 
       {/* Perplexity-style Search Bar */}
       <motion.div 
-        className="absolute top-4 left-4 right-4 z-20 md:left-1/2 md:-translate-x-1/2 md:right-auto md:w-[600px]"
+        className="absolute top-4 left-4 right-4 z-20 md:left-[400px] md:right-[400px] md:mx-auto md:w-[600px]"
         initial={{ y: -50, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.5, delay: 0.2 }}
@@ -381,7 +478,7 @@ export default function TripPlannerPage() {
             <Search className="absolute left-4 text-gray-400 h-5 w-5 pointer-events-none" />
             <Input
               type="text"
-              placeholder="Search places, temples, restaurants..."
+              placeholder={t("map.searchPlaceholder") }
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-12 pr-12 h-12 rounded-full shadow-xl border-0 bg-white/95 backdrop-blur-md text-gray-900 placeholder:text-gray-500 focus-visible:ring-2 focus-visible:ring-blue-500"
@@ -525,11 +622,11 @@ export default function TripPlannerPage() {
       {/* Left Panel - Trip List (Desktop Only) */}
       <div className="hidden md:block">
         <CollapsiblePanel
-          isOpen={isTripsPanelOpen}
-          onClose={() => setIsTripsPanelOpen(false)}
+          isOpen={isLeftPanelOpen}
+          onClose={() => setIsLeftPanelOpen(false)}
           position="left"
           title="My Trips"
-          width="w-[380px]"
+          width="w-[400px]"
         >
           <TripListColumn
             trips={trips}
@@ -546,8 +643,8 @@ export default function TripPlannerPage() {
       {/* Right Panel - Itinerary (Desktop Only) */}
       <div className="hidden md:block">
         <CollapsiblePanel
-          isOpen={isItineraryPanelOpen}
-          onClose={() => setIsItineraryPanelOpen(false)}
+          isOpen={isRightPanelOpen}
+          onClose={() => setIsRightPanelOpen(false)}
           position="right"
           title={selectedTrip?.name || "Itinerary"}
           width="w-[400px]"
@@ -556,6 +653,8 @@ export default function TripPlannerPage() {
             trip={selectedTrip}
             onEditTrip={handleEditTrip}
             onReorderStops={handleReorderStops}
+            totalDurationMin={(stopsSuggestedDuration || 0) + (routeTravelMin || 0)}
+            totalDistanceKm={routeDistanceKm ?? selectedTrip?.totalDistanceKm ?? 0}
           />
         </CollapsiblePanel>
       </div>
@@ -592,6 +691,8 @@ export default function TripPlannerPage() {
               trip={selectedTrip}
               onEditTrip={handleEditTrip}
               onReorderStops={handleReorderStops}
+              totalDurationMin={(stopsSuggestedDuration || 0) + (routeTravelMin || 0)}
+              totalDistanceKm={routeDistanceKm ?? selectedTrip?.totalDistanceKm ?? 0}
             />
           </div>
         </div>
@@ -604,6 +705,25 @@ export default function TripPlannerPage() {
         onItineraryCreated={handleItineraryCreated}
         userLocation={userLocation}
         defaultOpen={isChatOpen}
+      />
+
+      {/* New Trip Dialog */}
+      <NewTripDialog
+        isOpen={isNewTripDialogOpen}
+        onClose={() => setIsNewTripDialogOpen(false)}
+        onSuccess={handleNewTripSuccess}
+        serverUrl={process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3000"}
+        sessionToken={session?.access_token || ""}
+      />
+
+      {/* Edit Trip Dialog */}
+      <EditTripDialog
+        isOpen={editingTrip !== null}
+        onClose={() => setEditingTrip(null)}
+        onSuccess={fetchSavedTrips}
+        trip={editingTrip ? { ...editingTrip, title: editingTrip.name } : null}
+        serverUrl={process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3000"}
+        sessionToken={session?.access_token || ""}
       />
 
       {/* Custom scrollbar styles */}

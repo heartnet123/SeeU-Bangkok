@@ -127,6 +127,37 @@ body {
 	--color-sidebar-ring: var(--sidebar-ring);
 }
 
+@keyframes pulse {
+	0% {
+		box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7),
+			0 0 0 0 rgba(59, 130, 246, 0.5);
+	}
+	50% {
+		box-shadow: 0 0 0 8px rgba(59, 130, 246, 0),
+			0 0 0 16px rgba(59, 130, 246, 0);
+	}
+	100% {
+		box-shadow: 0 0 0 0 rgba(59, 130, 246, 0),
+			0 0 0 0 rgba(59, 130, 246, 0);
+	}
+}
+
+@keyframes gps-dot {
+	0% {
+		transform: scale(1);
+	}
+	50% {
+		transform: scale(1.2);
+	}
+	100% {
+		transform: scale(1);
+	}
+}
+
+.user-location-marker {
+	animation: pulse 2s infinite, gps-dot 2s infinite;
+}
+
 @layer base {
 	* {
 		@apply border-border outline-ring/50;

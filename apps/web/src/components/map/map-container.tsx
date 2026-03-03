@@ -41,6 +41,8 @@ interface MapContainerProps {
   initialZoom?: number;
   itineraryStops?: ItineraryStop[];
   show3D?: boolean;
+  tripRoute?: [number, number][]; // Array of [lng, lat] coordinates for the route
+  onRouteInfo?: (info: { distanceKm: number; durationMin: number; routeGeoJSON?: GeoJSON.FeatureCollection }) => void;
 }
 
 // Feature type for Supercluster
@@ -183,6 +185,8 @@ const MapContainer: React.FC<MapContainerProps> = ({
   initialZoom = 11,
   itineraryStops = [],
   show3D = false,
+  tripRoute = [],
+  onRouteInfo,
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -543,6 +547,218 @@ const MapContainer: React.FC<MapContainerProps> = ({
     }
   }, [isTrafficEnabled]);
 
+  // Draw trip route following actual roads using Mapbox Directions API
+  useEffect(() => {
+    if (!map.current || !mapLoaded || !tripRoute || tripRoute.length < 2) {
+      // Remove route layer if trip route is empty
+      if (map.current?.getLayer('trip-route')) {
+        map.current.removeLayer('trip-route');
+      }
+      if (map.current?.getSource('trip-route')) {
+        map.current.removeSource('trip-route');
+      }
+      return;
+    }
+
+    const fetchRouteDirections = async () => {
+      try {
+        const accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
+        if (!accessToken) {
+          console.error('Mapbox access token not found');
+          drawStraightRoute();
+          return;
+        }
+
+        // Build coordinates string for API: lng,lat;lng,lat;lng,lat
+        const coordinatesString = tripRoute.map(([lng, lat]) => `${lng},${lat}`).join(';');
+        
+        // Build waypoints string - all points should be waypoints so we get a route through all
+        // Format: ?waypoints=0;1;2 for all points
+        const waypointIndices = Array.from({ length: tripRoute.length }, (_, i) => i).join(';');
+
+        const directionsUrl = `https://api.mapbox.com/directions/v5/mapbox/walking/${coordinatesString}?waypoints=${waypointIndices}&access_token=${accessToken}&overview=full&geometries=geojson`;
+
+        console.log('Fetching route:', directionsUrl);
+        
+        const response = await fetch(directionsUrl);
+        
+        if (!response.ok) {
+          console.error('Failed to fetch directions:', response.status, response.statusText);
+          drawStraightRoute();
+          return;
+        }
+
+        const data = await response.json();
+        console.log('Route response:', data);
+        
+        if (data.routes && data.routes.length > 0) {
+          const route = data.routes[0];
+          const routeCoordinates = route.geometry.coordinates;
+
+          // route.distance in meters, route.duration in seconds
+          const distanceKm = route.distance ? route.distance / 1000 : 0;
+          const travelDurationMin = route.duration ? Math.round(route.duration / 60) : 0;
+
+          // Remove existing route layer if it exists
+          if (map.current?.getLayer('trip-route')) {
+            map.current.removeLayer('trip-route');
+          }
+          if (map.current?.getSource('trip-route')) {
+            map.current.removeSource('trip-route');
+          }
+
+          // Create GeoJSON from the actual route
+          const routeGeoJSON: GeoJSON.FeatureCollection = {
+            type: 'FeatureCollection',
+            features: [
+              {
+                type: 'Feature',
+                geometry: {
+                  type: 'LineString',
+                  coordinates: routeCoordinates,
+                },
+                properties: {},
+              },
+            ],
+          };
+
+          // notify parent about route info (distance, travel duration)
+          try {
+            (onRouteInfo as any)?.({ distanceKm, durationMin: travelDurationMin, routeGeoJSON });
+          } catch (e) {
+            console.warn('onRouteInfo callback failed', e);
+          }
+
+          // Add the route source
+          map.current!.addSource('trip-route', {
+            type: 'geojson',
+            data: routeGeoJSON,
+          });
+
+          // Add the route layer with solid line (not dashed)
+          map.current!.addLayer({
+            id: 'trip-route',
+            type: 'line',
+            source: 'trip-route',
+            layout: {
+              'line-join': 'round',
+              'line-cap': 'round',
+            },
+            paint: {
+              'line-color': '#3b82f6',
+              'line-width': 4,
+              'line-opacity': 0.85,
+            },
+          });
+
+          // Fit bounds to show entire route with padding
+          if (routeCoordinates.length > 0) {
+            const bounds = routeCoordinates.reduce(
+              (bounds: mapboxgl.LngLatBounds, coord: [number, number]) => bounds.extend(coord),
+              new mapboxgl.LngLatBounds(
+                routeCoordinates[0] as [number, number],
+                routeCoordinates[0] as [number, number]
+              )
+            );
+            map.current!.fitBounds(bounds, { padding: 80, duration: 1000 });
+          }
+        } else {
+          console.warn('No routes found in response');
+          drawStraightRoute();
+        }
+      } catch (error) {
+        console.error('Error fetching route directions:', error);
+        drawStraightRoute();
+      }
+    };
+
+    const drawStraightRoute = () => {
+      if (!map.current) return;
+
+      console.log('Using fallback straight line route');
+
+      // Remove existing route layer if it exists
+      if (map.current.getLayer('trip-route')) {
+        map.current.removeLayer('trip-route');
+      }
+      if (map.current.getSource('trip-route')) {
+        map.current.removeSource('trip-route');
+      }
+
+      // Create a straight line as fallback
+      const routeGeoJSON: GeoJSON.FeatureCollection = {
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'LineString',
+              coordinates: tripRoute,
+            },
+            properties: {},
+          },
+        ],
+      };
+
+      map.current.addSource('trip-route', {
+        type: 'geojson',
+        data: routeGeoJSON,
+      });
+
+      map.current.addLayer({
+        id: 'trip-route',
+        type: 'line',
+        source: 'trip-route',
+        paint: {
+          'line-color': '#3b82f6',
+          'line-width': 4,
+          'line-opacity': 0.8,
+          'line-dasharray': [2, 2],
+        },
+      });
+
+      // Fit bounds
+      if (tripRoute.length > 0) {
+        const bounds = tripRoute.reduce(
+          (bounds, coord) => bounds.extend(coord),
+          new mapboxgl.LngLatBounds(tripRoute[0], tripRoute[0])
+        );
+        map.current.fitBounds(bounds, { padding: 80 });
+      }
+
+      // compute approximate straight-line distance (km)
+      const computeDistanceKm = (coords: [number, number][]) => {
+        const toRad = (deg: number) => (deg * Math.PI) / 180;
+        let dist = 0;
+        for (let i = 1; i < coords.length; i++) {
+          const [lon1, lat1] = coords[i - 1];
+          const [lon2, lat2] = coords[i];
+          const R = 6371; // km
+          const dLat = toRad(lat2 - lat1);
+          const dLon = toRad(lon2 - lon1);
+          const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          dist += R * c;
+        }
+        return dist;
+      };
+
+      const approxDistanceKm = computeDistanceKm(tripRoute as [number, number][]);
+      // approximate walking speed 5 km/h -> travel duration minutes
+      const approxTravelMin = Math.round((approxDistanceKm / 5) * 60);
+      try {
+        (onRouteInfo as any)?.({ distanceKm: approxDistanceKm, durationMin: approxTravelMin, routeGeoJSON });
+      } catch (e) {
+        console.warn('onRouteInfo callback failed', e);
+      }
+    };
+
+    fetchRouteDirections();
+  }, [tripRoute, mapLoaded]);
+
   // Update map style
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
@@ -837,20 +1053,50 @@ const MapContainer: React.FC<MapContainerProps> = ({
       userMarkerRef.current.remove();
     }
 
+    // Create container for user marker
+    const container = document.createElement('div');
+    container.style.cssText = `
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      width: 32px;
+      height: 32px;
+    `;
+
+    // Create the main dot
     const el = document.createElement('div');
     el.className = 'user-location-marker';
     el.style.cssText = `
-      width: 20px;
-      height: 20px;
+      width: 18px;
+      height: 18px;
       background-color: #3B82F6;
       border: 3px solid white;
       border-radius: 50%;
-      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
-      animation: pulse 2s infinite;
+      box-shadow: 0 2px 8px rgba(59, 130, 246, 0.6), 0 0 0 2px rgba(59, 130, 246, 0.2);
+      position: relative;
+      z-index: 2;
     `;
 
+    // Create accuracy circle (outer ring)
+    const accuracyRing = document.createElement('div');
+    accuracyRing.style.cssText = `
+      position: absolute;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 1;
+    `;
+
+    container.appendChild(accuracyRing);
+    container.appendChild(el);
+
     userMarkerRef.current = new mapboxgl.Marker({
-      element: el,
+      element: container,
       anchor: 'center',
     })
       .setLngLat(userLocation)

@@ -5,8 +5,10 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useAuth } from '@/contexts/auth-context'
-import { MapPin, Clock, ListChecks, Edit, Trash2, X } from 'lucide-react'
+import { MapPin, Clock, ListChecks, Edit, Trash2, X, Plus } from 'lucide-react'
 import { toast } from 'sonner'
+import { NewTripDialog } from '@/components/trips/new-trip-dialog'
+import { EditTripDialog } from '@/components/trips/edit-trip-dialog'
 
 type Stop = {
   id: string
@@ -38,10 +40,8 @@ export default function SavedTripsPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null)
-  const [editTitle, setEditTitle] = useState('')
-  const [editStops, setEditStops] = useState<EditStop[]>([])
-  const [isSaving, setIsSaving] = useState(false)
   const [deletingTripId, setDeletingTripId] = useState<string | null>(null)
+  const [isNewTripDialogOpen, setIsNewTripDialogOpen] = useState(false)
 
   const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'
   const isAuthed = !!session?.access_token
@@ -71,44 +71,8 @@ export default function SavedTripsPage() {
 
   const totalStops = useMemo(() => trips.reduce((acc, t) => acc + (t.stops?.length || 0), 0), [trips])
 
-  const handleEdit = (trip: Trip) => {
+  const handleEditTrip = (trip: Trip) => {
     setEditingTrip(trip)
-    setEditTitle(trip.title)
-    setEditStops(
-      trip.stops.map((s) => ({
-        slug: s.place?.name || '', // Use name as slug for resolution
-        suggested_time_min: s.suggested_time_min || 60,
-        notes: s.notes || '',
-      }))
-    )
-  }
-
-  const handleSaveEdit = async () => {
-    if (!editingTrip || !session?.access_token) return
-    setIsSaving(true)
-    try {
-      const res = await fetch(`${serverUrl}/api/itineraries/${editingTrip.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          title: editTitle,
-          stops: editStops,
-        }),
-      })
-      const contentType = res.headers.get('content-type') || ''
-      const json = contentType.includes('application/json') ? await res.json() : { success: false, error: (await res.text()) || 'Bad response' }
-      if (!res.ok || !json.success) throw new Error(json.error || 'Failed to update trip')
-      toast.success('Trip updated successfully')
-      await fetchTrips()
-      setEditingTrip(null)
-    } catch (e: any) {
-      toast.error(`Failed to update trip: ${e?.message || 'Unknown error'}`)
-    } finally {
-      setIsSaving(false)
-    }
   }
 
   const handleDelete = async (tripId: string) => {
@@ -134,41 +98,6 @@ export default function SavedTripsPage() {
     }
   }
 
-  const updateStopTime = (index: number, value: number) => {
-    const updated = [...editStops]
-    updated[index].suggested_time_min = value
-    setEditStops(updated)
-  }
-
-  const updateStopNotes = (index: number, value: string) => {
-    const updated = [...editStops]
-    updated[index].notes = value
-    setEditStops(updated)
-  }
-
-  const moveStopUp = (index: number) => {
-    if (index === 0) return
-    const updated = [...editStops]
-    const temp = updated[index - 1]
-    updated[index - 1] = updated[index]
-    updated[index] = temp
-    setEditStops(updated)
-  }
-
-  const moveStopDown = (index: number) => {
-    if (index === editStops.length - 1) return
-    const updated = [...editStops]
-    const temp = updated[index + 1]
-    updated[index + 1] = updated[index]
-    updated[index] = temp
-    setEditStops(updated)
-  }
-
-  const removeStop = (index: number) => {
-    const updated = editStops.filter((_, i) => i !== index)
-    setEditStops(updated)
-  }
-
   if (!isAuthed && !loading) {
     return (
       <div className="max-w-4xl mx-auto p-6 space-y-4 text-black">
@@ -185,7 +114,16 @@ export default function SavedTripsPage() {
     <div className="max-w-5xl mx-auto p-6 space-y-6 text-black">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Saved Trips</h1>
-        <div className="text-sm text-gray-600">{trips.length} Trips</div>
+        <div className="flex items-center gap-4">
+          <div className="text-sm text-gray-600">{trips.length} Trips</div>
+          <Button
+            onClick={() => setIsNewTripDialogOpen(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            New Trip
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -246,10 +184,11 @@ export default function SavedTripsPage() {
                 }}>
                   <MapPin className="w-4 h-4 mr-2 text-white" /> View On Map
                 </Button>
-                <Button variant="outline" onClick={() => handleEdit(t)}>
+                <Button variant="outline" onClick={() => handleEditTrip(t)}>
                   <Edit className="w-4 h-4 mr-2" /> Edit
                 </Button>
                 <Button
+                  className="bg-red-500 hover:bg-red-600 text-white "
                   variant="destructive"
                   onClick={() => handleDelete(t.id)}
                   disabled={deletingTripId === t.id}
@@ -271,115 +210,24 @@ export default function SavedTripsPage() {
         ))}
        </div>
 
-      {/* Edit Modal */}
-      {editingTrip && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 space-y-4">
-              <div className="flex items-center justify-between border-b pb-4">
-                <h2 className="text-xl font-semibold">Edit Trip</h2>
-                <Button variant="ghost" size="icon" onClick={() => setEditingTrip(null)}>
-                  <X className="w-5 h-5" />
-                </Button>
-              </div>
+      {/* Edit Trip Dialog */}
+      <EditTripDialog
+        isOpen={editingTrip !== null}
+        onClose={() => setEditingTrip(null)}
+        onSuccess={fetchTrips}
+        trip={editingTrip}
+        serverUrl={serverUrl}
+        sessionToken={session?.access_token || ""}
+      />
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Trip Title</label>
-                <input
-                  type="text"
-                  value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g., Weekend Temple Tour"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Stops</label>
-                <div className="space-y-3">
-                  {editStops.map((stop, index) => (
-                    <div key={index} className="flex gap-2 items-start p-3 border rounded-md bg-gray-50">
-                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-sm font-medium">
-                        {index + 1}
-                      </div>
-                      <div className="flex-1 space-y-2">
-                        <div className="font-medium text-black">{stop.slug}</div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="text-xs text-gray-600">Suggested Time (min)</label>
-                            <input
-                              type="number"
-                              min="1"
-                              value={stop.suggested_time_min}
-                              onChange={(e) => updateStopTime(index, parseInt(e.target.value) || 1)}
-                              className="w-full px-2 py-1 border rounded text-sm"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs text-gray-600">Notes</label>
-                            <input
-                              type="text"
-                              value={stop.notes}
-                              onChange={(e) => updateStopNotes(index, e.target.value)}
-                              className="w-full px-2 py-1 border rounded text-sm"
-                              placeholder="Add notes..."
-                            />
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <button
-                          onClick={() => moveStopUp(index)}
-                          disabled={index === 0}
-                          className="p-1 hover:bg-gray-200 rounded disabled:opacity-30 disabled:cursor-not-allowed"
-                          title="Move up"
-                        >
-                          ↑
-                        </button>
-                        <button
-                          onClick={() => moveStopDown(index)}
-                          disabled={index === editStops.length - 1}
-                          className="p-1 hover:bg-gray-200 rounded disabled:opacity-30 disabled:cursor-not-allowed"
-                          title="Move down"
-                        >
-                          ↓
-                        </button>
-                        <button
-                          onClick={() => removeStop(index)}
-                          className="p-1 hover:bg-red-100 text-red-600 rounded"
-                          title="Remove stop"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-4 border-t">
-                <Button variant="outline" onClick={() => setEditingTrip(null)} className="flex-1">
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleSaveEdit}
-                  disabled={isSaving}
-                  className="flex-1"
-                >
-                  {isSaving ? (
-                    <>
-                      <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    'Save Changes'
-                  )}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* New Trip Dialog */}
+      <NewTripDialog
+        isOpen={isNewTripDialogOpen}
+        onClose={() => setIsNewTripDialogOpen(false)}
+        onSuccess={fetchTrips}
+        serverUrl={serverUrl}
+        sessionToken={session?.access_token || ""}
+      />
     </div>
   )
 }
