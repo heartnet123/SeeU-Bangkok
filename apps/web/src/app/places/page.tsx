@@ -289,46 +289,76 @@ export default function PlacesPage() {
               </div>
             ) : (
               currentPlaces.map((place) => {
-                const firstTag = place.tags && place.tags.length > 0 ? place.tags[0] : "Hidden Gem";
+              const hasCoordinates =
+                typeof place.lat === "number" && typeof place.lng === "number";
+              const mapUrl = hasCoordinates
+                ? `https://www.google.com/maps?q=${place.lat},${place.lng}`
+                : null;
 
-                return (
-                  <article
-                    key={place.id}
-                    onClick={() => router.push(`/places/${place.slug}`)}
-                    className="group bg-white rounded-2xl border border-slate-200/60 overflow-hidden shadow-sm hover:shadow-md hover:border-blue-200 transition-all duration-300 flex flex-col cursor-pointer"
-                  >
-                    <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
-                      <img
-                        src={place.image_url || "https://images.unsplash.com/photo-1554118811-1e0d58224f24?q=80&w=800&auto=format&fit=crop"}
-                        alt={place.name}
-                        className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      />
-                      <button
-                        onClick={(e) => { e.stopPropagation(); /* Save action */ }}
-                        className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-white transition-colors shadow-sm z-10"
-                      >
-                        <Bookmark className="w-4 h-4" />
-                      </button>
-                      <div className="absolute bottom-3 left-3 flex gap-1 z-10">
-                        <span className="px-2 py-1 bg-black/60 backdrop-blur-md text-white text-xs font-medium rounded-md capitalize">
-                          {firstTag}
-                        </span>
-                      </div>
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                    </div>
-                    <div className="p-5 flex flex-col flex-grow">
-                      <div className="flex justify-between items-start mb-2">
-                        <h3 className="text-lg font-semibold tracking-tight text-slate-900 leading-tight line-clamp-1">{place.name}</h3>
-                        <div className="flex items-center gap-1 text-sm font-medium text-slate-700 bg-slate-50 px-1.5 py-0.5 rounded-md flex-shrink-0">
-                          <Star className="w-3.5 h-3.5 text-blue-500 fill-blue-500" />
-                          4.8
+              return (
+                <Card 
+                  key={place.id} 
+                  className="group hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 cursor-pointer bg-gray-200"
+                  onClick={() => router.push(`/places/${place.slug}`)}
+                >
+                  <CardContent className="p-0 flex flex-col h-full">
+                      {/* Always show placeholder image */}
+                      <div className="relative h-48 bg-gradient-to-br from-gray-200 to-gray-300 overflow-hidden flex items-center justify-center">
+                <Image
+                    src={place.image_url || "https://i.pinimg.com/736x/5d/60/bb/5d60bb1df532a1c181d55c54e0e19c66.jpg"}
+                    alt={place.name}
+                    fill
+                    className="object-cover transition-transform duration-300 group-hover:scale-105"
+                />
+                        <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors duration-300" />
+                        <div className="absolute bottom-4 left-4 text-white">
+                          <h3 className="text-xl font-semibold">{place.name}</h3>
+                          {place.tags && place.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {place.tags.slice(0, 2).map((tag, index) => (
+                                <span key={index} className="text-xs bg-white/20 px-2 py-1 rounded">
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
-                      <p className="text-sm text-slate-500 line-clamp-2 mb-4 flex-grow">{place.description}</p>
-                      <div className="mt-auto pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
-                        <div className="flex items-center gap-1.5 truncate pr-2">
-                          <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
-                          <span className="truncate">{place.address || 'Bangkok'}</span>
+                      
+                      {/* Content */}
+                      <div className="px-6 py-5 flex flex-col flex-grow">
+                        <p className="text-gray-600 mb-4 leading-relaxed flex-grow">
+                          {place.description}
+                        </p>
+                        
+                        {/* Action Buttons */}
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          <Button
+                            asChild
+                            className="flex-1 w-full bg-blue-700 hover:bg-blue-800 text-white"
+                          >
+                            <Link
+                              href={`/places/${place.slug}`}
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              Explore More
+                            </Link>
+                          </Button>
+                          <Button 
+                            type="button"
+                            variant="outline" 
+                            className="flex-1 border-gray-300 text-gray-700 hover:bg-gray-50 flex items-center justify-center gap-2"
+                            disabled={!hasCoordinates}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              if (mapUrl) {
+                                window.open(mapUrl, "_blank", "noopener,noreferrer");
+                              }
+                            }}
+                          >
+                            <MapPin className="w-4 h-4" />
+                            View on Map
+                          </Button>
                         </div>
                         <span className="flex-shrink-0 whitespace-nowrap">
                           {place.price > 0 ? "฿".repeat(Math.ceil(place.price / 300)) : "Free"}

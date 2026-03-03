@@ -30,6 +30,8 @@ interface Props {
   onEditTrip?: (tripId: string) => void;
   isLoading?: boolean;
   onReorderStops?: (tripId: string, orderedStopIds: string[]) => void;
+  totalDurationMin?: number | null;
+  totalDistanceKm?: number | null;
 }
 
 const categoryColors: Record<TripStop["category"], string> = {
@@ -45,6 +47,8 @@ export function ItineraryColumn({
   onEditTrip,
   isLoading = false,
   onReorderStops,
+  totalDurationMin = null,
+  totalDistanceKm = null,
 }: Props) {
   const [orderedStops, setOrderedStops] = useState<TripStop[]>(
     trip?.stops ?? []
@@ -60,6 +64,13 @@ export function ItineraryColumn({
   );
 
   const stopIds = useMemo(() => orderedStops.map((s) => s.id), [orderedStops]);
+
+  const stopsSuggestedDuration = useMemo(() => {
+    return orderedStops.reduce((sum, s) => sum + (s.suggestedDurationMin || 0), 0);
+  }, [orderedStops]);
+
+  const displayTotalDurationMin = totalDurationMin ?? trip?.totalDurationMin ?? stopsSuggestedDuration;
+  const displayTotalDistanceKm = totalDistanceKm ?? trip?.totalDistanceKm ?? 0;
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -157,13 +168,13 @@ export function ItineraryColumn({
       <div className="flex items-center gap-4 text-sm text-slate-600 pb-2 border-b border-slate-200">
         <span className="flex items-center gap-1">
           <Clock className="w-4 h-4" aria-hidden="true" />
-          {Math.floor(trip.totalDurationMin / 60)}h {trip.totalDurationMin % 60}
+          {Math.floor(displayTotalDurationMin / 60)}h {displayTotalDurationMin % 60}
           m
         </span>
         <span>•</span>
         <span>{trip.stops.length} stops</span>
         <span>•</span>
-        <span>{trip.totalDistanceKm} km</span>
+        <span>{displayTotalDistanceKm.toFixed(1)} km</span>
       </div>
 
       {/* Stops list with drag-and-drop */}

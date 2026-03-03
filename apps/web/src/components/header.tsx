@@ -7,18 +7,22 @@ import { usePathname } from "next/navigation";
 import { AuthButton } from "./auth/auth-button";
 import { AnimatedGroup } from "./core/animated-group";
 import { motion } from "motion/react";
+import LanguageToggle from "./language-toggle";
+import { useTranslation } from "@/contexts/language-context";
 
 export default function Header() {
 	const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 	const pathname = usePathname();
 
+const { t } = useTranslation();
+
 	const links = [
-		{ to: "/", label: "Home" },
-		{ to: "/places", label: "Places" },
-		{ to: "/map", label: "Map" },
-		{ to: "/saved-trips", label: "Saved Trips" },
-		// { to: "/chat", label: "Trip Planner" },
-		{ to: "/admin/places", label: "Admin" },
+			{ to: "/", label: t("nav.home") },
+			{ to: "/places", label: t("nav.places") },
+			{ to: "/map", label: t("nav.map") },
+			{ to: "/saved-trips", label: t("nav.savedTrips") },
+			// { to: "/chat", label: "Trip Planner" },
+			{ to: "/admin/places", label: t("nav.admin") },
 		// { to: "/about", label: "About Us" },
 	];
 
@@ -33,11 +37,10 @@ export default function Header() {
 				{/* Logo */}
 				<div className="flex items-center gap-2">
 					<Link href="/" className="text-blue-400 text-xl font-bold hover:text-blue-300 transition-colors duration-300 cursor-pointer">
-						<span>Visit BKK</span>
-					</Link>
-				</div>
-
-				{/* Center Rounded Navigation Container */}
+					<span>Visit BKK</span>
+				</Link>
+			</div>
+			{/* Center Rounded Navigation Container */}
 				<motion.div 
 					className="hidden md:flex items-center bg-gray-300/60 backdrop-blur-lg rounded-full px-4 py-3 border border-gray-300/50 shadow-lg"
 					initial={{ scale: 0.9, opacity: 0 }}
@@ -90,8 +93,10 @@ export default function Header() {
 				{/* Right side - Search and Auth Button */}
 				<div className="flex items-center gap-4">
  
-					<div className="hidden sm:flex">
-						<AuthButton />
+					<div className="hidden sm:flex">					<LanguageToggle className="mr-2" />
+				</div>
+
+				<div className="hidden sm:flex">						<AuthButton />
 					</div>
 					{/* Mobile menu button */}
 					<motion.button 
@@ -145,14 +150,15 @@ export default function Header() {
 									{label}
 									{isActive && (
 										<span className="ml-2 text-xs bg-blue-400 text-blue-900 px-2 py-1 rounded-full">
-											Current
+											{t("nav.current")}
 										</span>
 									)}
 								</Link>
 							);
 						})}
-						<div className="pt-4 border-t border-gray-700">
+						<div className="pt-4 border-t border-gray-700 space-y-3">
 							<AuthButton />
+							<LanguageToggle />
 						</div>
 					</AnimatedGroup>
 				</motion.div>
