@@ -10,9 +10,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { Trip } from "@/types/trip";
+import type { Trip } from "./mock-data";
 import { cn } from "@/lib/utils";
-
 import {
   DndContext,
   KeyboardSensor,
