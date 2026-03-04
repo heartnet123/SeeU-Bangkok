@@ -39,7 +39,7 @@ function useSSEStream() {
     setStreaming(false)
   }, [])
 
-  const start = useCallback(async (payload: any, endpoint: 'chat' | 'agent' | 'agent/v2' = 'agent/v2') => {
+  const start = useCallback(async (payload: any, endpoint: 'chat' | 'agent' = 'chat') => {
     if (isStreaming) stop()
     setEvents([])
     setStreaming(true)
@@ -65,83 +65,66 @@ function useSSEStream() {
       const decoder = new TextDecoder('utf-8')
       let buffer = ''
 
-      const parseChunk = (chunk: string) => {
-        const lines = chunk.split(/\r?\n/).filter((line) => line.length > 0)
-        let event: string | null = null
-        const data: string[] = []
-        for (const line of lines) {
-          if (line.startsWith('event:')) event = line.slice(6).trim()
-          if (line.startsWith('data:')) data.push(line.slice(5).trim())
-        }
-        const joined = data.join('\n')
-        if (!event) return
-
-        switch (event) {
-          case 'start':
-            console.log('[Agent v2] Started:', joined)
-            break
-          case 'agent':
-            try {
-              const payload = JSON.parse(joined)
-              setEvents((prev) => [...prev, { type: 'status', text: `Agent: ${payload.agent}` }])
-            } catch {}
-            break
-          case 'message':
-            setEvents((prev) => [...prev, { type: 'message', text: joined }])
-            break
-          case 'status':
-            setEvents((prev) => [...prev, { type: 'status', text: joined }])
-            break
-          case 'suggestions':
-            try {
-              const payload = JSON.parse(joined)
-              setEvents((prev) => [...prev, { type: 'suggestions', data: payload }])
-            } catch {
-              setEvents((prev) => [...prev, { type: 'error', text: 'Bad suggestions payload' }])
-            }
-            break
-          case 'itinerary':
-            try {
-              const payload = JSON.parse(joined)
-              setEvents((prev) => [...prev, { type: 'itinerary', data: payload }])
-            } catch {
-              setEvents((prev) => [...prev, { type: 'error', text: 'Bad itinerary payload' }])
-            }
-            break
-          case 'tools':
-            try {
-              const payload = JSON.parse(joined)
-              setEvents((prev) => [...prev, { type: 'tools', data: payload }])
-            } catch {
-              setEvents((prev) => [...prev, { type: 'error', text: 'Bad tools payload' }])
-            }
-            break
-          case 'context':
-            try {
-              const payload = JSON.parse(joined)
-              setEvents((prev) => [...prev, { type: 'context', data: payload }])
-            } catch {
-              setEvents((prev) => [...prev, { type: 'error', text: 'Bad context payload' }])
-            }
-            break
-          case 'error':
-            setEvents((prev) => [...prev, { type: 'error', text: joined }])
-            break
-          case 'done':
-            setEvents((prev) => [...prev, { type: 'done' }])
-            setStreaming(false)
-            break
-          // Ignore keepalive pings and unknown events
-          default:
-            break
-        }
-      }
-
       const flush = () => {
-        const chunks = buffer.split(/\r?\n\r?\n/)
+        const chunks = buffer.split('\n\n')
         buffer = chunks.pop() || ''
         for (const chunk of chunks) {
-          parseChunk(chunk)
+          const lines = chunk.split(/\n|\r\n?/).filter(Boolean)
+          let event: string | null = null
+          let data: string[] = []
+          for (const line of lines) {
+            if (line.startsWith('event:')) event = line.slice(6).trim()
+            if (line.startsWith('data:')) data.push(line.slice(5).trim())
+          }
+          const joined = data.join('\n')
+          if (!event) continue
+          switch (event) {
+            case 'message':
+              setEvents((prev) => [...prev, { type: 'message', text: joined }])
+              break
+            case 'status':
+              setEvents((prev) => [...prev, { type: 'status', text: joined }])
+              break
+            case 'suggestions':
+              try {
+                const payload = JSON.parse(joined)
+                setEvents((prev) => [...prev, { type: 'suggestions', data: payload }])
+              } catch (e) {
+                setEvents((prev) => [...prev, { type: 'error', text: 'Bad suggestions payload' }])
+              }
+              break
+            case 'itinerary':
+              try {
+                const payload = JSON.parse(joined)
+                setEvents((prev) => [...prev, { type: 'itinerary', data: payload }])
+              } catch (e) {
+                setEvents((prev) => [...prev, { type: 'error', text: 'Bad itinerary payload' }])
+              }
+              break
+            case 'tools':
+              try {
+                const payload = JSON.parse(joined)
+                setEvents((prev) => [...prev, { type: 'tools', data: payload }])
+              } catch (e) {
+                setEvents((prev) => [...prev, { type: 'error', text: 'Bad tools payload' }])
+              }
+              break
+            case 'context':
+              try {
+                const payload = JSON.parse(joined)
+                setEvents((prev) => [...prev, { type: 'context', data: payload }])
+              } catch (e) {
+                setEvents((prev) => [...prev, { type: 'error', text: 'Bad context payload' }])
+              }
+              break
+            case 'error':
+              setEvents((prev) => [...prev, { type: 'error', text: joined }])
+              break
+            case 'done':
+              setEvents((prev) => [...prev, { type: 'done' }])
+              setStreaming(false)
+              break
+          }
         }
       }
 
@@ -152,14 +135,9 @@ function useSSEStream() {
         buffer += decoder.decode(value, { stream: true })
         flush()
       }
-      // Flush any remaining bytes from the decoder
+      // Final flush
       buffer += decoder.decode()
       flush()
-      // Parse any remaining buffer content (prevents partial transfer data loss)
-      if (buffer.trim().length > 0) {
-        parseChunk(buffer)
-        buffer = ''
-      }
     } catch (e: any) {
       if (e?.name !== 'AbortError') {
         setEvents((prev) => [...prev, { type: 'error', text: e?.message || 'Stream error' }])
@@ -214,7 +192,7 @@ export default function ChatTestPage() {
     }
     if (coords) payload.userLocation = coords
     if (forceNoMatch) payload.force_no_match = true
-    start(payload, useAgent ? 'agent/v2' : 'chat')
+    start(payload, useAgent ? 'agent' : 'chat')
   }, [input, coords, forceNoMatch, useAgent, start])
 
   const handleLocate = useCallback(() => {
@@ -255,7 +233,7 @@ export default function ChatTestPage() {
 
       {useAgent && (
         <div className="p-3 rounded-md bg-blue-50 border border-blue-200 text-sm text-blue-800">
-          <strong>RAG Agent v2 Mode:</strong> Uses multi-agent supervisor with vector search, specialized researcher/planner/critic agents, and memory management.
+          <strong>RAG Agent Mode:</strong> Uses LangGraph workflow with vector search, tool calling, and retrieval-augmented generation.
         </div>
       )}
 

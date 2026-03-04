@@ -6,10 +6,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, Edit, Clock, Navigation, Wallet, Search } from "lucide-react";
 import MapContainer from "@/components/map/map-container";
-import type { Trip } from "@/types/trip";
+import type { Trip } from "./mock-data";
 
 interface PlaceItem {
-
   id: string;
   name: string;
   slug: string;
@@ -168,11 +167,12 @@ export function MapDetailsColumn({ trip, isLoading = false, foundPlaces = [], it
               userLocation={userLocation ? [userLocation.lat, userLocation.lng] : undefined}
               initialCenter={[100.5018, 13.7563]} // Bangkok center
               initialZoom={12}
-              previewItinerary={
-                itineraryStops && itineraryStops.length > 0
-                  ? { stops: itineraryStops }
-                  : null
-              }
+              itineraryStops={itineraryStops.filter(s => s.lat && s.lng).map(s => ({
+                lat: s.lat!,
+                lng: s.lng!,
+                slug: s.slug,
+                name: s.name,
+              }))}
             />
           </div>
         </CardContent>
