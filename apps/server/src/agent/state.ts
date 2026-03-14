@@ -44,7 +44,8 @@ export const ItineraryStopSchema = z.object({
 	suggested_time_min: z.number(),
 	notes: z.string(),
 	distance_from_prev_km: z.number(),
-});
+	travel_time_from_prev_min: z.number(),
+}).strict();
 
 export type ItineraryStop = z.infer<typeof ItineraryStopSchema>;
 
@@ -61,9 +62,57 @@ export const ItinerarySchema = z.object({
 			suggestions: z.array(z.string()),
 		})
 		.optional(),
-});
+}).strict();
 
 export type Itinerary = z.infer<typeof ItinerarySchema>;
+
+// Place suggestion schema for UI payloads
+export const PlaceSuggestionSchema = z.object({
+	id: z.string(),
+	name: z.string(),
+	slug: z.string().optional().default(""),
+	lat: z.number().optional(),
+	lng: z.number().optional(),
+	tags: z.array(z.string()).optional().default([]),
+	price: z.number().optional(),
+	image_url: z.string().optional(),
+	description: z.string().optional(),
+}).strict();
+
+export type PlaceSuggestion = z.infer<typeof PlaceSuggestionSchema>;
+
+export const UiActionSchema = z.object({
+	type: z.enum(["add_all_to_trip", "preview_itinerary"]),
+	label: z.string(),
+}).strict();
+
+export const UiResponsePayloadSchema = z.object({
+	version: z.literal("1.0"),
+	intent: z.enum(["chat", "place_recommendation", "itinerary"]),
+	summary: z.string(),
+	places: z.array(PlaceSuggestionSchema),
+	itinerary: ItinerarySchema.nullable(),
+	actions: z.array(UiActionSchema),
+	raw_text: z.string(),
+}).strict();
+
+export type UiResponsePayload = z.infer<typeof UiResponsePayloadSchema>;
+
+// Structured agent outputs expected from LLM messages
+export const ResearcherAgentOutputSchema = z.object({
+	intent: z.literal("place_recommendation"),
+	summary: z.string(),
+	places: z.array(PlaceSuggestionSchema).default([]),
+}).strict();
+
+export const PlannerAgentOutputSchema = z.object({
+	intent: z.literal("itinerary"),
+	summary: z.string(),
+	itinerary: ItinerarySchema,
+}).strict();
+
+export type ResearcherAgentOutput = z.infer<typeof ResearcherAgentOutputSchema>;
+export type PlannerAgentOutput = z.infer<typeof PlannerAgentOutputSchema>;
 
 // Main Agent State schema for LangGraph
 export const AgentStateSchema = z.object({

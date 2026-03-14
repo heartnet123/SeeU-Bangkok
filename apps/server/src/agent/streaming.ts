@@ -1,15 +1,25 @@
 // Streaming module - SSE adapter for the multi-agent supervisor
 import { streamSupervisor, invokeSupervisor } from "./supervisor";
 import { MemoryManager } from "./memory";
-import type { Itinerary } from "./state";
+import { SessionMemory } from "./memory/session";
+import {
+	ItinerarySchema,
+	PlannerAgentOutputSchema,
+	ResearcherAgentOutputSchema,
+	UiResponsePayloadSchema,
+	type Itinerary,
+	type PlaceSuggestion,
+	type UiResponsePayload,
+} from "./state";
 
 /**
  * SSE Event types matching the existing frontend expectations
  */
 export interface SSEEvent {
-	event: "start" | "agent" | "tools" | "context" | "suggestions" | "itinerary" | "message" | "error" | "done";
+	event: "start" | "agent" | "tools" | "context" | "suggestions" | "itinerary" | "ui" | "message" | "error" | "done";
 	data: string;
 }
+
 
 /**
  * Options for the agent stream
@@ -31,14 +41,24 @@ export async function* streamAgentExecution(
 ): AsyncGenerator<SSEEvent> {
 	const { messages, userLocation, sessionId, userId } = options;
 
-	// Emit start event immediately to open the SSE stream early.
+	// Initialize memory manager and ensure session exists before emitting start
+	const memory = new MemoryManager({ sessionId, userId });
+	const session = await memory.getOrCreateSession();
+
+	// Save first user message as session title if this is a new session
+	const firstUserMessage = messages.find((m) => m.role === "user")?.content?.slice(0, 80);
+	if (firstUserMessage && !session.metadata?.title) {
+		await SessionMemory.updateSessionMetadata(session.id, {
+			...session.metadata,
+			title: firstUserMessage,
+		});
+	}
+
+	// Emit start event with the real session ID (including newly created ones)
 	yield {
 		event: "start",
-		data: JSON.stringify({ status: "processing", sessionId }),
+		data: JSON.stringify({ status: "processing", sessionId: memory.getSessionId() }),
 	};
-
-	// Initialize memory manager if we have session/user context
-	const memory = new MemoryManager({ sessionId, userId });
 
 	// Get conversation history if resuming session
 	let conversationMessages = messages;
@@ -58,9 +78,12 @@ export async function* streamAgentExecution(
 
 	// Track state for aggregating results
 	const toolsUsed: Array<{ tool: string; args: any }> = [];
-	const suggestedPlaces: Array<any> = [];
+	const suggestedPlaces: Array<PlaceSuggestion> = [];
 	let currentItinerary: Itinerary | null = null;
+	let latestItinerary: Itinerary | null = null;
 	let lastAgent: string | null = null;
+	let lastAssistantMessage: string | null = null;
+	let latestAssistantSummary: string | null = null;
 
 	try {
 		// Stream from the supervisor
@@ -105,6 +128,7 @@ export async function* streamAgentExecution(
 						if (result.stops) {
 							// plan_itinerary result
 							currentItinerary = result;
+							latestItinerary = result;
 						}
 					}
 					break;
@@ -112,8 +136,53 @@ export async function* streamAgentExecution(
 				case "message":
 					// Message from an agent
 					if (event.data.content) {
-						// Check if content contains itinerary data
 						const content = event.data.content;
+						const role = event.data.role || "assistant";
+
+						// Tool result messages carry structured data (e.g. place arrays).
+						// Extract place data from researcher tool results to populate suggestedPlaces.
+						if (role === "tool" && lastAgent === "researcher_agent") {
+							try {
+								const parsed = JSON.parse(content);
+								if (Array.isArray(parsed)) {
+									const places = parsed.filter((p: any) => p.lat && p.lng);
+									if (places.length > 0) {
+										suggestedPlaces.push(...places);
+									}
+								}
+							} catch {
+								// Not JSON — ignore
+							}
+							// Don't forward raw tool results to the frontend as chat text
+							break;
+						}
+
+						let parsedHandled = false;
+						if (role === "assistant") {
+							try {
+								const parsedJson = JSON.parse(content);
+								const plannerParsed = PlannerAgentOutputSchema.safeParse(parsedJson);
+								if (plannerParsed.success) {
+									const { summary, itinerary } = plannerParsed.data;
+									latestAssistantSummary = summary;
+									lastAssistantMessage = summary;
+									currentItinerary = itinerary;
+									latestItinerary = itinerary;
+									parsedHandled = true;
+								} else {
+									const researcherParsed = ResearcherAgentOutputSchema.safeParse(parsedJson);
+									if (researcherParsed.success) {
+										const { summary, places } = researcherParsed.data;
+										latestAssistantSummary = summary;
+										lastAssistantMessage = summary;
+										if (places.length > 0) suggestedPlaces.push(...places);
+										parsedHandled = true;
+									}
+								}
+							} catch {
+								// Non-JSON assistant text fallback
+							}
+						}
 
 						// Send context event for retrieved docs
 						if (event.data.agent === "researcher_agent" && suggestedPlaces.length > 0) {
@@ -140,25 +209,73 @@ export async function* streamAgentExecution(
 							currentItinerary = null; // Only send once
 						}
 
-						// Send the message
+						if (!parsedHandled) {
+							// Track assistant message for storage (fallback)
+							lastAssistantMessage = content;
+						}
+
+						// Send user-facing message as summary when available; otherwise raw content
 						yield {
 							event: "message",
-							data: content,
+							data: latestAssistantSummary || content,
 						};
 					}
 					break;
 
 				case "done":
-					// Store the conversation if we have memory
-					if (sessionId) {
-						// Store user message
+					// Store the conversation turn in session memory
+					{
 						const userMessage = messages[messages.length - 1];
 						if (userMessage) {
 							await memory.addMessage("user", userMessage.content);
 						}
+						if (lastAssistantMessage) {
+							await memory.addMessage("assistant", lastAssistantMessage);
+						}
 					}
 					break;
 			}
+		}
+
+		const uniquePlaces = Array.from(
+			new Map(
+				suggestedPlaces
+					.filter((p) => p && (p.id || p.slug || p.name))
+					.map((p) => [String(p.id || p.slug || p.name), p])
+			).values()
+		);
+
+		if (lastAssistantMessage) {
+			const rawUiPayload: UiResponsePayload = {
+				version: "1.0",
+				intent: latestItinerary || uniquePlaces.length > 0 ? (latestItinerary ? "itinerary" : "place_recommendation") : "chat",
+				summary: latestAssistantSummary || lastAssistantMessage,
+				places: uniquePlaces,
+				itinerary: latestItinerary,
+				actions: [
+					...(uniquePlaces.length > 0 ? [{ type: "add_all_to_trip", label: "Add all to trip" }] : []),
+					...(latestItinerary ? [{ type: "preview_itinerary", label: "Preview itinerary on map" }] : []),
+				],
+				raw_text: lastAssistantMessage,
+			};
+
+			const validatedUi = UiResponsePayloadSchema.safeParse(rawUiPayload);
+			const uiPayload = validatedUi.success
+				? validatedUi.data
+				: {
+					version: "1.0" as const,
+					intent: "chat" as const,
+					summary: latestAssistantSummary || lastAssistantMessage,
+					places: [],
+					itinerary: null,
+					actions: [],
+					raw_text: lastAssistantMessage,
+				};
+
+			yield {
+				event: "ui",
+				data: JSON.stringify(uiPayload),
+			};
 		}
 
 		// Emit done event
@@ -188,9 +305,58 @@ export async function* streamAgentExecution(
 					);
 
 				if (assistantMessage?.content) {
+					let safeSummary = assistantMessage.content;
+					let safePlaces: PlaceSuggestion[] = [];
+					let safeItinerary: Itinerary | null = null;
+
+					try {
+						const parsed = JSON.parse(assistantMessage.content);
+						const plannerParsed = PlannerAgentOutputSchema.safeParse(parsed);
+						if (plannerParsed.success) {
+							safeSummary = plannerParsed.data.summary;
+							safeItinerary = plannerParsed.data.itinerary;
+						}
+						const researcherParsed = ResearcherAgentOutputSchema.safeParse(parsed);
+						if (researcherParsed.success) {
+							safeSummary = researcherParsed.data.summary;
+							safePlaces = researcherParsed.data.places;
+						}
+					} catch {
+						// keep plain text fallback
+					}
+
 					yield {
 						event: "message",
-						data: assistantMessage.content,
+						data: safeSummary,
+					};
+					const fallbackUiParsed = UiResponsePayloadSchema.safeParse({
+						version: "1.0",
+						intent: safeItinerary ? "itinerary" : safePlaces.length > 0 ? "place_recommendation" : "chat",
+						summary: safeSummary,
+						places: safePlaces,
+						itinerary: safeItinerary,
+						actions: [
+							...(safePlaces.length > 0 ? [{ type: "add_all_to_trip", label: "Add all to trip" }] : []),
+							...(safeItinerary ? [{ type: "preview_itinerary", label: "Preview itinerary on map" }] : []),
+						],
+						raw_text: assistantMessage.content,
+					});
+
+					yield {
+						event: "ui",
+						data: JSON.stringify(
+							fallbackUiParsed.success
+								? fallbackUiParsed.data
+								: {
+									version: "1.0",
+									intent: "chat",
+									summary: safeSummary,
+									places: [],
+									itinerary: null,
+									actions: [],
+									raw_text: assistantMessage.content,
+								}
+						),
 					};
 					yield {
 						event: "done",

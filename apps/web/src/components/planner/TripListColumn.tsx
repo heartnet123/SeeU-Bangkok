@@ -34,7 +34,7 @@ import { CSS } from "@dnd-kit/utilities";
 interface Props {
   trips: Trip[];
   selectedTripId: string | null;
-  onSelectTrip: (id: string) => void;
+  onSelectTrip: (id: string | null) => void;
   onNewTripClick: () => void;
   onDeleteTrip?: (tripId: string) => void;
   onEditTrip?: (tripId: string) => void;
@@ -173,11 +173,11 @@ export function TripListColumn({
                         <CardContent className="p-4 flex items-start gap-2">
                           <button
                             className="flex-1 text-left"
-                            onClick={() => onSelectTrip(trip.id)}
+                            onClick={() => onSelectTrip(isSelected ? null : trip.id)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter" || e.key === " ") {
                                 e.preventDefault();
-                                onSelectTrip(trip.id);
+                                onSelectTrip(isSelected ? null : trip.id);
                               }
                             }}
                             aria-label={`Select trip: ${trip.name}`}

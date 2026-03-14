@@ -1,6 +1,8 @@
 "use client";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import Image from "next/image";
 import {
   Pagination,
   PaginationContent,
@@ -364,8 +366,8 @@ export default function PlacesPage() {
                           {place.price > 0 ? "฿".repeat(Math.ceil(place.price / 300)) : "Free"}
                         </span>
                       </div>
-                    </div>
-                  </article>
+                  </CardContent>
+                </Card>
                 );
               })
             )}

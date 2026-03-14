@@ -1,5 +1,5 @@
 import { agentStepType, humanizeAgent } from "./constants";
-import type { PendingTurn, PlaceItem } from "./types";
+import type { PendingTurn, PlaceItem, UiResponsePayload } from "./types";
 
 export interface SseEventBlock {
 	event: string;
@@ -14,6 +14,18 @@ function parseJson<T>(input: string, fallback: T): T {
 	} catch {
 		return fallback;
 	}
+}
+
+function isUiResponsePayload(value: unknown): value is UiResponsePayload {
+	if (!value || typeof value !== "object") return false;
+	const v = value as Record<string, unknown>;
+	if (v.version !== "1.0") return false;
+	if (!["chat", "place_recommendation", "itinerary"].includes(String(v.intent))) return false;
+	if (typeof v.summary !== "string") return false;
+	if (!Array.isArray(v.places)) return false;
+	if (!Array.isArray(v.actions)) return false;
+	if (typeof v.raw_text !== "string") return false;
+	return true;
 }
 
 export function parseSseEventBlock(chunk: string): SseEventBlock | null {
@@ -137,6 +149,20 @@ export function handleStreamEvent(
 							status: "complete" as const,
 						},
 					],
+				}));
+			}
+			break;
+		}
+
+		case "ui": {
+			const parsedUnknown = parseJson<unknown>(joined, null);
+			if (isUiResponsePayload(parsedUnknown)) {
+				updateLocal((prev) => ({
+					...prev,
+					ui: parsedUnknown,
+					text: parsedUnknown.summary || prev.text,
+					suggestions: parsedUnknown.places?.length ? parsedUnknown.places : prev.suggestions,
+					itinerary: parsedUnknown.itinerary ?? prev.itinerary,
 				}));
 			}
 			break;

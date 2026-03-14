@@ -3,18 +3,17 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { TripListColumn } from "@/components/planner/TripListColumn";
 import { ItineraryColumn } from "@/components/planner/ItineraryColumn";
 import { ChatPanel } from "@/components/planner/ChatPanel";
+import { ChatHistorySidebar } from "@/components/planner/ChatHistorySidebar";
 import MapContainer from "@/components/map/map-container";
 import { CollapsiblePanel } from "@/components/map/collapsible-panel";
 import { BottomSheet } from "@/components/map/bottom-sheet";
-import { MapToolbar } from "@/components/map/map-toolbar";
 import { PlaceCard } from "@/components/map/place-card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { NewTripDialog } from "@/components/trips/new-trip-dialog";
 import { EditTripDialog } from "@/components/trips/edit-trip-dialog";
 import type { Trip, TripStop } from "@/components/planner/mock-data";
-import { mockTrips } from "@/components/planner/mock-data";
+import { nameToSlug } from "@/lib/slug-utils";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -31,7 +30,9 @@ import {
   Music,
   Coffee,
   Loader2,
-  Plus
+  Plus,
+  MessageSquare,
+  Map as MapIcon,
 } from "lucide-react";
 
 interface PlaceItem {
@@ -42,6 +43,9 @@ interface PlaceItem {
   lng?: number;
   tags?: string[];
   price?: number;
+  description?: string;
+  address?: string;
+  image_url?: string;
 }
 
 interface ItineraryStop {
@@ -51,6 +55,13 @@ interface ItineraryStop {
   lng?: number;
   suggested_time_min?: number;
   notes?: string;
+}
+
+interface ChatSession {
+  id: string;
+  createdAt: Date;
+  updatedAt: Date;
+  metadata: { title?: string };
 }
 
 // Category definitions with icons (labels will use translations inside component)
@@ -74,24 +85,24 @@ export default function TripPlannerPage() {
   const { t, locale } = useTranslation();
   const { session } = useAuth();
   const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3000";
-  
-  const [trips, setTrips] = useState<Trip[]>(mockTrips);
-  const [selectedTripId, setSelectedTripId] = useState<string | null>(
-    mockTrips[0]?.id || null
-  );
-  const [isLoading, setIsLoading] = useState(false);
-  const [userLocation, setUserLocation] = useState<
 
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [isTripsLoading, setIsTripsLoading] = useState(false);
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+  const [userLocation, setUserLocation] = useState<
     { lat: number; lng: number } | undefined
   >();
   const [foundPlaces, setFoundPlaces] = useState<PlaceItem[]>([]);
+  const [initialPlaces, setInitialPlaces] = useState<PlaceItem[]>([]);
   const [agentItinerary, setAgentItinerary] = useState<any | null>(null);
+  const [previewItinerary, setPreviewItinerary] = useState<any | null>(null);
 
   // Search and filter states
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<PlaceItem[]>([]);
+  const [visiblePlaces, setVisiblePlaces] = useState<PlaceItem[]>([]);
 
   // Panel visibility states
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -104,22 +115,34 @@ export default function TripPlannerPage() {
   const [routeDistanceKm, setRouteDistanceKm] = useState<number | null>(null);
   const [routeTravelMin, setRouteTravelMin] = useState<number | null>(null);
 
+  // Left panel tab state
+  const [leftPanelTab, setLeftPanelTab] = useState<'trips' | 'history'>('trips');
+
+  // Chat session state
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [isSessionsLoading, setIsSessionsLoading] = useState(false);
+  const [chatSessionMessages, setChatSessionMessages] = useState<
+    Array<{ role: string; content: string }> | null
+  >(null);
+
   const selectedTrip = trips.find((t) => t.id === selectedTripId) || null;
 
   const CATEGORIES = useMemo(() => DEFAULT_CATEGORIES.map(c => ({ ...c, label: t(c.key) })), [t]);
 
   // Fetch saved trips from server
-  const fetchSavedTrips = async () => {
+  const fetchSavedTrips = useCallback(async () => {
     if (!session?.access_token) return;
+    setIsTripsLoading(true);
     try {
       const response = await fetch(`${serverUrl}/api/itineraries`, {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       const contentType = response.headers.get('content-type') || '';
-      const data = contentType.includes('application/json') 
-        ? await response.json() 
+      const data = contentType.includes('application/json')
+        ? await response.json()
         : { success: false, error: 'Bad response' };
-      
+
       if (response.ok && data.success && Array.isArray(data.data)) {
         // Transform server trip data to match Trip interface
         const serverTrips = data.data.map((trip: any) => ({
@@ -140,7 +163,7 @@ export default function TripPlannerPage() {
           estimatedBudget: 0,
           notes: '',
         }));
-        
+
         setTrips(serverTrips);
         if (serverTrips.length > 0 && !selectedTripId) {
           setSelectedTripId(serverTrips[0].id);
@@ -148,14 +171,44 @@ export default function TripPlannerPage() {
       }
     } catch (error) {
       console.error('Error fetching saved trips:', error);
-      // Keep mock trips as fallback
+    } finally {
+      setIsTripsLoading(false);
     }
-  };
+  }, [session?.access_token, serverUrl, selectedTripId]);
 
-  // Fetch saved trips when user is authenticated
+  // Fetch chat sessions from server
+  const fetchChatSessions = useCallback(async () => {
+    if (!session?.access_token) return;
+    setIsSessionsLoading(true);
+    try {
+      const response = await fetch(`${serverUrl}/api/sessions`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && Array.isArray(data.sessions)) {
+          setChatSessions(
+            data.sessions.map((s: any) => ({
+              id: s.id,
+              createdAt: new Date(s.createdAt),
+              updatedAt: new Date(s.updatedAt),
+              metadata: s.metadata || {},
+            }))
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching chat sessions:', error);
+    } finally {
+      setIsSessionsLoading(false);
+    }
+  }, [session?.access_token, serverUrl]);
+
+  // Fetch saved trips and chat sessions when user is authenticated
   useEffect(() => {
     if (session?.access_token) {
       fetchSavedTrips();
+      fetchChatSessions();
     }
   }, [session?.access_token]);
 
@@ -181,7 +234,6 @@ export default function TripPlannerPage() {
   useEffect(() => {
     const fetchInitialPlaces = async () => {
       try {
-        const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3000";
         const response = await fetch(`${serverUrl}/api/places?limit=50`);
 
         if (!response.ok) {
@@ -199,6 +251,9 @@ export default function TripPlannerPage() {
             lng: p.lng,
             tags: p.tags || [],
             price: p.price,
+            description: p.description || '',
+            address: p.address || p.name || 'Address not available',
+            image_url: p.image_url || '',
           })));
         }
       } catch (error) {
@@ -218,7 +273,6 @@ export default function TripPlannerPage() {
 
     setIsSearching(true);
     try {
-      const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3000";
       const params = new URLSearchParams();
 
       if (query.trim()) {
@@ -247,6 +301,9 @@ export default function TripPlannerPage() {
           lng: p.lng,
           tags: p.tags || [],
           price: p.price,
+          description: p.description || '',
+          address: p.address || p.name || 'Address not available',
+          image_url: p.image_url || '',
         })));
       }
     } catch (error) {
@@ -255,7 +312,7 @@ export default function TripPlannerPage() {
     } finally {
       setIsSearching(false);
     }
-  }, []);
+  }, [locale, serverUrl, t]);
 
   // Debounce search
   useEffect(() => {
@@ -334,13 +391,23 @@ export default function TripPlannerPage() {
     setIsNewTripDialogOpen(false);
   };
 
-  const handleDeleteTrip = (tripId: string) => {
-    if (confirm("Are you sure you want to delete this trip?")) {
-      setTrips((prev) => prev.filter((t) => t.id !== tripId));
-      if (tripId === selectedTripId) {
-        const remaining = trips.filter((t) => t.id !== tripId);
-        setSelectedTripId(remaining[0]?.id || null);
+  const handleDeleteTrip = async (tripId: string) => {
+    if (!confirm("Are you sure you want to delete this trip?")) return;
+    if (session?.access_token) {
+      try {
+        await fetch(`${serverUrl}/api/itineraries/${tripId}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+      } catch {
+        toast.error("Failed to delete trip from server");
+        return;
       }
+    }
+    setTrips((prev) => prev.filter((t) => t.id !== tripId));
+    if (tripId === selectedTripId) {
+      const remaining = trips.filter((t) => t.id !== tripId);
+      setSelectedTripId(remaining[0]?.id || null);
     }
   };
 
@@ -386,11 +453,108 @@ export default function TripPlannerPage() {
     );
   };
 
+  const handleSaveTripToServer = useCallback(async (tripId: string, orderedStops: TripStop[]) => {
+    if (!session?.access_token) {
+      toast.error("Please log in to save trips");
+      return;
+    }
+    const trip = trips.find(t => t.id === tripId);
+    if (!trip) return;
+    try {
+      const res = await fetch(`${serverUrl}/api/itineraries/${tripId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          title: trip.name,
+          stops: orderedStops.map(s => ({
+            slug: nameToSlug(s.name),
+            suggested_time_min: s.suggestedDurationMin,
+          })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error ?? `Error ${res.status}`);
+      toast.success("Trip saved!");
+      fetchSavedTrips();
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to save trip");
+    }
+  }, [session?.access_token, serverUrl, trips, fetchSavedTrips]);
+
   const handleClearSearch = () => {
     setSearchQuery("");
     setSelectedCategory("all");
     setSearchResults([]);
   };
+
+  // If user unfocuses selected trip in Trips tab, reset filters so all pins are shown
+  useEffect(() => {
+    if (leftPanelTab === 'trips' && !selectedTripId) {
+      setSearchQuery("");
+      setSelectedCategory("all");
+      setSearchResults([]);
+    }
+  }, [leftPanelTab, selectedTripId]);
+
+  // Chat session handlers
+  const handleSelectSession = useCallback(async (sessionId: string) => {
+    if (!session?.access_token) return;
+    try {
+      const response = await fetch(`${serverUrl}/api/sessions/${sessionId}/messages`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && Array.isArray(data.messages)) {
+          setActiveSessionId(sessionId);
+          setChatSessionMessages(data.messages);
+          setIsChatOpen(true);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading session messages:', error);
+      toast.error('Failed to load chat history');
+    }
+  }, [session?.access_token, serverUrl]);
+
+  const handleNewSession = useCallback(() => {
+    setActiveSessionId(null);
+    setChatSessionMessages(null);
+  }, []);
+
+  const handleDeleteSession = useCallback(async (sessionId: string) => {
+    if (!session?.access_token) return;
+    try {
+      const response = await fetch(`${serverUrl}/api/sessions/${sessionId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (response.ok) {
+        setChatSessions((prev) => prev.filter((s) => s.id !== sessionId));
+        if (activeSessionId === sessionId) {
+          setActiveSessionId(null);
+          setChatSessionMessages(null);
+        }
+        toast.success('Chat deleted');
+      }
+    } catch (error) {
+      console.error('Error deleting session:', error);
+      toast.error('Failed to delete chat');
+    }
+  }, [activeSessionId, session?.access_token, serverUrl]);
+
+  const handleSessionCreated = useCallback((id: string | null) => {
+    setActiveSessionId(id);
+    // Refresh session list after a short delay to allow backend to save
+    if (id) {
+      setTimeout(() => {
+        fetchChatSessions();
+      }, 1500);
+    }
+  }, [fetchChatSessions]);
 
   // Transform places for map display
   const transformPlacesForMap = (places: PlaceItem[]): any[] => {
@@ -399,13 +563,13 @@ export default function TripPlannerPage() {
       .map((place) => ({
         id: place.id,
         name: place.name,
-        description: place.tags?.join(", ") || "No description available",
+        description: place.description || place.tags?.join(", ") || "No description available",
         tags: place.tags || [],
         lat: place.lat!,
         lng: place.lng!,
-        address: place.slug || "Address not available",
+        address: place.address || "Address not available",
         price: place.price || 0,
-        image_url: "",
+        image_url: place.image_url || "",
         slug: place.slug || place.id,
       }));
   };
@@ -424,7 +588,7 @@ export default function TripPlannerPage() {
         address: stop.address,
         price: 0,
         image_url: "",
-        slug: stop.id,
+        slug: nameToSlug(stop.name),
       }));
   };
 
@@ -468,9 +632,22 @@ export default function TripPlannerPage() {
     };
   }, [previewItinerary, agentItinerary, foundPlaces, initialPlaces, searchResults]);
 
+  const itineraryStopsForMap = useMemo(
+    () => enrichedPreviewItinerary?.stops
+      ? transformItineraryStopsForMap(enrichedPreviewItinerary.stops)
+      : [],
+    [enrichedPreviewItinerary]
+  );
+
   const allPlacesForMap = useMemo(() => {
     if (enrichedPreviewItinerary) {
-      return transformItineraryStopsForMap(enrichedPreviewItinerary.stops || []);
+      return itineraryStopsForMap;
+    }
+
+    // In Trips tab: if a trip is selected, focus only that trip's pins.
+    // If no trip is selected (unfocused), show all pins.
+    if (leftPanelTab === 'trips' && selectedTrip) {
+      return transformTripStopsForMap(selectedTrip);
     }
 
     const hasActiveSearch = searchQuery.trim() || selectedCategory !== 'all';
@@ -481,7 +658,13 @@ export default function TripPlannerPage() {
       ...transformPlacesForMap(placesToShow),
       ...transformTripStopsForMap(selectedTrip),
     ];
-  }, [foundPlaces, searchResults, initialPlaces, searchQuery, selectedCategory, selectedTrip, enrichedPreviewItinerary]);
+  }, [foundPlaces, searchResults, initialPlaces, searchQuery, selectedCategory, selectedTrip, enrichedPreviewItinerary, itineraryStopsForMap, leftPanelTab]);
+
+  // Context places that can be shared with chat (only map-visible place set)
+  const chatContextPlaces = useMemo(
+    () => visiblePlaces.slice(0, 20).map((p) => ({ id: p.id, name: p.name, slug: p.slug, tags: p.tags })),
+    [visiblePlaces]
+  );
 
   // Generate trip route coordinates from selected trip stops
   const tripRoute = useMemo(() => {
@@ -507,6 +690,7 @@ export default function TripPlannerPage() {
           selectedPlace={selectedPlace}
           onPlaceSelect={setSelectedPlace}
           onPlaceDeselect={() => setSelectedPlace(null)}
+          onVisiblePlacesChange={setVisiblePlaces}
           userLocation={
             userLocation ? [userLocation.lat, userLocation.lng] : undefined
           }
@@ -522,7 +706,7 @@ export default function TripPlannerPage() {
       </div>
 
       {/* Perplexity-style Search Bar */}
-      <motion.div 
+      <motion.div
         className="absolute top-4 left-4 right-4 z-20 md:left-[400px] md:right-[400px] md:mx-auto md:w-[600px]"
         initial={{ y: -50, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -533,7 +717,7 @@ export default function TripPlannerPage() {
             <Search className="absolute left-4 text-gray-400 h-5 w-5 pointer-events-none" />
             <Input
               type="text"
-              placeholder={t("map.searchPlaceholder") }
+              placeholder={t("map.searchPlaceholder")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-12 pr-12 h-12 rounded-full shadow-xl border-0 bg-white/95 backdrop-blur-md text-gray-900 placeholder:text-gray-500 focus-visible:ring-2 focus-visible:ring-blue-500"
@@ -659,38 +843,62 @@ export default function TripPlannerPage() {
         </AnimatePresence>
       </motion.div>
 
-      {/* Map Toolbar - Central toggle buttons (Desktop Only) */}
-      {/* <div className="hidden md:block">
-        <MapToolbar
-          isTripsPanelOpen={isTripsPanelOpen}
-          isItineraryPanelOpen={isItineraryPanelOpen}
-          isChatOpen={isChatOpen}
-          onToggleTripsPanel={() => setIsTripsPanelOpen(!isTripsPanelOpen)}
-          onToggleItineraryPanel={() =>
-            setIsItineraryPanelOpen(!isItineraryPanelOpen)
-          }
-          onToggleChat={() => setIsChatOpen(!isChatOpen)}
-        />
-      </div> */}
-
-      {/* Left Panel - Trip List (Desktop Only) */}
+      {/* Left Panel - Trip List & Chat History (Desktop Only) */}
       <div className="hidden md:block">
         <CollapsiblePanel
           isOpen={isLeftPanelOpen}
           onClose={() => setIsLeftPanelOpen(false)}
           position="left"
-          title="My Trips"
+          title={leftPanelTab === 'trips' ? "My Trips" : "Chat History"}
           width="w-[400px]"
         >
-          <TripListColumn
-            trips={trips}
-            selectedTripId={selectedTripId}
-            onSelectTrip={setSelectedTripId}
-            onNewTripClick={handleNewTrip}
-            onDeleteTrip={handleDeleteTrip}
-            onEditTrip={handleEditTrip}
-            onReorderTrips={handleReorderTrips}
-          />
+          {/* Tab switcher */}
+          <div className="flex gap-1 mb-4 p-1 bg-slate-100 rounded-lg">
+            <button
+              onClick={() => setLeftPanelTab('trips')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-sm font-medium transition-colors ${leftPanelTab === 'trips'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+                }`}
+            >
+              <MapIcon className="h-4 w-4" />
+              My Trips
+            </button>
+            <button
+              onClick={() => {
+                setLeftPanelTab('history');
+                fetchChatSessions();
+              }}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-sm font-medium transition-colors ${leftPanelTab === 'history'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+                }`}
+            >
+              <MessageSquare className="h-4 w-4" />
+              Chat History
+            </button>
+          </div>
+
+          {leftPanelTab === 'trips' ? (
+            <TripListColumn
+              trips={trips}
+              selectedTripId={selectedTripId}
+              onSelectTrip={setSelectedTripId}
+              onNewTripClick={handleNewTrip}
+              onDeleteTrip={handleDeleteTrip}
+              onEditTrip={handleEditTrip}
+              onReorderTrips={handleReorderTrips}
+            />
+          ) : (
+            <ChatHistorySidebar
+              sessions={chatSessions}
+              activeSessionId={activeSessionId}
+              onSelectSession={handleSelectSession}
+              onNewSession={handleNewSession}
+              onDeleteSession={handleDeleteSession}
+              isLoading={isSessionsLoading}
+            />
+          )}
         </CollapsiblePanel>
       </div>
 
@@ -706,7 +914,9 @@ export default function TripPlannerPage() {
           <ItineraryColumn
             trip={selectedTrip}
             onEditTrip={handleEditTrip}
+            onSaveTrip={handleSaveTripToServer}
             onReorderStops={handleReorderStops}
+            isLoading={isTripsLoading}
             totalDurationMin={(stopsSuggestedDuration || 0) + (routeTravelMin || 0)}
             totalDistanceKm={routeDistanceKm ?? selectedTrip?.totalDistanceKm ?? 0}
           />
@@ -744,7 +954,9 @@ export default function TripPlannerPage() {
             <ItineraryColumn
               trip={selectedTrip}
               onEditTrip={handleEditTrip}
+              onSaveTrip={handleSaveTripToServer}
               onReorderStops={handleReorderStops}
+              isLoading={isTripsLoading}
               totalDurationMin={(stopsSuggestedDuration || 0) + (routeTravelMin || 0)}
               totalDistanceKm={routeDistanceKm ?? selectedTrip?.totalDistanceKm ?? 0}
             />
@@ -760,6 +972,11 @@ export default function TripPlannerPage() {
         onPreviewItinerary={setPreviewItinerary}
         userLocation={userLocation}
         defaultOpen={isChatOpen}
+        sessionId={activeSessionId}
+        authToken={session?.access_token}
+        onSessionCreated={handleSessionCreated}
+        sessionMessages={chatSessionMessages}
+        contextPlaces={chatContextPlaces}
       />
 
       {/* New Trip Dialog */}

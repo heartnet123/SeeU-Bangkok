@@ -5,6 +5,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Supercluster from 'supercluster';
 import { MapControls } from './map-controls';
+import { SmartFilterBar, type FilterCategory } from './smart-filter-bar';
 import { PlacePopupContent } from './place-popup-content';
 import { createRoot } from 'react-dom/client';
 import type { Root } from 'react-dom/client';
@@ -36,6 +37,7 @@ interface MapContainerProps {
   selectedPlace?: Place | null;
   onPlaceSelect: (place: Place) => void;
   onPlaceDeselect: () => void;
+  onVisiblePlacesChange?: (places: Place[]) => void;
   userLocation?: [number, number] | null;
   initialCenter?: [number, number];
   initialZoom?: number;
@@ -190,6 +192,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   selectedPlace,
   onPlaceSelect,
   onPlaceDeselect,
+  onVisiblePlacesChange,
   userLocation,
   initialCenter = [100.5018, 13.7563], // Bangkok center
   initialZoom = 11,
@@ -212,6 +215,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   // Callback refs to avoid stale closures in event handlers
   const onPlaceDeselectRef = useRef(onPlaceDeselect);
   const onPlaceSelectRef = useRef(onPlaceSelect);
+  const onVisiblePlacesChangeRef = useRef(onVisiblePlacesChange);
   const userLocationRef = useRef(userLocation);
 
   // Keep refs in sync with props
@@ -224,6 +228,10 @@ const MapContainer: React.FC<MapContainerProps> = ({
   }, [onPlaceSelect]);
 
   useEffect(() => {
+    onVisiblePlacesChangeRef.current = onVisiblePlacesChange;
+  }, [onVisiblePlacesChange]);
+
+  useEffect(() => {
     userLocationRef.current = userLocation;
   }, [userLocation]);
 
@@ -234,6 +242,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const [currentBounds, setCurrentBounds] = useState<[number, number, number, number] | null>(null);
   const [is3DEnabled, setIs3DEnabled] = useState(show3D);
   const [isTrafficEnabled, setIsTrafficEnabled] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<FilterCategory>('all');
 
   // Initialize Supercluster
   const initSupercluster = useCallback(() => {
@@ -259,11 +268,19 @@ const MapContainer: React.FC<MapContainerProps> = ({
       }));
   }, []);
 
+  // Filter places by active category filter
+  const filteredPlaces = useMemo(() => {
+    if (activeFilter === 'all') return places;
+    return places.filter((place) =>
+      place.tags.some((tag) => tag.toLowerCase().includes(activeFilter))
+    );
+  }, [places, activeFilter]);
+
   // Get clustered features
   const clusteredFeatures = useMemo(() => {
     if (!superclusterRef.current || !currentBounds) return [];
 
-    const features = placesToFeatures(places);
+    const features = placesToFeatures(filteredPlaces);
     superclusterRef.current.load(features);
 
     if (previewItinerary) {
@@ -275,7 +292,16 @@ const MapContainer: React.FC<MapContainerProps> = ({
       currentBounds,
       Math.floor(currentZoom)
     ) as SuperclusterFeature[];
-  }, [places, currentBounds, currentZoom, placesToFeatures, previewItinerary]);
+  }, [filteredPlaces, currentBounds, currentZoom, placesToFeatures, previewItinerary]);
+
+  // Emit currently visible (unclustered) places to parent for UI sync
+  useEffect(() => {
+    const visiblePlaces = clusteredFeatures
+      .filter((feature) => !("cluster" in feature.properties && feature.properties.cluster === true))
+      .map((feature) => feature.properties as Place);
+
+    onVisiblePlacesChangeRef.current?.(visiblePlaces);
+  }, [clusteredFeatures]);
 
   // Initialize map - only runs once on mount (best practice: empty dependency array)
   useEffect(() => {
@@ -330,15 +356,19 @@ const MapContainer: React.FC<MapContainerProps> = ({
       };
 
       const handleClick = (e: mapboxgl.MapMouseEvent) => {
-        // Check if click was on a marker
-        const features = map.current?.queryRenderedFeatures(e.point, {
-          layers: [],
-        });
-
-        if (!features?.length) {
-          closePopup();
-          onPlaceDeselectRef.current();
+        // Ignore clicks on overlays/controls/popups to avoid accidental deselect
+        const target = e.originalEvent.target as HTMLElement | null;
+        if (
+          target?.closest('.marker-container') ||
+          target?.closest('.cluster-container') ||
+          target?.closest('.mapboxgl-popup') ||
+          target?.closest('.mapboxgl-ctrl')
+        ) {
+          return;
         }
+
+        closePopup();
+        onPlaceDeselectRef.current();
       };
 
       const handleError = (e: mapboxgl.ErrorEvent) => {
@@ -581,7 +611,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
         // Build coordinates string for API: lng,lat;lng,lat;lng,lat
         const coordinatesString = tripRoute.map(([lng, lat]) => `${lng},${lat}`).join(';');
-        
+
         // Build waypoints string - all points should be waypoints so we get a route through all
         // Format: ?waypoints=0;1;2 for all points
         const waypointIndices = Array.from({ length: tripRoute.length }, (_, i) => i).join(';');
@@ -589,9 +619,9 @@ const MapContainer: React.FC<MapContainerProps> = ({
         const directionsUrl = `https://api.mapbox.com/directions/v5/mapbox/walking/${coordinatesString}?waypoints=${waypointIndices}&access_token=${accessToken}&overview=full&geometries=geojson`;
 
         console.log('Fetching route:', directionsUrl);
-        
+
         const response = await fetch(directionsUrl);
-        
+
         if (!response.ok) {
           console.error('Failed to fetch directions:', response.status, response.statusText);
           drawStraightRoute();
@@ -600,7 +630,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
         const data = await response.json();
         console.log('Route response:', data);
-        
+
         if (data.routes && data.routes.length > 0) {
           const route = data.routes[0];
           const routeCoordinates = route.geometry.coordinates;
@@ -1313,6 +1343,13 @@ const MapContainer: React.FC<MapContainerProps> = ({
     <div className="relative w-full h-full">
       {/* Map container */}
       <div ref={mapContainer} className="w-full h-full" />
+
+      {/* Smart filter bar */}
+      <SmartFilterBar
+        activeFilter={activeFilter}
+        onFilterChange={setActiveFilter}
+        isDarkMode={mapStyle === 'dark'}
+      />
 
       {/* Map controls */}
       <MapControls

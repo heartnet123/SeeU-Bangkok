@@ -20,15 +20,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ActiveWorkflowStatus, WorkflowSummary } from "./AgentWorkflowVisualization";
 import { ItineraryPreview } from "./ItineraryPreview";
+import { PlacesListPreview } from "./PlacesListPreview";
 import { useTypewriter } from "./hooks/useTypewriter";
 import {
 	extractIntroText,
 	getFollowUpChips,
-	isItineraryText,
 	isPlaceListText,
 	looksLikeMarkdown,
-	parseItineraryFromText,
-	parsePlacesFromMarkdown,
 } from "./lib/chat-parsers";
 import type { AssistantTurn, PendingTurn, PlaceItem, Turn } from "./types";
 
@@ -270,18 +268,27 @@ function AssistantMessage({
 	);
 
 	const parsedPlaces = useMemo(
-		() => (isPlaceList && turn.suggestions.length === 0 ? parsePlacesFromMarkdown(turn.text) : []),
-		[isPlaceList, turn.text, turn.suggestions.length],
+		() => {
+			// Schema-first UI: disable markdown heuristic parsing when structured payload is expected.
+			// Keep empty fallback to avoid mixed rendering paths.
+			return [];
+		},
+		[],
 	);
 
 	const parsedItinerary = useMemo(
-		() => (!turn.itinerary && isItineraryText(turn.text) ? parseItineraryFromText(turn.text) : null),
-		[turn.itinerary, turn.text],
+		() => {
+			// Schema-first UI: rely on structured itinerary only.
+			// No markdown parsing fallback.
+			return null;
+		},
+		[],
 	);
 
 	const followUps = useMemo(() => getFollowUpChips(turn, parsedItinerary !== null), [turn, parsedItinerary]);
 
-	const displayText = parsedItinerary !== null ? "" : introText !== null ? introText : turn.text;
+	const displayText = turn.ui?.summary || (introText !== null ? introText : turn.text);
+	const uiActions = turn.ui?.actions ?? [];
 
 	return (
 		<motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex gap-3">
@@ -301,26 +308,16 @@ function AssistantMessage({
 				))}
 
 				{turn.suggestions.length > 0 && (
-					<div className="space-y-2">
-						<p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-							{turn.suggestions.length} place{turn.suggestions.length > 1 ? "s" : ""} found
-						</p>
-						<div className="space-y-2">
-							{turn.suggestions.slice(0, 5).map((place, idx) => (
-								<PlaceCard
-									key={place.slug || idx}
-									place={place}
-									index={idx}
-									onAdd={onAddPlace ? () => onAddPlace(place) : undefined}
-									onView={onViewPlace ? () => onViewPlace(place.slug) : undefined}
-								/>
-							))}
-							{turn.suggestions.length > 5 && (
-								<Button variant="ghost" size="sm" className="w-full h-8 text-xs">
-									+ {turn.suggestions.length - 5} more places
-								</Button>
-							)}
-						</div>
+					<PlacesListPreview places={turn.suggestions} onAdd={onAddPlace} onView={onViewPlace} />
+				)}
+
+				{uiActions.length > 0 && (
+					<div className="flex flex-wrap gap-2">
+						{uiActions.map((action) => (
+							<Badge key={`${action.type}-${action.label}`} variant="outline" className="text-[10px]">
+								{action.label}
+							</Badge>
+						))}
 					</div>
 				)}
 
@@ -348,20 +345,20 @@ function AssistantMessage({
 				)}
 
 				<AnimatePresence>
-					{(Boolean(turn.itinerary) || parsedItinerary !== null) && !itineraryDismissed && (
+					{Boolean(turn.itinerary) && !itineraryDismissed && (
 						<motion.div
 							initial={{ opacity: 1 }}
 							exit={{ opacity: 0, height: 0, marginTop: 0 }}
 							transition={{ duration: 0.2 }}
 						>
 							<ItineraryPreview
-								itinerary={(turn.itinerary ?? parsedItinerary) as Record<string, unknown>}
+								itinerary={turn.itinerary as Record<string, unknown>}
 								onSave={isLast ? onSaveItinerary : undefined}
 								onPreview={
 									onPreviewItinerary
 										? () =>
 											onPreviewItinerary(
-												(turn.itinerary ?? parsedItinerary) as Record<string, unknown>,
+												turn.itinerary as Record<string, unknown>,
 											)
 										: undefined
 								}

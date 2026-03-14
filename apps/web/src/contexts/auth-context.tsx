@@ -4,6 +4,15 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import type { User, Session, AuthError } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 
+export interface OnboardingPreferences {
+  vibes: string[]
+  travelStyle: string
+  pace: number
+  transit: string[]
+  culinary: string[]
+  boundaries: string[]
+}
+
 interface UserProfile {
   user_id: string
   nick_name: string
@@ -13,6 +22,10 @@ interface UserProfile {
   mobility?: 'walk' | 'bike' | 'public' | 'grab'
   budget_per_day?: number
   languages?: string[]
+  onboarding_completed?: boolean
+  onboarding_completed_at?: string
+  onboarding_skipped_at?: string
+  onboarding_preferences?: OnboardingPreferences
   updated_at: string
 }
 
@@ -26,6 +39,8 @@ interface AuthContextType {
   resetPassword: (email: string) => Promise<{ error: AuthError | null }>
   getProfile: () => Promise<{ profile: UserProfile | null; error: any | null }>
   updateProfile: (updates: { nick_name?: string; avatar_url?: string; birth_year?: number; travel_style?: string[]; mobility?: 'walk' | 'bike' | 'public' | 'grab'; budget_per_day?: number; languages?: string[] }) => Promise<{ profile: UserProfile | null; error: any | null }>
+  getOnboardingStatus: () => Promise<{ completed: boolean; skipped: boolean; error: string | null }>
+  saveOnboarding: (payload: OnboardingPreferences, options?: { skipped?: boolean }) => Promise<{ completed: boolean; error: string | null }>
   refreshProfile: () => Promise<void>
 }
 
@@ -161,6 +176,65 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const getOnboardingStatus = async () => {
+    if (!session?.access_token) {
+      return { completed: false, skipped: false, error: 'No session' }
+    }
+
+    try {
+      const response = await fetch('http://localhost:3000/api/auth/onboarding', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        return { completed: false, skipped: false, error: errorData.error || 'Failed to fetch onboarding status' }
+      }
+
+      const data = await response.json()
+      return {
+        completed: Boolean(data?.onboarding?.completed),
+        skipped: Boolean(data?.onboarding?.skipped_at),
+        error: null,
+      }
+    } catch (error) {
+      return { completed: false, skipped: false, error: 'Network error' }
+    }
+  }
+
+  const saveOnboarding = async (payload: OnboardingPreferences, options?: { skipped?: boolean }) => {
+    if (!session?.access_token) {
+      return { completed: false, error: 'No session' }
+    }
+
+    try {
+      const response = await fetch('http://localhost:3000/api/auth/onboarding', {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...payload,
+          skipped: Boolean(options?.skipped),
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        return { completed: false, error: errorData.error || 'Failed to save onboarding' }
+      }
+
+      await refreshProfile()
+      return { completed: true, error: null }
+    } catch (error) {
+      return { completed: false, error: 'Network error' }
+    }
+  }
+
   const refreshProfile = async () => {
     setProfileCache(null) // Clear cache to force fresh fetch
     if (session?.access_token) {
@@ -185,6 +259,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     resetPassword,
     getProfile,
     updateProfile,
+    getOnboardingStatus,
+    saveOnboarding,
     refreshProfile,
   }
 

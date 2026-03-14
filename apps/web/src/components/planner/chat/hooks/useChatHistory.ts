@@ -18,6 +18,7 @@ interface UseChatHistoryResult {
 	appendUserTurn: (text: string) => void;
 	commitPending: (pending: PendingTurn, latency: number) => void;
 	clearConversation: () => void;
+	loadSession: (rawMessages: Array<{ role: string; content: string }>) => void;
 }
 
 export function useChatHistory({
@@ -62,6 +63,7 @@ export function useChatHistory({
 			suggestions: pending.suggestions,
 			itinerary: pending.itinerary,
 			errors: pending.errors,
+			ui: pending.ui,
 		};
 		setTurns((prev) => [...prev, committed]);
 		setPendingTurn(null);
@@ -69,6 +71,29 @@ export function useChatHistory({
 
 	const clearConversation = useCallback(() => {
 		setTurns([]);
+		setPendingTurn(null);
+		setIsItinerarySaved(false);
+	}, []);
+
+	const loadSession = useCallback((rawMessages: Array<{ role: string; content: string }>) => {
+		const converted: Turn[] = rawMessages
+			.filter((m) => m.role === "user" || m.role === "assistant")
+			.map((m) => {
+				if (m.role === "user") {
+					return { role: "user" as const, text: m.content, id: uid() };
+				}
+				return {
+					role: "assistant" as const,
+					id: uid(),
+					text: m.content,
+					workflowSteps: [],
+					latency: undefined,
+					suggestions: [],
+					itinerary: null,
+					errors: [],
+				} satisfies AssistantTurn;
+			});
+		setTurns(converted);
 		setPendingTurn(null);
 		setIsItinerarySaved(false);
 	}, []);
@@ -83,5 +108,6 @@ export function useChatHistory({
 		appendUserTurn,
 		commitPending,
 		clearConversation,
+		loadSession,
 	};
 }

@@ -21,6 +21,10 @@ interface UserProfile {
   mobility?: 'walk' | 'bike' | 'public' | 'grab'
   budget_per_day?: number
   languages?: string[]
+  onboarding_completed?: boolean
+  onboarding_completed_at?: string
+  onboarding_skipped_at?: string
+  onboarding_preferences?: Record<string, any>
   updated_at: string
 }
 
@@ -177,6 +181,30 @@ export default function ProfilePage() {
       <div className="container mx-auto px-4 py-8 max-w-4xl">
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Heart className="h-5 w-5 text-amber-500" />
+                <span>Travel Survey</span>
+              </CardTitle>
+              <CardDescription>
+                Personalize your recommendations with a quick survey.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm text-gray-700">
+                  {profile?.onboarding_completed
+                    ? 'Survey completed. You can update your preferences anytime.'
+                    : 'Survey not completed yet. Complete it to get better travel plans.'}
+                </p>
+              </div>
+              <Button type="button" onClick={() => router.push('/onboarding')}>
+                {profile?.onboarding_completed ? 'Edit Survey' : 'Complete Survey'}
+              </Button>
+            </CardContent>
+          </Card>
+
           {/* Profile Picture & Basic Info */}
           <Card>
             <CardHeader>

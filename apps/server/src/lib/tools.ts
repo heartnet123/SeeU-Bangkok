@@ -113,8 +113,12 @@ async function fetchMapboxMatrix(coords: LatLng[]): Promise<{ distances: number[
   const coordStr = coords.map(c => `${c.lng},${c.lat}`).join(';');
   const url = `https://api.mapbox.com/directions-matrix/v1/mapbox/driving/${coordStr}?annotations=distance,duration&access_token=${token}`;
 
+  const timeoutMs = Number(process.env.MAPBOX_MATRIX_TIMEOUT_MS || 2200);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: controller.signal });
     if (!res.ok) return null;
     const data = await res.json();
     if (data.code !== 'Ok') return null;
@@ -122,9 +126,13 @@ async function fetchMapboxMatrix(coords: LatLng[]): Promise<{ distances: number[
       distances: data.distances, // in meters
       durations: data.durations  // in seconds
     };
-  } catch (e) {
-    console.error('Mapbox Matrix fetch error:', e);
+  } catch (e: any) {
+    if (e?.name !== 'AbortError') {
+      console.error('Mapbox Matrix fetch error:', e);
+    }
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -271,48 +279,31 @@ export const plan_itinerary = traceable(
   async (params: PlanItineraryParams): Promise<any> => {
     const { place_slugs, title = "Suggested Itinerary" } = params
 
-    // Fetch places with descriptions
+    // Single fetch for place details and coordinates (reduces DB round-trips)
     const { data: places, error } = await supabase
       .from("bangkok_unseen")
-      .select("id, name, description, tags")
+      .select("id, name, description, tags, lat, lng")
       .in("id", place_slugs)
 
     if (error || !places) throw new Error("Failed to fetch places")
 
-    const placeItems = places.map(p => ({
-      id: p.id,
-      name: p.name,
-      slug: nameToSlug(p.name),
-      lat: 0, lng: 0, // not needed for route
-      tags: p.tags || [],
-      price: 0,
-      image_url: "",
-      description: p.description
-    }))
-
-    // Build route (need lat/lng for routing)
-    const { data: placesWithCoords, error: err2 } = await supabase
-      .from("bangkok_unseen")
-      .select("id, lat, lng")
-      .in("id", place_slugs)
-
-    if (err2 || !placesWithCoords) throw new Error("Failed to fetch coordinates")
-
-    const coordMap = new Map(placesWithCoords.map(p => [p.id, { lat: p.lat, lng: p.lng }]))
-
-    const placesForRoute = placeItems.map(p => ({
-      ...p,
-      lat: coordMap.get(p.id)?.lat,
-      lng: coordMap.get(p.id)?.lng
-    })).filter(p => p.lat && p.lng)
+    const placesForRoute = places
+      .map(p => ({
+        id: p.id,
+        name: p.name,
+        slug: nameToSlug(p.name),
+        lat: p.lat,
+        lng: p.lng,
+        tags: p.tags || [],
+        price: 0,
+        image_url: "",
+      }))
+      .filter(p => isFiniteNum(p.lat) && isFiniteNum(p.lng)) as PlaceItem[]
 
     const route = await build_route({ places: placesForRoute })
 
     const coordsBySlug = new Map(placesForRoute.map(p => [p.slug, { lat: p.lat!, lng: p.lng! }]))
-
-    // Create a map of slug to place for lookup
     const placeBySlug = new Map(places.map(p => [nameToSlug(p.name), p]))
-
 
     // Enrich stops
     const stops = route.order.map((slug) => {

@@ -14,6 +14,7 @@ import { useChatActions } from "./chat/hooks/useChatActions";
 import { useChatHistory } from "./chat/hooks/useChatHistory";
 import { useChatStream } from "./chat/hooks/useChatStream";
 import type { ChatPanelProps } from "./chat/types";
+
 export function ChatPanel({
 	onPlacesFound,
 	onAddPlaceToTrip,
@@ -21,11 +22,21 @@ export function ChatPanel({
 	onPreviewItinerary,
 	userLocation,
 	defaultOpen = false,
+	sessionId,
+	authToken,
+	onSessionCreated,
+	sessionMessages,
+	contextPlaces,
 }: ChatPanelProps) {
 	const [isOpen, setIsOpen] = useState(defaultOpen);
 	const [isMinimized, setIsMinimized] = useState(false);
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const { user, session } = useAuth();
+
+	// React to defaultOpen changes (e.g., selecting a session from history)
+	useEffect(() => {
+		if (defaultOpen) setIsOpen(true);
+	}, [defaultOpen]);
 
 	const {
 		turns,
@@ -37,10 +48,23 @@ export function ChatPanel({
 		appendUserTurn,
 		commitPending,
 		clearConversation,
+		loadSession,
 	} = useChatHistory({ onPlacesFound, onItineraryCreated });
+
+	// Load session messages when a session is selected from history
+	useEffect(() => {
+		if (sessionMessages) {
+			loadSession(sessionMessages);
+		}
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [sessionMessages]);
 
 	const { isStreaming, startWithMessage, stop } = useChatStream({
 		userLocation,
+		sessionId,
+		authToken,
+		contextPlaces,
+		onSessionCreated: (id) => onSessionCreated?.(id),
 		appendUserTurn,
 		setPendingTurn,
 		commitPending,
@@ -62,7 +86,10 @@ export function ChatPanel({
 		user,
 		session,
 		setIsItinerarySaved,
-		clearConversation,
+		clearConversation: () => {
+			clearConversation();
+			onSessionCreated?.(null);
+		},
 	});
 
 	useEffect(() => {

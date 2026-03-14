@@ -39,10 +39,21 @@ export interface AssistantTurn {
 	suggestions: PlaceItem[];
 	itinerary: unknown;
 	errors: string[];
+	ui?: UiResponsePayload;
 	id: string;
 }
 
 export type Turn = UserTurn | AssistantTurn;
+
+export interface UiResponsePayload {
+	version: "1.0";
+	intent: "chat" | "place_recommendation" | "itinerary";
+	summary: string;
+	places: PlaceItem[];
+	itinerary: unknown | null;
+	actions: Array<{ type: string; label: string }>;
+	raw_text: string;
+}
 
 export interface PendingTurn {
 	workflowSteps: WorkflowStepData[];
@@ -50,6 +61,7 @@ export interface PendingTurn {
 	suggestions: PlaceItem[];
 	itinerary: unknown;
 	errors: string[];
+	ui?: UiResponsePayload;
 }
 
 export interface ParsedPlace {
@@ -80,4 +92,9 @@ export interface ChatPanelProps {
 	onPreviewItinerary?: (itinerary: any) => void;
 	userLocation?: { lat: number; lng: number };
 	defaultOpen?: boolean;
+	sessionId?: string | null;
+	authToken?: string;
+	onSessionCreated?: (id: string | null) => void;
+	sessionMessages?: Array<{ role: string; content: string }> | null;
+	contextPlaces?: Array<{ id: string; name: string; slug?: string; tags?: string[] }>;
 }
