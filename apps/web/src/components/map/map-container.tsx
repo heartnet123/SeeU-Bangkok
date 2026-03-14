@@ -5,6 +5,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Supercluster from 'supercluster';
 import { MapControls } from './map-controls';
+import { SmartFilterBar, type FilterCategory } from './smart-filter-bar';
 import { PlacePopupContent } from './place-popup-content';
 import { createRoot } from 'react-dom/client';
 import type { Root } from 'react-dom/client';
@@ -36,10 +37,11 @@ interface MapContainerProps {
   selectedPlace?: Place | null;
   onPlaceSelect: (place: Place) => void;
   onPlaceDeselect: () => void;
+  onVisiblePlacesChange?: (places: Place[]) => void;
   userLocation?: [number, number] | null;
   initialCenter?: [number, number];
   initialZoom?: number;
-  itineraryStops?: ItineraryStop[];
+  previewItinerary?: any | null;
   show3D?: boolean;
   tripRoute?: [number, number][]; // Array of [lng, lat] coordinates for the route
   onRouteInfo?: (info: { distanceKm: number; durationMin: number; routeGeoJSON?: GeoJSON.FeatureCollection }) => void;
@@ -98,18 +100,13 @@ const MarkerContent: React.FC<{
   place: Place;
   isSelected: boolean;
   color: string;
-  icon: string;
+  icon: string | React.ReactNode;
   onClick: () => void;
-}> = ({ place, isSelected, color, icon, onClick }) => {
+  isSequence?: boolean;
+}> = ({ place, isSelected, color, icon, onClick, isSequence }) => {
   return (
-    <motion.div
+    <div
       className={`place-marker ${isSelected ? 'selected' : ''}`}
-      initial={false}
-      animate={{
-        scale: isSelected ? 1.15 : 1,
-        zIndex: isSelected ? 100 : 10,
-      }}
-      whileHover={{ scale: isSelected ? 1.2 : 1.1 }}
       onClick={(e) => {
         e.stopPropagation();
         onClick();
@@ -118,21 +115,31 @@ const MarkerContent: React.FC<{
         width: isSelected ? '40px' : '36px',
         height: isSelected ? '40px' : '36px',
         backgroundColor: color,
-        border: '3px solid white',
+        border: isSequence ? '2px solid white' : '3px solid white',
         borderRadius: '50%',
         cursor: 'pointer',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: isSelected ? '18px' : '16px',
+        fontSize: isSequence ? (isSelected ? '20px' : '18px') : (isSelected ? '18px' : '16px'),
+        color: isSequence ? 'white' : 'inherit',
+        fontWeight: isSequence ? 'bold' : 'normal',
         boxShadow: isSelected
           ? '0 4px 12px rgba(0,0,0,0.4)'
           : '0 2px 8px rgba(0,0,0,0.3)',
-        transition: 'background-color 0.2s, border-color 0.2s',
+        transition: 'background-color 0.15s ease-in-out, transform 0.15s ease-in-out',
+        transform: isSelected ? 'scale(1.15)' : 'scale(1)',
+        zIndex: isSelected ? 100 : 10,
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLDivElement).style.transform = isSelected ? 'scale(1.2)' : 'scale(1.1)';
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLDivElement).style.transform = isSelected ? 'scale(1.15)' : 'scale(1)';
       }}
     >
       {icon}
-    </motion.div>
+    </div>
   );
 };
 
@@ -145,11 +152,8 @@ const ClusterContent: React.FC<{
   onClick: () => void;
 }> = ({ count, color, size, fontSize, onClick }) => {
   return (
-    <motion.div
+    <div
       className="cluster-marker"
-      initial={{ scale: 0 }}
-      animate={{ scale: 1 }}
-      whileHover={{ scale: 1.1 }}
       onClick={(e) => {
         e.stopPropagation();
         onClick();
@@ -168,10 +172,18 @@ const ClusterContent: React.FC<{
         color: 'white',
         fontWeight: 'bold',
         boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+        transition: 'transform 0.15s ease-in-out',
+        transform: 'scale(1)',
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLDivElement).style.transform = 'scale(1.1)';
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLDivElement).style.transform = 'scale(1)';
       }}
     >
       {count}
-    </motion.div>
+    </div>
   );
 };
 
@@ -180,10 +192,11 @@ const MapContainer: React.FC<MapContainerProps> = ({
   selectedPlace,
   onPlaceSelect,
   onPlaceDeselect,
+  onVisiblePlacesChange,
   userLocation,
   initialCenter = [100.5018, 13.7563], // Bangkok center
   initialZoom = 11,
-  itineraryStops = [],
+  previewItinerary = null,
   show3D = false,
   tripRoute = [],
   onRouteInfo,
@@ -192,7 +205,6 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const clusterMarkersRef = useRef<Map<number, mapboxgl.Marker>>(new Map());
-  const itineraryMarkersRef = useRef<mapboxgl.Marker[]>([]);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const popupRootRef = useRef<Root | null>(null);
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
@@ -203,6 +215,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   // Callback refs to avoid stale closures in event handlers
   const onPlaceDeselectRef = useRef(onPlaceDeselect);
   const onPlaceSelectRef = useRef(onPlaceSelect);
+  const onVisiblePlacesChangeRef = useRef(onVisiblePlacesChange);
   const userLocationRef = useRef(userLocation);
 
   // Keep refs in sync with props
@@ -215,6 +228,10 @@ const MapContainer: React.FC<MapContainerProps> = ({
   }, [onPlaceSelect]);
 
   useEffect(() => {
+    onVisiblePlacesChangeRef.current = onVisiblePlacesChange;
+  }, [onVisiblePlacesChange]);
+
+  useEffect(() => {
     userLocationRef.current = userLocation;
   }, [userLocation]);
 
@@ -225,6 +242,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const [currentBounds, setCurrentBounds] = useState<[number, number, number, number] | null>(null);
   const [is3DEnabled, setIs3DEnabled] = useState(show3D);
   const [isTrafficEnabled, setIsTrafficEnabled] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<FilterCategory>('all');
 
   // Initialize Supercluster
   const initSupercluster = useCallback(() => {
@@ -250,18 +268,40 @@ const MapContainer: React.FC<MapContainerProps> = ({
       }));
   }, []);
 
+  // Filter places by active category filter
+  const filteredPlaces = useMemo(() => {
+    if (activeFilter === 'all') return places;
+    return places.filter((place) =>
+      place.tags.some((tag) => tag.toLowerCase().includes(activeFilter))
+    );
+  }, [places, activeFilter]);
+
   // Get clustered features
   const clusteredFeatures = useMemo(() => {
     if (!superclusterRef.current || !currentBounds) return [];
 
-    const features = placesToFeatures(places);
+    const features = placesToFeatures(filteredPlaces);
     superclusterRef.current.load(features);
+
+    if (previewItinerary) {
+      // Disable clustering when previewing an itinerary so sequence numbers render individually
+      return features as SuperclusterFeature[];
+    }
 
     return superclusterRef.current.getClusters(
       currentBounds,
       Math.floor(currentZoom)
     ) as SuperclusterFeature[];
-  }, [places, currentBounds, currentZoom, placesToFeatures]);
+  }, [filteredPlaces, currentBounds, currentZoom, placesToFeatures, previewItinerary]);
+
+  // Emit currently visible (unclustered) places to parent for UI sync
+  useEffect(() => {
+    const visiblePlaces = clusteredFeatures
+      .filter((feature) => !("cluster" in feature.properties && feature.properties.cluster === true))
+      .map((feature) => feature.properties as Place);
+
+    onVisiblePlacesChangeRef.current?.(visiblePlaces);
+  }, [clusteredFeatures]);
 
   // Initialize map - only runs once on mount (best practice: empty dependency array)
   useEffect(() => {
@@ -316,15 +356,19 @@ const MapContainer: React.FC<MapContainerProps> = ({
       };
 
       const handleClick = (e: mapboxgl.MapMouseEvent) => {
-        // Check if click was on a marker
-        const features = map.current?.queryRenderedFeatures(e.point, {
-          layers: [],
-        });
-
-        if (!features?.length) {
-          closePopup();
-          onPlaceDeselectRef.current();
+        // Ignore clicks on overlays/controls/popups to avoid accidental deselect
+        const target = e.originalEvent.target as HTMLElement | null;
+        if (
+          target?.closest('.marker-container') ||
+          target?.closest('.cluster-container') ||
+          target?.closest('.mapboxgl-popup') ||
+          target?.closest('.mapboxgl-ctrl')
+        ) {
+          return;
         }
+
+        closePopup();
+        onPlaceDeselectRef.current();
       };
 
       const handleError = (e: mapboxgl.ErrorEvent) => {
@@ -373,10 +417,6 @@ const MapContainer: React.FC<MapContainerProps> = ({
       // Clear all cluster markers  
       clusterMarkersRef.current.forEach((marker) => marker.remove());
       clusterMarkersRef.current.clear();
-
-      // Clear itinerary markers
-      itineraryMarkersRef.current.forEach((marker) => marker.remove());
-      itineraryMarkersRef.current = [];
 
       // Remove user marker
       userMarkerRef.current?.remove();
@@ -571,7 +611,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
         // Build coordinates string for API: lng,lat;lng,lat;lng,lat
         const coordinatesString = tripRoute.map(([lng, lat]) => `${lng},${lat}`).join(';');
-        
+
         // Build waypoints string - all points should be waypoints so we get a route through all
         // Format: ?waypoints=0;1;2 for all points
         const waypointIndices = Array.from({ length: tripRoute.length }, (_, i) => i).join(';');
@@ -579,9 +619,9 @@ const MapContainer: React.FC<MapContainerProps> = ({
         const directionsUrl = `https://api.mapbox.com/directions/v5/mapbox/walking/${coordinatesString}?waypoints=${waypointIndices}&access_token=${accessToken}&overview=full&geometries=geojson`;
 
         console.log('Fetching route:', directionsUrl);
-        
+
         const response = await fetch(directionsUrl);
-        
+
         if (!response.ok) {
           console.error('Failed to fetch directions:', response.status, response.statusText);
           drawStraightRoute();
@@ -590,7 +630,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
         const data = await response.json();
         console.log('Route response:', data);
-        
+
         if (data.routes && data.routes.length > 0) {
           const route = data.routes[0];
           const routeCoordinates = route.geometry.coordinates;
@@ -978,6 +1018,17 @@ const MapContainer: React.FC<MapContainerProps> = ({
         let marker = markersRef.current.get(markerId);
         let root = markerRootsRef.current.get(markerId);
 
+        let sequenceNumber: number | undefined;
+        let isSequence = false;
+        if (previewItinerary && previewItinerary.stops) {
+          const stops = previewItinerary.stops as any[];
+          const index = stops.findIndex((s: any) => s.slug === place.slug || s.name === place.name);
+          if (index !== -1) {
+            sequenceNumber = index + 1;
+            isSequence = true;
+          }
+        }
+
         if (!marker) {
           const el = createMarkerElement(isSelected);
           marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
@@ -991,19 +1042,20 @@ const MapContainer: React.FC<MapContainerProps> = ({
           marker.setLngLat([lng, lat]);
         }
 
-        const color = getMarkerColor(place);
-        const icon = getMarkerIcon(place);
+        const color = isSequence ? '#2563eb' : getMarkerColor(place);
+        const icon = isSequence ? sequenceNumber : getMarkerIcon(place);
 
         root?.render(
           <MarkerContent
             place={place}
             isSelected={isSelected}
             color={color}
-            icon={icon}
+            icon={icon as any}
             onClick={() => {
               showPlacePopup(place);
               onPlaceSelect(place);
             }}
+            isSequence={isSequence}
           />
         );
       }
@@ -1043,7 +1095,96 @@ const MapContainer: React.FC<MapContainerProps> = ({
     createClusterElement,
     showPlacePopup,
     onPlaceSelect,
+    previewItinerary,
+    getMarkerColor,
+    getMarkerIcon,
   ]);
+
+  // Draw route line for itinerary preview
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+
+    const sourceId = 'preview-route-source';
+    const layerId = 'preview-route-layer';
+
+    if (!previewItinerary || !previewItinerary.stops || previewItinerary.stops.length < 2) {
+      if (map.current.getLayer(layerId)) {
+        map.current.removeLayer(layerId);
+      }
+      if (map.current.getSource(sourceId)) {
+        map.current.removeSource(sourceId);
+      }
+      return;
+    }
+
+    const stops = previewItinerary.stops as any[];
+    const coordinates = stops
+      .filter((s) => typeof s.lng === 'number' && typeof s.lat === 'number')
+      .map((s) => [s.lng, s.lat]);
+
+    if (coordinates.length < 2) return;
+
+    const geojson = {
+      type: 'Feature',
+      properties: {},
+      geometry: {
+        type: 'LineString',
+        coordinates,
+      },
+    };
+
+    if (map.current.getSource(sourceId)) {
+      (map.current.getSource(sourceId) as mapboxgl.GeoJSONSource).setData(geojson as any);
+    } else {
+      map.current.addSource(sourceId, {
+        type: 'geojson',
+        data: geojson as any,
+      });
+
+      map.current.addLayer({
+        id: layerId,
+        type: 'line',
+        source: sourceId,
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round',
+        },
+        paint: {
+          'line-color': '#2563eb', // blue-600
+          'line-width': 4,
+          // 'line-dasharray': [2, 2], // Temporary dash array, changes to solid line when routing is fetched
+        },
+      });
+    }
+
+    // Fetch realistic road route from Mapbox Directions API
+    const fetchDirections = async () => {
+      try {
+        const coordsString = coordinates.map((c: number[]) => c.join(',')).join(';');
+        const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
+        const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordsString}?geometries=geojson&access_token=${token}`;
+
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.routes && data.routes.length > 0) {
+          const routeGeojson = data.routes[0].geometry;
+          if (map.current?.getSource(sourceId)) {
+            (map.current.getSource(sourceId) as mapboxgl.GeoJSONSource).setData({
+              type: 'Feature',
+              properties: {},
+              geometry: routeGeojson,
+            } as any);
+
+            // Re-render layer property with solid line implicitly initialized via layout
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch directions for preview itinerary', err);
+      }
+    };
+
+    fetchDirections();
+  }, [previewItinerary, mapLoaded]);
 
   // Add user location marker
   useEffect(() => {
@@ -1103,170 +1244,6 @@ const MapContainer: React.FC<MapContainerProps> = ({
       .addTo(map.current);
   }, [userLocation, mapLoaded]);
 
-  // Draw itinerary route
-  useEffect(() => {
-    if (!map.current || !mapLoaded) return;
-
-    const ROUTE_SOURCE_ID = 'itinerary-route-source';
-    const ROUTE_LAYER_ID = 'itinerary-route-layer';
-    const ROUTE_OUTLINE_LAYER_ID = 'itinerary-route-outline-layer';
-
-    const cleanup = () => {
-      if (map.current?.getLayer(ROUTE_LAYER_ID)) {
-        map.current.removeLayer(ROUTE_LAYER_ID);
-      }
-      if (map.current?.getLayer(ROUTE_OUTLINE_LAYER_ID)) {
-        map.current.removeLayer(ROUTE_OUTLINE_LAYER_ID);
-      }
-      if (map.current?.getSource(ROUTE_SOURCE_ID)) {
-        map.current.removeSource(ROUTE_SOURCE_ID);
-      }
-    };
-
-    if (itineraryStops.length < 2) {
-      cleanup();
-      return;
-    }
-
-    const fetchAndDrawRoute = async () => {
-      const accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
-      if (!accessToken) return;
-
-      const coords = itineraryStops
-        .map((stop) => `${stop.lng},${stop.lat}`)
-        .join(';');
-
-      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coords}?geometries=geojson&overview=full&access_token=${accessToken}`;
-
-      try {
-        const response = await fetch(url);
-        if (!response.ok) return;
-
-        const data = await response.json();
-        if (!data.routes?.length) return;
-
-        const routeGeometry = data.routes[0].geometry;
-
-        cleanup();
-
-        map.current?.addSource(ROUTE_SOURCE_ID, {
-          type: 'geojson',
-          data: {
-            type: 'Feature',
-            properties: {},
-            geometry: routeGeometry,
-          },
-        });
-
-        // Route outline (for better visibility)
-        map.current?.addLayer({
-          id: ROUTE_OUTLINE_LAYER_ID,
-          type: 'line',
-          source: ROUTE_SOURCE_ID,
-          layout: {
-            'line-join': 'round',
-            'line-cap': 'round',
-          },
-          paint: {
-            'line-color': '#1D4ED8',
-            'line-width': 8,
-            'line-opacity': 0.4,
-          },
-        });
-
-        // Main route line
-        map.current?.addLayer({
-          id: ROUTE_LAYER_ID,
-          type: 'line',
-          source: ROUTE_SOURCE_ID,
-          layout: {
-            'line-join': 'round',
-            'line-cap': 'round',
-          },
-          paint: {
-            'line-color': '#3B82F6',
-            'line-width': 4,
-            'line-opacity': 0.9,
-          },
-        });
-
-        // Fit map to route bounds
-        const coordinates = routeGeometry.coordinates as [number, number][];
-        if (coordinates.length > 0) {
-          const bounds = coordinates.reduce(
-            (bounds, coord) => bounds.extend(coord),
-            new mapboxgl.LngLatBounds(coordinates[0], coordinates[0])
-          );
-          map.current?.fitBounds(bounds, { padding: 80, duration: 1000 });
-        }
-      } catch (error) {
-        console.error('Error fetching directions:', error);
-      }
-    };
-
-    fetchAndDrawRoute();
-
-    return cleanup;
-  }, [itineraryStops, mapLoaded]);
-
-  // Add itinerary stop markers
-  useEffect(() => {
-    if (!map.current || !mapLoaded) return;
-
-    // Clear existing markers
-    itineraryMarkersRef.current.forEach((marker) => marker.remove());
-    itineraryMarkersRef.current = [];
-
-    if (itineraryStops.length === 0) return;
-
-    itineraryStops.forEach((stop, index) => {
-      if (!isFiniteNumber(stop.lat) || !isFiniteNumber(stop.lng)) return;
-
-      const el = document.createElement('div');
-      el.className = 'itinerary-stop-marker';
-      el.style.cssText = `
-        width: 40px;
-        height: 40px;
-        background: linear-gradient(135deg, #3B82F6, #1D4ED8);
-        border: 3px solid white;
-        border-radius: 50%;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 16px;
-        color: white;
-        font-weight: bold;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-        z-index: 20;
-      `;
-      el.innerHTML = `${index + 1}`;
-
-      // Hover effects
-      el.addEventListener('mouseenter', () => {
-        el.style.transform = 'scale(1.15)';
-        el.style.boxShadow = '0 6px 16px rgba(0,0,0,0.5)';
-      });
-
-      el.addEventListener('mouseleave', () => {
-        el.style.transform = 'scale(1)';
-        el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
-      });
-
-      el.addEventListener('click', (e) => {
-        e.stopPropagation();
-        window.location.href = `/places/${stop.slug}`;
-      });
-
-      const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
-        .setLngLat([stop.lng, stop.lat])
-        .addTo(map.current!);
-
-      itineraryMarkersRef.current.push(marker);
-    });
-  }, [itineraryStops, mapLoaded]);
-
   // Fly to selected place with enhanced animation
   useEffect(() => {
     if (!map.current || !mapLoaded || !selectedPlace) return;
@@ -1285,6 +1262,29 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
     showPlacePopup(selectedPlace);
   }, [selectedPlace, mapLoaded, showPlacePopup, is3DEnabled]);
+
+  // Auto-fit bounds for itinerary preview
+  useEffect(() => {
+    if (!map.current || !mapLoaded || !previewItinerary?.stops?.length) return;
+
+    const stops = previewItinerary.stops as any[];
+    const coordinates = stops
+      .filter((s) => typeof s.lng === 'number' && typeof s.lat === 'number')
+      .map((s) => [s.lng, s.lat] as [number, number]);
+
+    if (coordinates.length < 2) return;
+
+    const bounds = new mapboxgl.LngLatBounds(coordinates[0], coordinates[0]);
+    for (const coord of coordinates) {
+      bounds.extend(coord);
+    }
+
+    map.current.fitBounds(bounds, {
+      padding: { top: 80, bottom: 80, left: 80, right: 400 }, // right padding for the itinerary panel
+      duration: 1200,
+      maxZoom: 15,
+    });
+  }, [previewItinerary, mapLoaded]);
 
   // Map control handlers
   const handleStyleChange = useCallback((style: 'dark' | 'light' | 'satellite') => {
@@ -1343,6 +1343,13 @@ const MapContainer: React.FC<MapContainerProps> = ({
     <div className="relative w-full h-full">
       {/* Map container */}
       <div ref={mapContainer} className="w-full h-full" />
+
+      {/* Smart filter bar */}
+      <SmartFilterBar
+        activeFilter={activeFilter}
+        onFilterChange={setActiveFilter}
+        isDarkMode={mapStyle === 'dark'}
+      />
 
       {/* Map controls */}
       <MapControls

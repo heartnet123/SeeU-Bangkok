@@ -89,6 +89,15 @@ export const PlacePopupContent: React.FC<PlacePopupContentProps> = ({
 
   const distance = calculateDistance();
 
+  const normalizeImageUrl = (url?: string) => {
+    if (!url) return '';
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    if (url.startsWith('/')) return url;
+    return `/${url}`;
+  };
+
+  const popupImageUrl = normalizeImageUrl(place.image_url);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10, scale: 0.95 }}
@@ -99,9 +108,9 @@ export const PlacePopupContent: React.FC<PlacePopupContentProps> = ({
       <Card className="w-80 shadow-xl border-0 overflow-hidden bg-white">
         {/* Header Image */}
         <div className="relative h-36 bg-gradient-to-br from-blue-500 to-purple-600">
-          {place.image_url && !imageError ? (
+          {popupImageUrl && !imageError ? (
             <img
-              src={place.image_url}
+              src={popupImageUrl}
               alt={place.name}
               className="w-full h-full object-cover"
               onError={() => setImageError(true)}

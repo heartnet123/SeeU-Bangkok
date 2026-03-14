@@ -35,7 +35,7 @@ export interface OpenAIOptions {
 }
 
 export async function openaiGenerateText(input: string, opts: OpenAIOptions = {}): Promise<string> {
-  const model = opts.model || 'gpt-4o-mini'
+  const model = opts.model || 'gpt-5-mini-2025-08-07'
   const client = getWrappedOpenAIClient()
 
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = []

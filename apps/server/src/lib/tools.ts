@@ -96,12 +96,44 @@ export interface RouteLeg {
   from: string // slug
   to: string // slug
   distance_km: number
+  duration_min?: number
 }
 
 export interface BuiltRoute {
   order: string[] // slugs
   legs: RouteLeg[]
   total_km: number
+  total_mins?: number
+}
+
+async function fetchMapboxMatrix(coords: LatLng[]): Promise<{ distances: number[][], durations: number[][] } | null> {
+  const token = process.env.MAPBOX_ACCESS_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
+  if (!token || coords.length < 2 || coords.length > 25) return null;
+
+  const coordStr = coords.map(c => `${c.lng},${c.lat}`).join(';');
+  const url = `https://api.mapbox.com/directions-matrix/v1/mapbox/driving/${coordStr}?annotations=distance,duration&access_token=${token}`;
+
+  const timeoutMs = Number(process.env.MAPBOX_MATRIX_TIMEOUT_MS || 2200);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.code !== 'Ok') return null;
+    return {
+      distances: data.distances, // in meters
+      durations: data.durations  // in seconds
+    };
+  } catch (e: any) {
+    if (e?.name !== 'AbortError') {
+      console.error('Mapbox Matrix fetch error:', e);
+    }
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 export const build_route = traceable(
@@ -110,16 +142,38 @@ export const build_route = traceable(
     const pts = places.filter((p) => isFiniteNum(p.lat) && isFiniteNum(p.lng))
     if (pts.length < 2) return { order: pts.map((p) => p.slug), legs: [], total_km: 0 }
 
-    // Greedy nearest-neighbor from origin or first place
+    const matrixCoords = origin ? [origin, ...pts.map(p => ({ lat: p.lat!, lng: p.lng! }))] : pts.map(p => ({ lat: p.lat!, lng: p.lng! }))
+    const matrixData = await fetchMapboxMatrix(matrixCoords)
+
     const unvisited = new Set(pts.map((p) => p.slug))
     const bySlug = new Map(pts.map((p) => [p.slug, p]))
+    const slugToIdx = new Map<string, number>()
+    pts.forEach((p, i) => slugToIdx.set(p.slug, origin ? i + 1 : i))
+
+    const getTravelCost = (fromSlug: string | null, toSlug: string) => {
+      const p = bySlug.get(toSlug)!
+      if (matrixData) {
+        const fromIdx = fromSlug === null ? 0 : slugToIdx.get(fromSlug)!
+        const toIdx = slugToIdx.get(toSlug)!
+        const dur = matrixData.durations[fromIdx][toIdx]
+        const dist = matrixData.distances[fromIdx][toIdx] / 1000
+        if (typeof dur === 'number') return { d: dist, dur }
+      }
+      const fromLoc = fromSlug === null ? origin! : { lat: bySlug.get(fromSlug)!.lat!, lng: bySlug.get(fromSlug)!.lng! }
+      const d = haversineKm(fromLoc, { lat: p.lat!, lng: p.lng! })
+      return { d, dur: undefined }
+    }
 
     let currentSlug: string
     if (origin) {
-      // pick closest to origin
-      currentSlug = pts
-        .map((p) => ({ slug: p.slug, d: haversineKm(origin!, { lat: p.lat!, lng: p.lng! }) }))
-        .sort((a, b) => a.d - b.d)[0].slug
+      let bestSlug = pts[0].slug
+      let bestCost = Infinity
+      for (const p of pts) {
+        const cost = getTravelCost(null, p.slug)
+        const metric = cost.dur !== undefined ? cost.dur : cost.d
+        if (metric < bestCost) { bestCost = metric; bestSlug = p.slug; }
+      }
+      currentSlug = bestSlug
     } else {
       currentSlug = pts[0].slug
     }
@@ -129,22 +183,37 @@ export const build_route = traceable(
     const legs: RouteLeg[] = []
 
     while (unvisited.size) {
-      const curr = bySlug.get(currentSlug)!
-      let best: { slug: string; d: number } | null = null
+      let bestSlug: string | null = null
+      let bestDist = 0
+      let bestDur: number | undefined
+      let bestMetric = Infinity
+
       for (const s of unvisited) {
-        const p = bySlug.get(s)!
-        const d = haversineKm({ lat: curr.lat!, lng: curr.lng! }, { lat: p.lat!, lng: p.lng! })
-        if (!best || d < best.d) best = { slug: s, d }
+        const cost = getTravelCost(currentSlug, s)
+        const metric = cost.dur !== undefined ? cost.dur : cost.d
+        if (metric < bestMetric) {
+          bestMetric = metric
+          bestSlug = s
+          bestDist = cost.d
+          bestDur = cost.dur
+        }
       }
-      if (!best) break
-      legs.push({ from: currentSlug, to: best.slug, distance_km: round1(best.d) })
-      currentSlug = best.slug
+
+      if (!bestSlug) break
+      legs.push({
+        from: currentSlug,
+        to: bestSlug,
+        distance_km: round1(bestDist),
+        duration_min: bestDur !== undefined ? Math.max(1, Math.ceil(bestDur / 60)) : undefined
+      })
+      currentSlug = bestSlug
       order.push(currentSlug)
       unvisited.delete(currentSlug)
     }
 
     const total_km = round1(legs.reduce((s, l) => s + l.distance_km, 0))
-    return { order, legs, total_km }
+    const total_mins = legs.reduce((s, l) => s + (l.duration_min || 0), 0)
+    return { order, legs, total_km, total_mins }
   },
   { name: 'tools.build_route', run_type: 'tool' }
 )
@@ -210,48 +279,31 @@ export const plan_itinerary = traceable(
   async (params: PlanItineraryParams): Promise<any> => {
     const { place_slugs, title = "Suggested Itinerary" } = params
 
-    // Fetch places with descriptions
+    // Single fetch for place details and coordinates (reduces DB round-trips)
     const { data: places, error } = await supabase
       .from("bangkok_unseen")
-      .select("id, name, description, tags")
+      .select("id, name, description, tags, lat, lng")
       .in("id", place_slugs)
 
     if (error || !places) throw new Error("Failed to fetch places")
 
-    const placeItems = places.map(p => ({
-      id: p.id,
-      name: p.name,
-      slug: nameToSlug(p.name),
-      lat: 0, lng: 0, // not needed for route
-      tags: p.tags || [],
-      price: 0,
-      image_url: "",
-      description: p.description
-    }))
+    const placesForRoute = places
+      .map(p => ({
+        id: p.id,
+        name: p.name,
+        slug: nameToSlug(p.name),
+        lat: p.lat,
+        lng: p.lng,
+        tags: p.tags || [],
+        price: 0,
+        image_url: "",
+      }))
+      .filter(p => isFiniteNum(p.lat) && isFiniteNum(p.lng)) as PlaceItem[]
 
-    // Build route (need lat/lng for routing)
-    const { data: placesWithCoords, error: err2 } = await supabase
-      .from("bangkok_unseen")
-      .select("id, lat, lng")
-      .in("id", place_slugs)
+    const route = await build_route({ places: placesForRoute })
 
-    if (err2 || !placesWithCoords) throw new Error("Failed to fetch coordinates")
-
-    const coordMap = new Map(placesWithCoords.map(p => [p.id, { lat: p.lat, lng: p.lng }]))
-
-  const placesForRoute = placeItems.map(p => ({
-    ...p,
-    lat: coordMap.get(p.id)?.lat,
-    lng: coordMap.get(p.id)?.lng
-  })).filter(p => p.lat && p.lng)
-
-  const route = await build_route({ places: placesForRoute })
-
-  const coordsBySlug = new Map(placesForRoute.map(p => [p.slug, { lat: p.lat!, lng: p.lng! }]))
-
-  // Create a map of slug to place for lookup
-  const placeBySlug = new Map(places.map(p => [nameToSlug(p.name), p]))
-
+    const coordsBySlug = new Map(placesForRoute.map(p => [p.slug, { lat: p.lat!, lng: p.lng! }]))
+    const placeBySlug = new Map(places.map(p => [nameToSlug(p.name), p]))
 
     // Enrich stops
     const stops = route.order.map((slug) => {
@@ -265,7 +317,8 @@ export const plan_itinerary = traceable(
         lng: coords?.lng,
         suggested_time_min: 60, // default
         notes: place.description ? place.description.slice(0, 100) + "..." : "",
-        distance_from_prev_km: leg ? leg.distance_km : 0
+        distance_from_prev_km: leg ? leg.distance_km : 0,
+        travel_time_from_prev_min: leg?.duration_min || 0
       }
     })
 
@@ -273,7 +326,8 @@ export const plan_itinerary = traceable(
       title,
       stops,
       total_distance_km: route.total_km,
-      total_minutes: stops.length * 60
+      total_travel_minutes: route.total_mins || 0,
+      total_minutes: stops.length * 60 + (route.total_mins || 0)
     }
   },
   { name: 'tools.plan_itinerary', run_type: 'tool' }

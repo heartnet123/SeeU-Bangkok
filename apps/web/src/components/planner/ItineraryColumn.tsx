@@ -3,8 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Edit, GripVertical, Save, Clock } from "lucide-react";
-import type { Trip, TripStop } from "./mock-data";
+import type { Trip, TripStop } from "@/types/trip";
 import { cn } from "@/lib/utils";
+
 import {
   DndContext,
   KeyboardSensor,
@@ -27,6 +28,7 @@ import { useEffect, useMemo, useState } from "react";
 interface Props {
   trip: Trip | null;
   onEditTrip?: (tripId: string) => void;
+  onSaveTrip?: (tripId: string, orderedStops: TripStop[]) => void;
   isLoading?: boolean;
   onReorderStops?: (tripId: string, orderedStopIds: string[]) => void;
   totalDurationMin?: number | null;
@@ -44,6 +46,7 @@ const categoryColors: Record<TripStop["category"], string> = {
 export function ItineraryColumn({
   trip,
   onEditTrip,
+  onSaveTrip,
   isLoading = false,
   onReorderStops,
   totalDurationMin = null,
@@ -122,8 +125,7 @@ export function ItineraryColumn({
   }
 
   const handleSaveTrip = () => {
-    // TODO: Implement save functionality
-    console.log("Save trip:", trip.id);
+    onSaveTrip?.(trip.id, orderedStops);
   };
 
   return (
@@ -259,10 +261,7 @@ export function ItineraryColumn({
                         size="icon"
                         className="w-7 h-7 shrink-0 text-slate-500 hover:text-slate-700"
                         aria-label={`Edit stop: ${stop.name}`}
-                        onClick={() => {
-                          // TODO: Implement stop edit functionality
-                          console.log("Edit stop:", stop.id);
-                        }}
+                        onClick={() => onEditTrip?.(trip.id)}
                       >
                         <Edit className="w-4 h-4" />
                       </Button>
@@ -279,10 +278,7 @@ export function ItineraryColumn({
       <Button
         variant="outline"
         className="w-full"
-        onClick={() => {
-          // TODO: Implement add stop functionality
-          console.log("Add new stop to trip:", trip.id);
-        }}
+        onClick={() => onEditTrip?.(trip.id)}
         aria-label="Add new stop to itinerary"
       >
         + Add Stop

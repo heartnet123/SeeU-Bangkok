@@ -81,6 +81,76 @@ itineraries.get('/', authMiddleware, async (c) => {
   }
 })
 
+// Get one itinerary detail by id
+itineraries.get('/:id', authMiddleware, async (c) => {
+  const user = c.get('user')
+  const itineraryId = c.req.param('id')
+
+  try {
+    const { data: trip, error: tripErr } = await supabase
+      .from('itineraries')
+      .select('id, title, total_minutes, total_distance_km, created_at, user_id')
+      .eq('id', itineraryId)
+      .single()
+
+    if (tripErr || !trip) {
+      return c.json({ success: false, error: 'Itinerary not found' }, 404)
+    }
+
+    if (trip.user_id !== user.id) {
+      return c.json({ success: false, error: 'Unauthorized' }, 403)
+    }
+
+    const { data: stops, error: stopErr } = await supabase
+      .from('itinerary_stops')
+      .select('id, itinerary_id, position, suggested_time_min, distance_from_prev_km, notes, place_id')
+      .eq('itinerary_id', itineraryId)
+      .order('position', { ascending: true })
+
+    if (stopErr) throw stopErr
+
+    const placeIds = Array.from(new Set((stops || []).map((s) => s.place_id).filter(Boolean)))
+    const { data: places, error: placeErr } = placeIds.length
+      ? await supabase.from('bangkok_unseen').select('id, name, lat, lng, tags').in('id', placeIds)
+      : { data: [], error: null as any }
+
+    if (placeErr) throw placeErr
+
+    const placeMap = new Map((places || []).map((p) => [p.id, p]))
+
+    const mappedStops = (stops || []).map((s) => {
+      const place = (placeMap.get(s.place_id as any) as any) || {}
+      return {
+        id: s.id,
+        position: s.position,
+        suggested_time_min: s.suggested_time_min,
+        distance_from_prev_km: s.distance_from_prev_km,
+        notes: s.notes || '',
+        place: {
+          id: place.id,
+          name: place.name,
+          lat: place.lat,
+          lng: place.lng,
+          tags: Array.isArray(place.tags) ? place.tags : [],
+        },
+      }
+    })
+
+    const data = {
+      id: trip.id,
+      title: trip.title,
+      total_minutes: trip.total_minutes,
+      total_distance_km: trip.total_distance_km,
+      created_at: trip.created_at,
+      stops: mappedStops,
+    }
+
+    return c.json({ success: true, data })
+  } catch (e: any) {
+    return c.json({ success: false, error: e?.message || 'Failed to get itinerary detail' }, 500)
+  }
+})
+
 // Create an itinerary from slugs
 itineraries.post('/', authMiddleware, zValidator('json', createSchema), async (c) => {
   const user = c.get('user')

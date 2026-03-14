@@ -16,7 +16,7 @@ export function LoginForm() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
-  const { signIn } = useAuth()
+  const { signIn, getOnboardingStatus } = useAuth()
   const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -29,8 +29,9 @@ export function LoginForm() {
       if (error) {
         toast.error(error.message)
       } else {
+        const { completed, skipped } = await getOnboardingStatus()
         toast.success('Logged in successfully!')
-        router.push('/')
+        router.push(completed || skipped ? '/' : '/onboarding')
       }
     } catch (error) {
       toast.error('An unexpected error occurred')

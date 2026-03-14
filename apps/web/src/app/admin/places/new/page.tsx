@@ -29,7 +29,7 @@ function slugify(s: string) {
     .normalize('NFKD')
     .toLowerCase()
     .replace(/[\u0300-\u036f]/g, '')      // remove diacritics
-    .replace(/[^a-z0-9\s-]/g, '')        // keep a-z0-9 space dash
+    .replace(/[^\u0E00-\u0E7F\w\s-]/g, '') // keep Thai, alphanumeric, space, dash, underscore
     .replace(/\s+/g, ' ')               // collapse spaces
     .trim()
     .replace(/\s/g, '-')                // space -> dash
@@ -135,7 +135,7 @@ export default function AdminNewPlacePage() {
               className="text-black"
             />
           </div>
-          {/* <div>
+          <div>
             <Label className="mb-1 block text-black">Slug (auto)</Label>
             <Input
               value={slugTouched ? (form.slug || '') : autoSlug}
@@ -147,7 +147,7 @@ export default function AdminNewPlacePage() {
               className="text-black"
             />
             <p className="text-xs text-gray-500 mt-1">* แก้ได้; เว้นว่างจะใช้ auto-slug</p>
-          </div> */}
+          </div>
         </div>
 
         {/* Area */}
