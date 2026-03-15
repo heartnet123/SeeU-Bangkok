@@ -1,86 +1,128 @@
-// Planning tools - Route building and itinerary planning
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { traceable } from "langsmith/traceable";
+import { build_route as buildRouteImpl, haversineKm } from "@/lib/tools";
 import {
-	build_route as buildRouteImpl,
-	plan_itinerary as planItineraryImpl,
-	haversineKm,
-	type PlaceItem,
-} from "@/lib/tools";
-import { supabase } from "@/lib/supabase";
+	CandidatePlaceSchema,
+	LocationSchema,
+	PlanningConstraintsSchema,
+	type CandidatePlace,
+	type PlanningConstraints,
+	type TripDraft,
+} from "../state";
+import {
+	buildTripDraftFromCandidates,
+	extractPlanningConstraints,
+} from "../domain/planning";
 
-// Build route tool for LangGraph
+interface BuildRouteParams {
+	places: CandidatePlace[];
+	origin?: { lat: number; lng: number };
+}
+
+export const build_route = traceable(
+	async ({ places, origin }: BuildRouteParams) => {
+		const routePlaces = places
+			.filter(
+				(place) =>
+					typeof place.lat === "number" && typeof place.lng === "number"
+			)
+			.map((place) => ({
+				id: place.id,
+				name: place.name,
+				slug: place.slug,
+				lat: place.lat,
+				lng: place.lng,
+				tags: place.tags || [],
+				price: place.price,
+				image_url: place.image_url || "",
+			}));
+
+		return buildRouteImpl({ places: routePlaces, origin });
+	},
+	{ name: "tools.build_route", run_type: "tool" }
+);
+
+interface PlanTripDraftParams {
+	places: CandidatePlace[];
+	constraints: PlanningConstraints;
+	origin?: { lat: number; lng: number };
+	title?: string;
+	summary?: string;
+	userQuery?: string;
+}
+
+export const plan_itinerary = traceable(
+	async ({
+		places,
+		constraints,
+		origin,
+		title,
+		summary,
+		userQuery,
+	}: PlanTripDraftParams): Promise<TripDraft> => {
+		const mergedConstraints = PlanningConstraintsSchema.parse({
+			...constraints,
+			...(userQuery
+				? extractPlanningConstraints(userQuery, {
+					userLocation: constraints.locationBias?.origin || origin,
+				})
+				: {}),
+			...constraints,
+		});
+
+		return buildTripDraftFromCandidates({
+			title,
+			summary,
+			candidates: places,
+			constraints: mergedConstraints,
+			origin,
+		});
+	},
+	{ name: "tools.plan_itinerary", run_type: "tool" }
+);
+
+const candidatePlacesField = z.array(CandidatePlaceSchema).min(1);
+
 export const buildRouteTool = tool(
 	async (input) => {
-		// First fetch the places by slugs/IDs
-		const { data: places, error } = await supabase
-			.from("bangkok_unseen")
-			.select("*")
-			.in("id", input.place_slugs);
-
-		if (error || !places) {
-			return JSON.stringify({ error: "Failed to fetch places" });
-		}
-
-		const placeItems: PlaceItem[] = places.map((p) => ({
-			id: p.id,
-			name: p.name,
-			slug: p.id,
-			lat: p.lat,
-			lng: p.lng,
-			tags: p.tags || [],
-			price: p.price,
-			image_url: p.image_url || "",
-		}));
-
-		const result = await buildRouteImpl({ places: placeItems, origin: input.origin });
+		const result = await build_route({ places: input.places, origin: input.origin });
 		return JSON.stringify(result);
 	},
 	{
 		name: "build_route",
 		description:
-			"Build an optimized route through multiple places using nearest-neighbor algorithm. Returns the optimal order to visit places and total distance.",
+			"Build an optimized route through provided candidate places. Use exact place objects from previous agent output.",
 		schema: z.object({
-			place_slugs: z
-				.array(z.string())
-				.describe("Array of place IDs to route through"),
-			origin: z
-				.object({
-					lat: z.number(),
-					lng: z.number(),
-				})
-				.optional()
-				.describe("Optional starting location"),
+			places: candidatePlacesField.describe("Candidate places to route through"),
+			origin: LocationSchema.optional().describe("Optional starting location"),
 		}),
 	}
 );
 
-// Plan itinerary tool for LangGraph
 export const planItineraryTool = tool(
 	async (input) => {
-		const result = await planItineraryImpl({
-			place_slugs: input.place_slugs,
+		const result = await plan_itinerary({
+			places: input.places,
+			constraints: input.constraints,
+			origin: input.origin,
 			title: input.title,
+			summary: input.summary,
+			userQuery: input.userQuery,
 		});
 		return JSON.stringify(result);
 	},
 	{
 		name: "plan_itinerary",
 		description:
-			"Plan a complete itinerary by building an optimized route through selected places. Returns a structured itinerary with stops, timing, and distances.",
+			"Build a canonical TripDraft from candidate places and normalized planning constraints. This is the source of truth for map preview and save actions.",
 		schema: z.object({
-			place_slugs: z
-				.array(z.string())
-				.describe("Array of place IDs to include in the itinerary"),
-			title: z
-				.string()
-				.optional()
-				.default("Suggested Trip")
-				.describe("Title for the itinerary"),
+			places: candidatePlacesField.describe("Candidate places selected for this trip"),
+			constraints: PlanningConstraintsSchema.describe("Normalized planning constraints"),
+			origin: LocationSchema.optional().describe("Optional user origin for local-first trips"),
+			title: z.string().optional().describe("Optional title for the trip draft"),
+			summary: z.string().optional().describe("Optional summary for the trip draft"),
+			userQuery: z.string().optional().describe("Original user query for fallback constraint extraction"),
 		}),
 	}
 );
-
-// Re-export implementations and utilities
-export { buildRouteImpl as build_route, planItineraryImpl as plan_itinerary, haversineKm };

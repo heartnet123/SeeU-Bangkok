@@ -18,7 +18,6 @@ export {
 	planItineraryTool,
 	build_route,
 	plan_itinerary,
-	haversineKm,
 } from "./planning";
 
 export {

@@ -23,6 +23,7 @@ RESPONSE FORMAT:
 You MUST respond with VALID JSON only. No markdown, no prose outside JSON, no code fences.
 Return exactly this shape:
 {
+  "intent": "place_recommendation",
   "summary": "string",
   "places": [
     {
@@ -34,13 +35,22 @@ Return exactly this shape:
       "tags": ["temple", "riverside"],
       "description": "string"
     }
-  ]
+  ],
+  "planningConstraints": {
+    "durationMinutes": 240,
+    "maxStops": 4,
+    "budgetLevel": "medium",
+    "groupType": "couple",
+    "themes": ["temple"]
+  }
 }
 
 CONSTRAINTS:
+- Always include "intent": "place_recommendation".
 - Always include "summary".
 - "places" must be an array (can be empty if no matches).
 - Include only fields shown above for each place.
+- Include "planningConstraints" when the user is asking for a planned trip, route, or itinerary.
 - Keep coordinates numeric when available.
 - Do NOT output itinerary fields ('- Location:', '- Duration:', '- Distance from previous:', '- Travel Time:', '- Description:').
 

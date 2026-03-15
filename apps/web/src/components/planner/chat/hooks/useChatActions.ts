@@ -1,12 +1,12 @@
 import { useCallback, useState } from "react";
 import type { Dispatch, KeyboardEvent, SetStateAction } from "react";
 import { toast } from "sonner";
-import { nameToSlug } from "@/lib/slug-utils";
-import type { ParsedItinerary } from "../types";
+import { buildTripDraftSavePayload } from "../lib/trip-draft";
+import type { TripDraft } from "../types";
 
 interface UseChatActionsParams {
 	startWithMessage: (text: string) => Promise<void>;
-	lastAssistantTurn: { itinerary: unknown } | null;
+	lastAssistantTurn: { tripDraft: TripDraft | null } | null;
 	user: unknown;
 	session: { access_token?: string } | null;
 	setIsItinerarySaved: (value: boolean) => void;
@@ -52,7 +52,7 @@ export function useChatActions({
 	);
 
 	const handleSaveItinerary = useCallback(async () => {
-		if (!lastAssistantTurn?.itinerary) return;
+		if (!lastAssistantTurn?.tripDraft) return;
 
 		if (!user || !session?.access_token) {
 			toast.error("Please log in to save itineraries", {
@@ -68,7 +68,7 @@ export function useChatActions({
 
 		setIsSavingItinerary(true);
 		try {
-			const itinerary = lastAssistantTurn.itinerary as ParsedItinerary;
+			const tripDraft = lastAssistantTurn.tripDraft;
 			const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3000";
 
 			const res = await fetch(`${serverUrl}/api/itineraries`, {
@@ -77,14 +77,7 @@ export function useChatActions({
 					Authorization: `Bearer ${session.access_token}`,
 					"Content-Type": "application/json",
 				},
-				body: JSON.stringify({
-					title: itinerary.title,
-					stops: itinerary.stops.map((stop) => ({
-						slug: nameToSlug(stop.name),
-						suggested_time_min: stop.suggested_time_min,
-						notes: stop.notes ?? "",
-					})),
-				}),
+				body: JSON.stringify(buildTripDraftSavePayload(tripDraft)),
 			});
 
 			const body = (await res.json()) as { success: boolean; error?: string };

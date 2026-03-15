@@ -4,6 +4,7 @@ import { ChatOpenAI } from "@langchain/openai";
 import { createResearcherAgent } from "./agents/researcher";
 import { createPlannerAgent } from "./agents/planner";
 import { createCriticAgent } from "./agents/critic";
+import { UiResponsePayloadSchema, type TripDraft } from "./state";
 
 // Supervisor system prompt
 const SUPERVISOR_PROMPT = `You are the Bangkok Trip Planning Supervisor. Your role is to coordinate specialized agents to help users plan trips in Bangkok.
@@ -15,8 +16,8 @@ AVAILABLE AGENTS:
 
 WORKFLOW GUIDELINES:
 1. For discovery/search queries → delegate to researcher_agent only
-2. For itinerary/route/trip requests → use researcher_agent to find real places, then planner_agent to create routes
-3. Use critic_agent for validation when user explicitly asks to validate, or when planner output has obvious feasibility risk
+2. For itinerary/route/trip requests → use researcher_agent to find real places, then planner_agent to create a canonical trip draft
+3. Use critic_agent only when user explicitly asks to validate or revise a draft, or when planner output has obvious feasibility risk
 4. Prefer the minimum agent chain needed to answer correctly; avoid unnecessary handoffs
 
 DELEGATION RULES:
@@ -41,12 +42,12 @@ Step 2 — Apply the format matching the intent:
 
   If ITINERARY:
     - Return only valid JSON from planner_agent in its declared schema
-    - Do not reformat itinerary into markdown
+    - Do not reformat the trip draft into markdown
     - Do not rewrite, summarize, or abbreviate planner JSON fields
 
 ADDITIONAL RESPONSE GUIDELINES:
 - Synthesize results from all agents into a cohesive response
-- Include relevant context about places and timing outside of the main itinerary block
+- Include relevant context only inside the returned JSON schema
 - Mention any warnings or suggestions from the critic
 
 Remember: Your goal is to provide the best trip planning experience by coordinating specialized expertise.`;
@@ -55,6 +56,49 @@ Remember: Your goal is to provide the best trip planning experience by coordinat
 export interface SupervisorConfig {
 	model?: ChatOpenAI;
 	recursionLimit?: number;
+}
+
+function parseLatestTripDraft(
+	messages: Array<{ role: string; content: string }>
+): TripDraft | undefined {
+	for (const message of [...messages].reverse()) {
+		if (message.role !== "assistant") continue;
+		try {
+			const parsed = JSON.parse(message.content);
+			const result = UiResponsePayloadSchema.safeParse(parsed);
+			if (result.success && result.data.tripDraft) {
+				return result.data.tripDraft;
+			}
+		} catch {
+			// Ignore non-JSON assistant messages.
+		}
+	}
+
+	return undefined;
+}
+
+function buildRuntimeContextMessage(
+	messages: Array<{ role: string; content: string }>,
+	options: {
+		userLocation?: { lat: number; lng: number };
+		sessionId?: string;
+		userId?: string;
+		userPreferences?: Record<string, unknown>;
+	}
+): { role: "system"; content: string } {
+	const currentTripDraft = parseLatestTripDraft(messages);
+
+	return {
+		role: "system",
+		content: JSON.stringify({
+			type: "runtime_context",
+			sessionId: options.sessionId,
+			userId: options.userId,
+			userLocation: options.userLocation ?? null,
+			userPreferences: options.userPreferences ?? {},
+			currentTripDraft: currentTripDraft ?? null,
+		}),
+	};
 }
 
 // Create the multi-agent supervisor graph
@@ -109,12 +153,16 @@ export async function invokeSupervisor(
 		userLocation?: { lat: number; lng: number };
 		sessionId?: string;
 		userId?: string;
+		userPreferences?: Record<string, unknown>;
 	} = {}
 ): Promise<{ messages: Array<{ role: string; content: string }> }> {
 	const supervisor = getSupervisorInstance();
 
 	// Format messages for LangGraph
-	const formattedMessages = messages.map((msg) => ({
+	const formattedMessages = [
+		buildRuntimeContextMessage(messages, options),
+		...messages,
+	].map((msg) => ({
 		role: msg.role as "user" | "assistant" | "system",
 		content: msg.content,
 	}));
@@ -134,6 +182,7 @@ export async function* streamSupervisor(
 		userLocation?: { lat: number; lng: number };
 		sessionId?: string;
 		userId?: string;
+		userPreferences?: Record<string, unknown>;
 	} = {}
 ): AsyncGenerator<{
 	type: "agent" | "tool" | "message" | "done";
@@ -142,7 +191,10 @@ export async function* streamSupervisor(
 	const supervisor = getSupervisorInstance();
 
 	// Format messages for LangGraph
-	const formattedMessages = messages.map((msg) => ({
+	const formattedMessages = [
+		buildRuntimeContextMessage(messages, options),
+		...messages,
+	].map((msg) => ({
 		role: msg.role as "user" | "assistant" | "system",
 		content: msg.content,
 	}));

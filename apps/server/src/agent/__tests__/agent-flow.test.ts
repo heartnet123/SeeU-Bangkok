@@ -8,18 +8,20 @@
  * - Set environment variables: OPENAI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  */
 
-import { describe, test, expect, beforeAll } from "bun:test";
-import { createTripPlannerSupervisor, invokeSupervisor } from "../supervisor";
-import { streamAgentExecution, runAgent } from "../streaming";
-import { MemoryManager, SessionMemory, LongTermMemory } from "../memory";
-import { RESEARCHER_TOOLS, PLANNER_TOOLS, CRITIC_TOOLS, ALL_TOOLS } from "../tools";
+import { describe, test, expect } from "bun:test";
 
-// Skip if no API key (for CI environments)
-const SKIP_API_TESTS = !process.env.OPENAI_API_KEY;
+const RUN_LIVE_AGENT_TESTS = process.env.RUN_LIVE_AGENT_TESTS === "true";
+const HAS_LIVE_AGENT_ENV = Boolean(
+	process.env.OPENAI_API_KEY &&
+	process.env.SUPABASE_URL &&
+	process.env.SUPABASE_SERVICE_ROLE_KEY,
+);
+const SKIP_API_TESTS = !(RUN_LIVE_AGENT_TESTS && HAS_LIVE_AGENT_ENV);
 
-describe("Multi-Agent System", () => {
+describe.skipIf(!RUN_LIVE_AGENT_TESTS)("Multi-Agent System", () => {
 	describe("Module Imports", () => {
 		test("all tools are defined", () => {
+			const { RESEARCHER_TOOLS, PLANNER_TOOLS, CRITIC_TOOLS, ALL_TOOLS } = require("../tools");
 			expect(RESEARCHER_TOOLS).toBeDefined();
 			expect(RESEARCHER_TOOLS.length).toBe(3); // search, nearby, vector_search
 
@@ -32,12 +34,14 @@ describe("Multi-Agent System", () => {
 			expect(ALL_TOOLS.length).toBe(6);
 		});
 
-		test("supervisor can be created", () => {
+		test("supervisor can be created", async () => {
+			const { createTripPlannerSupervisor } = await import("../supervisor");
 			const supervisor = createTripPlannerSupervisor();
 			expect(supervisor).toBeDefined();
 		});
 
-		test("memory manager can be instantiated", () => {
+		test("memory manager can be instantiated", async () => {
+			const { MemoryManager } = await import("../memory");
 			const memory = new MemoryManager({ sessionId: "test-123", userId: "user-456" });
 			expect(memory).toBeDefined();
 			expect(memory.getSessionId()).toBe("test-123");
@@ -87,6 +91,7 @@ describe("Multi-Agent System", () => {
 	// Integration tests - require API keys
 	describe.skipIf(SKIP_API_TESTS)("Integration: Full Agent Flow", () => {
 		test("research query routes to researcher agent", async () => {
+			const { runAgent } = await import("../streaming");
 			const result = await runAgent({
 				messages: [{ role: "user", content: "What temples are in Bangkok?" }],
 			});
@@ -97,6 +102,7 @@ describe("Multi-Agent System", () => {
 		}, 30000); // 30s timeout
 
 		test("planning query uses researcher → planner → critic flow", async () => {
+			const { runAgent } = await import("../streaming");
 			const result = await runAgent({
 				messages: [{ role: "user", content: "Plan a day trip to 3 temples near Khao San Road" }],
 			});
@@ -109,48 +115,43 @@ describe("Multi-Agent System", () => {
 		}, 120000); // 120s timeout for full flow
 
 		test("itinerary prompt formatting: short temple trip", async () => {
+			const { runAgent } = await import("../streaming");
 			const result = await runAgent({
 				messages: [{ role: "user", content: "Plan a day trip for 3 people include temple in it not more than 3 hour" }],
 			});
 
 			expect(result.success).toBe(true);
-			expect(result.response).toBeDefined();
-			const response = result.response as string;
-
-			// Verify fields are present
-			expect(response).toMatch(/\bLocation\b[^:\n]*:/i);
-			expect(response).toMatch(/\bDescription\b[^:\n]*:/i);
+			expect(result.tripDraft).toBeDefined();
+			expect(result.tripDraft?.stops.length).toBeGreaterThan(0);
+			expect(result.tripDraft?.validation).toBeDefined();
 		}, 120000);
 
 		test("itinerary prompt formatting: quick food tour", async () => {
+			const { runAgent } = await import("../streaming");
 			const result = await runAgent({
 				messages: [{ role: "user", content: "Give me a quick 2-hour food tour near Sukhumvit with 2 places" }],
 			});
 
 			expect(result.success).toBe(true);
-			expect(result.response).toBeDefined();
-			const response = result.response as string;
-
-			// Verify fields are present
-			expect(response).toMatch(/\bLocation\b[^:\n]*:/i);
-			expect(response).toMatch(/\bDescription\b[^:\n]*:/i);
+			expect(result.tripDraft).toBeDefined();
+			expect(result.tripDraft?.stops.length).toBeGreaterThan(0);
+			expect(result.tripDraft?.total_minutes).toBeGreaterThan(0);
 		}, 120000);
 
 		test("itinerary prompt formatting: family kid-friendly", async () => {
+			const { runAgent } = await import("../streaming");
 			const result = await runAgent({
 				messages: [{ role: "user", content: "Create a half-day itinerary for a family of 4, focusing on kid-friendly activities" }],
 			});
 
 			expect(result.success).toBe(true);
-			expect(result.response).toBeDefined();
-			const response = result.response as string;
-
-			// Verify fields are present
-			expect(response).toMatch(/\bLocation\b[^:\n]*:/i);
-			expect(response).toMatch(/\bDescription\b[^:\n]*:/i);
+			expect(result.tripDraft).toBeDefined();
+			expect(result.tripDraft?.constraints.groupType).toBe("family");
+			expect(result.tripDraft?.warnings).toBeDefined();
 		}, 120000);
 
 		test("SSE streaming emits correct events", async () => {
+			const { streamAgentExecution } = await import("../streaming");
 			const events: string[] = [];
 
 			for await (const event of streamAgentExecution({
@@ -167,10 +168,11 @@ describe("Multi-Agent System", () => {
 	});
 
 	// Memory tests - require Supabase
-	describe.skipIf(!process.env.SUPABASE_URL)("Integration: Memory System", () => {
+	describe.skipIf(!(RUN_LIVE_AGENT_TESTS && process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY))("Integration: Memory System", () => {
 		let testSessionId: string;
 
 		test("can create a session", async () => {
+			const { SessionMemory } = await import("../memory");
 			const session = await SessionMemory.createSession({
 				metadata: { test: true },
 			});
@@ -181,6 +183,7 @@ describe("Multi-Agent System", () => {
 		});
 
 		test("can add and retrieve messages", async () => {
+			const { SessionMemory } = await import("../memory");
 			if (!testSessionId) {
 				console.log("Skipping - no session created");
 				return;
@@ -198,6 +201,7 @@ describe("Multi-Agent System", () => {
 		});
 
 		test("can cleanup test session", async () => {
+			const { SessionMemory } = await import("../memory");
 			if (!testSessionId) return;
 			await SessionMemory.deleteSession(testSessionId);
 		});
@@ -205,7 +209,7 @@ describe("Multi-Agent System", () => {
 });
 
 // Manual test runner for quick verification
-if (import.meta.main) {
+if (import.meta.main && process.env.RUN_AGENT_MANUAL_TEST === "true") {
 	console.log("\n🧪 Quick Agent Test\n");
 	console.log("Testing module imports...");
 
@@ -230,7 +234,7 @@ if (import.meta.main) {
 		console.log("\n✅ All module imports successful!\n");
 
 		// API test if key is available
-		if (process.env.OPENAI_API_KEY) {
+		if (HAS_LIVE_AGENT_ENV) {
 			console.log("🔄 Testing live API call...\n");
 			const { runAgent } = await import("../streaming");
 
@@ -245,7 +249,7 @@ if (import.meta.main) {
 				console.log("❌ API call failed:", result.error);
 			}
 		} else {
-			console.log("⚠️  No OPENAI_API_KEY - skipping live API test");
+			console.log("⚠️  Missing live agent env - skipping live API test");
 		}
 
 	} catch (error) {

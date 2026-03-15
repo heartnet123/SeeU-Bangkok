@@ -1,6 +1,5 @@
 import { z } from "zod";
 
-// Message schema
 export const MessageSchema = z.object({
 	role: z.enum(["system", "user", "assistant", "tool"]),
 	content: z.string(),
@@ -9,7 +8,6 @@ export const MessageSchema = z.object({
 
 export type Message = z.infer<typeof MessageSchema>;
 
-// Location schema
 export const LocationSchema = z.object({
 	lat: z.number(),
 	lng: z.number(),
@@ -17,26 +15,68 @@ export const LocationSchema = z.object({
 
 export type Location = z.infer<typeof LocationSchema>;
 
-// Tool call schema
 export const ToolCallSchema = z.object({
 	tool: z.string(),
-	args: z.any(),
-	result: z.any().optional(),
+	args: z.unknown(),
+	result: z.unknown().optional(),
 });
 
 export type ToolCall = z.infer<typeof ToolCallSchema>;
 
-// Retrieved document schema
 export const RetrievedDocSchema = z.object({
 	content: z.string(),
-	metadata: z.any(),
+	metadata: z.unknown(),
 	score: z.number().optional(),
 });
 
 export type RetrievedDoc = z.infer<typeof RetrievedDocSchema>;
 
-// Itinerary stop schema
-export const ItineraryStopSchema = z.object({
+export const CandidatePlaceSchema = z.object({
+	id: z.string(),
+	name: z.string(),
+	slug: z.string(),
+	lat: z.number().optional(),
+	lng: z.number().optional(),
+	tags: z.array(z.string()).default([]),
+	price: z.number().optional(),
+	image_url: z.string().optional(),
+	description: z.string().optional(),
+	address: z.string().optional(),
+}).strict();
+
+export type CandidatePlace = z.infer<typeof CandidatePlaceSchema>;
+export const PlaceSuggestionSchema = CandidatePlaceSchema;
+export type PlaceSuggestion = CandidatePlace;
+
+export const LocationBiasSchema = z.object({
+	mode: z.enum(["none", "near_user", "near_area"]).default("none"),
+	origin: LocationSchema.optional(),
+	label: z.string().optional(),
+}).strict();
+
+export const PlanningConstraintsSchema = z.object({
+	durationMinutes: z.number().int().positive().default(360),
+	maxStops: z.number().int().min(1).max(8).default(4),
+	budgetLevel: z.enum(["low", "medium", "high", "flexible"]).default("medium"),
+	groupType: z.enum(["solo", "couple", "family", "group"]).default("solo"),
+	themes: z.array(z.string()).default([]),
+	locationBias: LocationBiasSchema.optional(),
+}).strict();
+
+export type PlanningConstraints = z.infer<typeof PlanningConstraintsSchema>;
+
+export const TripValidationSchema = z.object({
+	isValid: z.boolean(),
+	score: z.number(),
+	warnings: z.array(z.string()).default([]),
+	suggestions: z.array(z.string()).default([]),
+}).strict();
+
+export type TripValidation = z.infer<typeof TripValidationSchema>;
+
+export const TripDraftStopSchema = z.object({
+	id: z.string(),
+	place_id: z.string(),
 	slug: z.string(),
 	name: z.string(),
 	lat: z.number().optional(),
@@ -47,113 +87,91 @@ export const ItineraryStopSchema = z.object({
 	travel_time_from_prev_min: z.number(),
 }).strict();
 
-export type ItineraryStop = z.infer<typeof ItineraryStopSchema>;
+export type TripDraftStop = z.infer<typeof TripDraftStopSchema>;
 
-// Itinerary schema
-export const ItinerarySchema = z.object({
+export const TripDraftSchema = z.object({
 	title: z.string(),
-	stops: z.array(ItineraryStopSchema),
+	summary: z.string(),
+	constraints: PlanningConstraintsSchema,
+	places: z.array(CandidatePlaceSchema).default([]),
+	stops: z.array(TripDraftStopSchema),
 	total_distance_km: z.number(),
 	total_minutes: z.number(),
-	validation: z
-		.object({
-			isValid: z.boolean(),
-			warnings: z.array(z.string()),
-			suggestions: z.array(z.string()),
-		})
-		.optional(),
+	warnings: z.array(z.string()).default([]),
+	validation: TripValidationSchema,
 }).strict();
 
-export type Itinerary = z.infer<typeof ItinerarySchema>;
+export type TripDraft = z.infer<typeof TripDraftSchema>;
 
-// Place suggestion schema for UI payloads
-export const PlaceSuggestionSchema = z.object({
-	id: z.string(),
-	name: z.string(),
-	slug: z.string().optional().default(""),
-	lat: z.number().optional(),
-	lng: z.number().optional(),
-	tags: z.array(z.string()).optional().default([]),
-	price: z.number().optional(),
-	image_url: z.string().optional(),
-	description: z.string().optional(),
-}).strict();
-
-export type PlaceSuggestion = z.infer<typeof PlaceSuggestionSchema>;
+// Backwards-compatible aliases for existing runtime consumers.
+export const ItineraryStopSchema = TripDraftStopSchema;
+export type ItineraryStop = TripDraftStop;
+export const ItinerarySchema = TripDraftSchema;
+export type Itinerary = TripDraft;
 
 export const UiActionSchema = z.object({
-	type: z.enum(["add_all_to_trip", "preview_itinerary"]),
+	type: z.enum(["add_all_to_trip", "preview_itinerary", "save_trip_draft"]),
 	label: z.string(),
 }).strict();
 
 export const UiResponsePayloadSchema = z.object({
 	version: z.literal("1.0"),
 	intent: z.enum(["chat", "place_recommendation", "itinerary"]),
+	sessionId: z.string().optional(),
 	summary: z.string(),
-	places: z.array(PlaceSuggestionSchema),
-	itinerary: ItinerarySchema.nullable(),
+	places: z.array(CandidatePlaceSchema),
+	tripDraft: TripDraftSchema.nullable(),
 	actions: z.array(UiActionSchema),
+	warnings: z.array(z.string()).default([]),
 	raw_text: z.string(),
 }).strict();
 
 export type UiResponsePayload = z.infer<typeof UiResponsePayloadSchema>;
 
-// Structured agent outputs expected from LLM messages
 export const ResearcherAgentOutputSchema = z.object({
 	intent: z.literal("place_recommendation"),
 	summary: z.string(),
-	places: z.array(PlaceSuggestionSchema).default([]),
+	places: z.array(CandidatePlaceSchema).default([]),
+	planningConstraints: PlanningConstraintsSchema.optional(),
 }).strict();
 
 export const PlannerAgentOutputSchema = z.object({
 	intent: z.literal("itinerary"),
 	summary: z.string(),
-	itinerary: ItinerarySchema,
+	tripDraft: TripDraftSchema,
 }).strict();
 
 export type ResearcherAgentOutput = z.infer<typeof ResearcherAgentOutputSchema>;
 export type PlannerAgentOutput = z.infer<typeof PlannerAgentOutputSchema>;
 
-// Main Agent State schema for LangGraph
 export const AgentStateSchema = z.object({
-	// Core conversation
 	messages: z.array(MessageSchema),
 	userLocation: LocationSchema.optional(),
 	sessionId: z.string().optional(),
 	userId: z.string().optional(),
-
-	// Agent routing
 	currentAgent: z.string().optional(),
 	agentHistory: z.array(z.string()).default([]),
-
-	// Tool execution
 	toolCalls: z.array(ToolCallSchema).default([]),
-
-	// RAG context
 	retrievedDocs: z.array(RetrievedDocSchema).default([]),
-	context: z.record(z.string(), z.any()).default({}),
-
-	// Output
-	itinerary: ItinerarySchema.optional(),
+	context: z.record(z.string(), z.unknown()).default({}),
+	currentTripDraft: TripDraftSchema.optional(),
+	planningConstraints: PlanningConstraintsSchema.optional(),
 	finalResponse: z.string().optional(),
-
-	// Error handling
 	error: z.string().optional(),
-
-	// Memory
-	userPreferences: z.record(z.string(), z.any()).default({}),
+	userPreferences: z.record(z.string(), z.unknown()).default({}),
 });
 
 export type AgentState = z.infer<typeof AgentStateSchema>;
 
-// Initial state factory
 export function createInitialState(
 	messages: Message[],
 	options: {
 		userLocation?: Location;
 		sessionId?: string;
 		userId?: string;
-		userPreferences?: Record<string, any>;
+		userPreferences?: Record<string, unknown>;
+		currentTripDraft?: TripDraft;
+		planningConstraints?: PlanningConstraints;
 	} = {}
 ): AgentState {
 	return {
@@ -166,7 +184,8 @@ export function createInitialState(
 		toolCalls: [],
 		retrievedDocs: [],
 		context: {},
-		itinerary: undefined,
+		currentTripDraft: options.currentTripDraft,
+		planningConstraints: options.planningConstraints,
 		finalResponse: undefined,
 		error: undefined,
 		userPreferences: options.userPreferences || {},

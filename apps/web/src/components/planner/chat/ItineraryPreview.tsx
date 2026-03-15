@@ -1,9 +1,10 @@
 import { motion } from "motion/react";
 import { Route, Clock, Navigation, Check, Save, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { TripDraft } from "./types";
 
 interface ItineraryPreviewProps {
-	itinerary: Record<string, unknown>;
+	itinerary: TripDraft;
 	onSave?: () => void;
 	onPreview?: () => void;
 	onDismiss?: () => void;
@@ -19,16 +20,16 @@ export function ItineraryPreview({
 	isSaving,
 	isSaved,
 }: ItineraryPreviewProps) {
-	const stops = (itinerary.stops as Record<string, unknown>[] | undefined) ?? [];
-	const totalKm = itinerary.total_distance_km as number | undefined;
-	const totalMin = itinerary.total_minutes as number | undefined;
+	const stops = itinerary.stops;
+	const totalKm = itinerary.total_distance_km;
+	const totalMin = itinerary.total_minutes;
 
 	return (
 		<div className="rounded-xl border border-border bg-card overflow-hidden">
 			<div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-muted/30">
 				<Route className="h-4 w-4 text-primary shrink-0" />
 				<span className="font-semibold text-foreground text-sm flex-1 min-w-0 truncate">
-					{itinerary.title as string}
+					{itinerary.title}
 				</span>
 				<div className="flex items-center gap-3 text-[10px] text-muted-foreground shrink-0">
 					{totalKm !== undefined && <span>{totalKm} km</span>}
@@ -41,7 +42,7 @@ export function ItineraryPreview({
 			<div className="px-4 py-3 space-y-0">
 				{stops.map((stop, index) => (
 					<motion.div
-						key={(stop.slug as string) || index}
+						key={stop.slug || index}
 						className="flex gap-3"
 						initial={{ opacity: 0, x: -8 }}
 						animate={{ opacity: 1, x: 0 }}
@@ -58,23 +59,23 @@ export function ItineraryPreview({
 
 						<div className="flex-1 min-w-0 pb-3">
 							<div className="font-medium text-foreground text-sm leading-snug">
-								{stop.name as string}
+								{stop.name}
 							</div>
 							<div className="flex items-center gap-3 text-[10px] text-muted-foreground mt-0.5">
 								<span className="flex items-center gap-1">
 									<Clock className="h-3 w-3" />
-									{stop.suggested_time_min as number} min
+									{stop.suggested_time_min} min
 								</span>
-								{(stop.distance_from_prev_km as number) > 0 && (
+								{stop.distance_from_prev_km > 0 && (
 									<span className="flex items-center gap-1">
 										<Navigation className="h-3 w-3" />
-										{stop.distance_from_prev_km as number} km from prev
+										{stop.distance_from_prev_km} km from prev
 									</span>
 								)}
 							</div>
 							{Boolean(stop.notes) && (
 								<p className="text-[10px] text-muted-foreground mt-1 italic leading-relaxed">
-									{stop.notes as string}
+									{stop.notes}
 								</p>
 							)}
 						</div>
