@@ -6,6 +6,20 @@ import type {
 	TripValidation,
 } from "../state";
 
+interface RouteLegMetrics {
+	from: string;
+	to: string;
+	distance_km: number;
+	duration_min?: number;
+}
+
+interface BuiltRouteMetrics {
+	order: string[];
+	legs: RouteLegMetrics[];
+	total_km: number;
+	total_mins?: number;
+}
+
 interface ExtractPlanningConstraintsOptions {
 	userLocation?: { lat: number; lng: number };
 }
@@ -128,6 +142,20 @@ function scoreCandidate(
 	return score;
 }
 
+export function selectTripCandidates(
+	candidates: CandidatePlace[],
+	constraints: PlanningConstraints,
+	origin?: { lat: number; lng: number }
+): CandidatePlace[] {
+	return candidates
+		.map((candidate) => ({
+			...candidate,
+			slug: candidate.slug || nameToSlug(candidate.name),
+		}))
+		.sort((a, b) => scoreCandidate(b, constraints, origin) - scoreCandidate(a, constraints, origin))
+		.slice(0, constraints.maxStops);
+}
+
 function orderPlaces(
 	places: CandidatePlace[],
 	origin?: { lat: number; lng: number }
@@ -225,14 +253,7 @@ export function buildTripDraftFromCandidates({
 	constraints,
 	origin,
 }: BuildTripDraftParams): TripDraft {
-	const normalizedCandidates = candidates.map((candidate) => ({
-		...candidate,
-		slug: candidate.slug || nameToSlug(candidate.name),
-	}));
-
-	const ranked = [...normalizedCandidates]
-		.sort((a, b) => scoreCandidate(b, constraints, origin) - scoreCandidate(a, constraints, origin))
-		.slice(0, constraints.maxStops);
+	const ranked = selectTripCandidates(candidates, constraints, origin);
 
 	const ordered = orderPlaces(
 		ranked,
@@ -280,6 +301,67 @@ export function buildTripDraftFromCandidates({
 		stops,
 		total_distance_km: Math.round(totalDistance * 10) / 10,
 		total_minutes: stops.length * 60 + totalTravelMinutes,
+	};
+
+	const validation = computeTripValidation(draftBase);
+
+	return {
+		...draftBase,
+		warnings: validation.warnings,
+		validation,
+	};
+}
+
+export function buildTripDraftFromRoute({
+	title = "Suggested Trip",
+	summary,
+	candidates,
+	constraints,
+	route,
+}: {
+	title?: string;
+	summary?: string;
+	candidates: CandidatePlace[];
+	constraints: PlanningConstraints;
+	route: BuiltRouteMetrics;
+}): TripDraft {
+	const normalizedCandidates = candidates.map((candidate) => ({
+		...candidate,
+		slug: candidate.slug || nameToSlug(candidate.name),
+	}));
+	const bySlug = new Map(normalizedCandidates.map((candidate) => [candidate.slug, candidate] as const));
+	const ordered = route.order
+		.map((slug) => bySlug.get(slug))
+		.filter((candidate): candidate is CandidatePlace => Boolean(candidate));
+
+	const stops = ordered.map((place, index) => {
+		const leg = route.legs.find((entry) => entry.to === place.slug);
+		return {
+			id: place.id,
+			place_id: place.id,
+			slug: place.slug || nameToSlug(place.name),
+			name: place.name,
+			lat: place.lat,
+			lng: place.lng,
+			suggested_time_min: 60,
+			travel_time_from_prev_min: index === 0 ? 0 : leg?.duration_min || 0,
+			distance_from_prev_km: index === 0 ? 0 : Math.round((leg?.distance_km || 0) * 10) / 10,
+			notes: place.description || "",
+		};
+	});
+
+	const computedSummary =
+		summary ||
+		`${stops.length} stop${stops.length === 1 ? "" : "s"} planned with a ${constraints.durationMinutes}-minute budget.`;
+
+	const draftBase = {
+		title,
+		summary: computedSummary,
+		constraints,
+		places: ordered,
+		stops,
+		total_distance_km: route.total_km,
+		total_minutes: stops.length * 60 + (route.total_mins || 0),
 	};
 
 	const validation = computeTripValidation(draftBase);

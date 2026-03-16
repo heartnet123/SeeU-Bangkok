@@ -1,7 +1,7 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { traceable } from "langsmith/traceable";
-import { build_route as buildRouteImpl, haversineKm } from "@/lib/tools";
+import { build_route as buildRouteImpl } from "@/lib/tools";
 import {
 	CandidatePlaceSchema,
 	LocationSchema,
@@ -11,8 +11,10 @@ import {
 	type TripDraft,
 } from "../state";
 import {
+	buildTripDraftFromRoute,
 	buildTripDraftFromCandidates,
 	extractPlanningConstraints,
+	selectTripCandidates,
 } from "../domain/planning";
 
 interface BuildRouteParams {
@@ -71,12 +73,53 @@ export const plan_itinerary = traceable(
 			...constraints,
 		});
 
-		return buildTripDraftFromCandidates({
+		const planningOrigin =
+			mergedConstraints.locationBias?.mode === "near_user"
+				? mergedConstraints.locationBias.origin || origin
+				: origin;
+
+		const selectedCandidates = selectTripCandidates(
+			places,
+			mergedConstraints,
+			planningOrigin
+		);
+
+		const routeEligibleCandidates = selectedCandidates.filter(
+			(place) =>
+				typeof place.lat === "number" && typeof place.lng === "number"
+		);
+
+		if (routeEligibleCandidates.length < 2) {
+			return buildTripDraftFromCandidates({
+				title,
+				summary,
+				candidates: selectedCandidates,
+				constraints: mergedConstraints,
+				origin: planningOrigin,
+			});
+		}
+
+		const route = await build_route({
+			places: routeEligibleCandidates,
+			origin: planningOrigin,
+		});
+
+		if (route.order.length === 0) {
+			return buildTripDraftFromCandidates({
+				title,
+				summary,
+				candidates: selectedCandidates,
+				constraints: mergedConstraints,
+				origin: planningOrigin,
+			});
+		}
+
+		return buildTripDraftFromRoute({
 			title,
 			summary,
-			candidates: places,
+			candidates: routeEligibleCandidates,
 			constraints: mergedConstraints,
-			origin,
+			route,
 		});
 	},
 	{ name: "tools.plan_itinerary", run_type: "tool" }

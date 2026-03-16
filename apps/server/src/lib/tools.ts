@@ -106,6 +106,21 @@ export interface BuiltRoute {
   total_mins?: number
 }
 
+interface DirectionsRouteData {
+  legs: Array<{
+    distance_km: number
+    duration_min?: number
+  }>
+  total_km: number
+  total_mins?: number
+}
+
+function toMapboxProfile(mode: TravelMode = 'car'): 'driving' | 'walking' | 'cycling' {
+  if (mode === 'walk') return 'walking'
+  if (mode === 'bike') return 'cycling'
+  return 'driving'
+}
+
 async function fetchMapboxMatrix(coords: LatLng[]): Promise<{ distances: number[][], durations: number[][] } | null> {
   const token = process.env.MAPBOX_ACCESS_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
   if (!token || coords.length < 2 || coords.length > 25) return null;
@@ -136,9 +151,46 @@ async function fetchMapboxMatrix(coords: LatLng[]): Promise<{ distances: number[
   }
 }
 
+async function fetchMapboxDirectionsRoute(coords: LatLng[], mode: TravelMode = 'car'): Promise<DirectionsRouteData | null> {
+  const token = process.env.MAPBOX_ACCESS_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN
+  if (!token || coords.length < 2 || coords.length > 25) return null
+
+  const profile = toMapboxProfile(mode)
+  const coordStr = coords.map(c => `${c.lng},${c.lat}`).join(';')
+  const url = `https://api.mapbox.com/directions/v5/mapbox/${profile}/${coordStr}?alternatives=false&steps=false&overview=full&geometries=geojson&access_token=${token}`
+
+  const timeoutMs = Number(process.env.MAPBOX_DIRECTIONS_TIMEOUT_MS || 2600)
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const res = await fetch(url, { signal: controller.signal })
+    if (!res.ok) return null
+    const data = await res.json()
+    const route = Array.isArray(data.routes) ? data.routes[0] : null
+    if (data.code !== 'Ok' || !route || !Array.isArray(route.legs)) return null
+
+    return {
+      legs: route.legs.map((leg: { distance?: number, duration?: number }) => ({
+        distance_km: round1((leg.distance || 0) / 1000),
+        duration_min: typeof leg.duration === 'number' ? Math.max(1, Math.ceil(leg.duration / 60)) : undefined
+      })),
+      total_km: round1((route.distance || 0) / 1000),
+      total_mins: typeof route.duration === 'number' ? Math.max(1, Math.ceil(route.duration / 60)) : undefined
+    }
+  } catch (e: any) {
+    if (e?.name !== 'AbortError') {
+      console.error('Mapbox Directions fetch error:', e)
+    }
+    return null
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 export const build_route = traceable(
   async (params: BuildRouteParams): Promise<BuiltRoute> => {
-    const { places, origin } = params
+    const { places, origin, mode = 'car' } = params
     const pts = places.filter((p) => isFiniteNum(p.lat) && isFiniteNum(p.lng))
     if (pts.length < 2) return { order: pts.map((p) => p.slug), legs: [], total_km: 0 }
 
@@ -209,6 +261,30 @@ export const build_route = traceable(
       currentSlug = bestSlug
       order.push(currentSlug)
       unvisited.delete(currentSlug)
+    }
+
+    const directionsRoute = await fetchMapboxDirectionsRoute(
+      order.map((slug) => {
+        const place = bySlug.get(slug)!
+        return { lat: place.lat!, lng: place.lng! }
+      }),
+      mode
+    )
+
+    if (directionsRoute && directionsRoute.legs.length === Math.max(order.length - 1, 0)) {
+      const routedLegs = order.slice(1).map((to, index) => ({
+        from: order[index]!,
+        to,
+        distance_km: directionsRoute.legs[index]!.distance_km,
+        duration_min: directionsRoute.legs[index]!.duration_min,
+      }))
+
+      return {
+        order,
+        legs: routedLegs,
+        total_km: directionsRoute.total_km,
+        total_mins: directionsRoute.total_mins ?? routedLegs.reduce((sum, leg) => sum + (leg.duration_min || 0), 0),
+      }
     }
 
     const total_km = round1(legs.reduce((s, l) => s + l.distance_km, 0))
