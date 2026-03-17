@@ -5,6 +5,7 @@ import {
 	search_places as searchPlacesImpl,
 	nearby_places as nearbyPlacesImpl,
 } from "@/lib/tools";
+import type { PersonalizationDefaults } from "../personalization";
 
 // Search places tool for LangGraph
 export const searchPlacesTool = tool(
@@ -13,6 +14,7 @@ export const searchPlacesTool = tool(
 			query: input.query,
 			categories: input.categories,
 			limit: input.limit,
+			personalizationDefaults: input.personalizationDefaults as PersonalizationDefaults | undefined,
 		});
 		return JSON.stringify(results);
 	},
@@ -31,6 +33,15 @@ export const searchPlacesTool = tool(
 				.optional()
 				.default(10)
 				.describe("Maximum number of results to return"),
+			personalizationDefaults: z.object({
+				budgetLevel: z.enum(["low", "medium", "high", "flexible"]),
+				pace: z.enum(["relaxed", "balanced", "packed"]),
+				preferredTransport: z.enum(["walk", "bike", "public", "grab"]),
+				themes: z.array(z.string()),
+				culinaryPreferences: z.array(z.string()),
+				avoidList: z.array(z.string()),
+				languagePreference: z.string().optional(),
+			}).optional().describe("Silent personalization defaults derived from user memory"),
 		}),
 	}
 );

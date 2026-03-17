@@ -6,6 +6,16 @@ import { createPlannerAgent } from "./agents/planner";
 import { createCriticAgent } from "./agents/critic";
 import { UiResponsePayloadSchema, type TripDraft } from "./state";
 
+export const DEFAULT_SUPERVISOR_MODEL = "gpt-5-nano";
+
+export type AgentExecutionIntent = "informational" | "itinerary";
+
+export interface AgentExecutionPlan {
+	mode: "direct_researcher" | "supervisor";
+	intent: AgentExecutionIntent;
+	includeCritic: boolean;
+}
+
 // Supervisor system prompt
 const SUPERVISOR_PROMPT = `You are the Bangkok Trip Planning Supervisor. Your role is to coordinate specialized agents to help users plan trips in Bangkok.
 
@@ -56,6 +66,53 @@ Remember: Your goal is to provide the best trip planning experience by coordinat
 export interface SupervisorConfig {
 	model?: ChatOpenAI;
 	recursionLimit?: number;
+	includeCritic?: boolean;
+}
+
+function getLatestUserMessage(
+	messages: Array<{ role: string; content: string }>
+): string {
+	for (const message of [...messages].reverse()) {
+		if (message.role === "user" && typeof message.content === "string") {
+			return message.content;
+		}
+	}
+
+	return "";
+}
+
+export function classifyIntent(input: string): AgentExecutionIntent {
+	const normalized = input.trim().toLowerCase();
+	if (!normalized) {
+		return "informational";
+	}
+
+	const itineraryPattern =
+		/\b(plan|create|build|arrange|design|itinerary|route|trip|tour|schedule)\b/;
+	return itineraryPattern.test(normalized) ? "itinerary" : "informational";
+}
+
+export function shouldUseCriticAgent(input: string): boolean {
+	const normalized = input.trim().toLowerCase();
+	if (!normalized) {
+		return false;
+	}
+
+	return /\b(validate|validation|review|revise|revision|improve|check|audit)\b/.test(normalized);
+}
+
+export function resolveAgentExecutionPlan(
+	messages: Array<{ role: string; content: string }>
+): AgentExecutionPlan {
+	const latestUserMessage = getLatestUserMessage(messages);
+	const intent = classifyIntent(latestUserMessage);
+	const includeCritic = shouldUseCriticAgent(latestUserMessage);
+
+	return {
+		mode: intent === "informational" ? "direct_researcher" : "supervisor",
+		intent,
+		includeCritic,
+	};
 }
 
 function parseLatestTripDraft(
@@ -101,23 +158,43 @@ function buildRuntimeContextMessage(
 	};
 }
 
+export function buildExecutionMessages(
+	messages: Array<{ role: string; content: string }>,
+	options: {
+		userLocation?: { lat: number; lng: number };
+		sessionId?: string;
+		userId?: string;
+		userPreferences?: Record<string, unknown>;
+	}
+): Array<{ role: "user" | "assistant" | "system"; content: string }> {
+	return [
+		buildRuntimeContextMessage(messages, options),
+		...messages,
+	].map((msg) => ({
+		role: msg.role as "user" | "assistant" | "system",
+		content: msg.content,
+	}));
+}
+
 // Create the multi-agent supervisor graph
 // Using explicit 'any' return type to avoid bun's cross-module type resolution issues
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function createTripPlannerSupervisor(config: SupervisorConfig = {}): any {
 	const llm = config.model || new ChatOpenAI({
-		modelName: "gpt-4o-mini",
+		modelName: DEFAULT_SUPERVISOR_MODEL,
 		temperature: 0,
 	});
 
 	// Create agents with shared model for consistency
 	const researcherAgent = createResearcherAgent(llm);
 	const plannerAgent = createPlannerAgent(llm);
-	const criticAgent = createCriticAgent(llm);
+	const agents = config.includeCritic
+		? [researcherAgent, plannerAgent, createCriticAgent(llm)]
+		: [researcherAgent, plannerAgent];
 
 	// Create supervisor workflow
 	const supervisor = createSupervisor({
-		agents: [researcherAgent, plannerAgent, criticAgent],
+		agents,
 		llm,
 		prompt: SUPERVISOR_PROMPT,
 	});
@@ -136,7 +213,7 @@ let _supervisorInstance: any = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function getSupervisorInstance(): any {
 	if (!_supervisorInstance) {
-		_supervisorInstance = createTripPlannerSupervisor();
+		_supervisorInstance = createTripPlannerSupervisor({ includeCritic: false });
 	}
 	return _supervisorInstance;
 }
@@ -154,18 +231,16 @@ export async function invokeSupervisor(
 		sessionId?: string;
 		userId?: string;
 		userPreferences?: Record<string, unknown>;
+		includeCritic?: boolean;
 	} = {}
 ): Promise<{ messages: Array<{ role: string; content: string }> }> {
-	const supervisor = getSupervisorInstance();
+	const supervisor =
+		options.includeCritic === undefined
+			? getSupervisorInstance()
+			: createTripPlannerSupervisor({ includeCritic: options.includeCritic });
 
 	// Format messages for LangGraph
-	const formattedMessages = [
-		buildRuntimeContextMessage(messages, options),
-		...messages,
-	].map((msg) => ({
-		role: msg.role as "user" | "assistant" | "system",
-		content: msg.content,
-	}));
+	const formattedMessages = buildExecutionMessages(messages, options);
 
 	// Invoke the supervisor
 	const result = await supervisor.invoke({
@@ -183,21 +258,19 @@ export async function* streamSupervisor(
 		sessionId?: string;
 		userId?: string;
 		userPreferences?: Record<string, unknown>;
+		includeCritic?: boolean;
 	} = {}
 ): AsyncGenerator<{
 	type: "agent" | "tool" | "message" | "done";
 	data: any;
 }> {
-	const supervisor = getSupervisorInstance();
+	const supervisor =
+		options.includeCritic === undefined
+			? getSupervisorInstance()
+			: createTripPlannerSupervisor({ includeCritic: options.includeCritic });
 
 	// Format messages for LangGraph
-	const formattedMessages = [
-		buildRuntimeContextMessage(messages, options),
-		...messages,
-	].map((msg) => ({
-		role: msg.role as "user" | "assistant" | "system",
-		content: msg.content,
-	}));
+	const formattedMessages = buildExecutionMessages(messages, options);
 
 	// Stream events from the supervisor
 	const stream = await supervisor.stream(
