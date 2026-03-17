@@ -25,12 +25,6 @@ interface Place {
   slug: string;
 }
 
-interface ItineraryStop {
-  lat: number;
-  lng: number;
-  slug: string;
-  name: string;
-}
 
 interface MapContainerProps {
   places: Place[];
@@ -97,13 +91,13 @@ const CATEGORY_ICONS: Record<string, string> = {
 
 // Marker Content Component
 const MarkerContent: React.FC<{
-  place: Place;
+  place?: Place;
   isSelected: boolean;
   color: string;
   icon: string | React.ReactNode;
   onClick: () => void;
   isSequence?: boolean;
-}> = ({ place, isSelected, color, icon, onClick, isSequence }) => {
+}> = ({ isSelected, color, icon, onClick, isSequence }) => {
   return (
     <div
       className={`place-marker ${isSelected ? 'selected' : ''}`}
@@ -239,7 +233,9 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapStyle, setMapStyle] = useState<'dark' | 'light' | 'satellite'>('dark');
   const [currentZoom, setCurrentZoom] = useState(initialZoom);
+  const lastZoomRef = useRef(initialZoom);
   const [currentBounds, setCurrentBounds] = useState<[number, number, number, number] | null>(null);
+  const lastBoundsRef = useRef<[number, number, number, number] | null>(null);
   const [is3DEnabled, setIs3DEnabled] = useState(show3D);
   const [isTrafficEnabled, setIsTrafficEnabled] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterCategory>('all');
@@ -295,12 +291,23 @@ const MapContainer: React.FC<MapContainerProps> = ({
   }, [filteredPlaces, currentBounds, currentZoom, placesToFeatures, previewItinerary]);
 
   // Emit currently visible (unclustered) places to parent for UI sync
+  const lastVisiblePlacesRef = useRef<string[]>([]);
+
   useEffect(() => {
     const visiblePlaces = clusteredFeatures
       .filter((feature) => !("cluster" in feature.properties && feature.properties.cluster === true))
       .map((feature) => feature.properties as Place);
 
-    onVisiblePlacesChangeRef.current?.(visiblePlaces);
+    const nextIds = visiblePlaces.map((p) => p.id).sort();
+    const prevIds = lastVisiblePlacesRef.current;
+    const changed =
+      nextIds.length !== prevIds.length ||
+      nextIds.some((id, i) => id !== prevIds[i]);
+
+    if (changed) {
+      lastVisiblePlacesRef.current = nextIds;
+      onVisiblePlacesChangeRef.current?.(visiblePlaces);
+    }
   }, [clusteredFeatures]);
 
   // Initialize map - only runs once on mount (best practice: empty dependency array)
@@ -351,7 +358,11 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
       const handleZoom = () => {
         if (map.current) {
-          setCurrentZoom(map.current.getZoom());
+          const zoom = map.current.getZoom();
+          if (lastZoomRef.current !== zoom) {
+            lastZoomRef.current = zoom;
+            setCurrentZoom(zoom);
+          }
         }
       };
 
@@ -461,12 +472,24 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
     const bounds = map.current.getBounds();
     if (bounds) {
-      setCurrentBounds([
+      const nextBounds: [number, number, number, number] = [
         bounds.getWest(),
         bounds.getSouth(),
         bounds.getEast(),
         bounds.getNorth(),
-      ]);
+      ];
+
+      const prev = lastBoundsRef.current;
+      if (
+        !prev ||
+        prev[0] !== nextBounds[0] ||
+        prev[1] !== nextBounds[1] ||
+        prev[2] !== nextBounds[2] ||
+        prev[3] !== nextBounds[3]
+      ) {
+        lastBoundsRef.current = nextBounds;
+        setCurrentBounds(nextBounds);
+      }
     }
   }, []);
 
@@ -1047,7 +1070,6 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
         root?.render(
           <MarkerContent
-            place={place}
             isSelected={isSelected}
             color={color}
             icon={icon as any}
