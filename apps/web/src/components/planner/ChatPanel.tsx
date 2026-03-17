@@ -20,7 +20,6 @@ export function ChatPanel({
 	onAddPlaceToTrip,
 	onTripDraftCreated,
 	onPreviewTripDraft,
-	onItinerarySaved,
 	userLocation,
 	defaultOpen = false,
 	sessionId,
@@ -87,7 +86,6 @@ export function ChatPanel({
 		user,
 		session,
 		setIsItinerarySaved,
-		onItinerarySaved,
 		clearConversation: () => {
 			clearConversation();
 			onSessionCreated?.(null);

@@ -1,8 +1,6 @@
 import { supabase } from './supabase'
 import { nameToSlug } from './slug-utils'
 import { traceable } from 'langsmith/traceable'
-import type { PersonalizationDefaults } from '@/agent/personalization'
-import { rerankPlacesByPersonalization } from '@/agent/personalization'
 
 export type LatLng = { lat: number; lng: number }
 
@@ -35,11 +33,10 @@ export interface SearchPlacesParams {
   radius_km?: number
   categories?: string[]
   limit?: number
-  personalizationDefaults?: PersonalizationDefaults
 }
 
 export async function search_places(params: SearchPlacesParams): Promise<PlaceItem[]> {
-  const { query, categories, limit = 10, personalizationDefaults } = params
+  const { query, categories, limit = 10 } = params
 
   let q = supabase.from('bangkok_unseen').select('*').order('name').limit(limit)
 
@@ -58,7 +55,7 @@ export async function search_places(params: SearchPlacesParams): Promise<PlaceIt
   const { data, error } = await q
   if (error) throw error
 
-  return rerankPlacesByPersonalization((data || []).map(cleanPlace), personalizationDefaults)
+  return (data || []).map(cleanPlace)
 }
 
 export interface NearbyPlacesParams {
