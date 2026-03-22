@@ -120,7 +120,7 @@ export function parseItineraryFromText(text: string): ParsedItinerary | null {
 }
 
 export function getFollowUpChips(turn: AssistantTurn, hasItinerary: boolean): string[] {
-	if (turn.itinerary || hasItinerary) {
+	if (turn.tripDraft || hasItinerary) {
 		return [
 			"Tell me about the first stop",
 			"Find food along the route",

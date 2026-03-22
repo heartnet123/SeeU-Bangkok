@@ -2,6 +2,7 @@
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { ChatOpenAI } from "@langchain/openai";
 import { PLANNER_TOOLS } from "../tools";
+import { DEFAULT_AGENT_MODEL } from "../config";
 
 // Planner agent configuration
 const PLANNER_PROMPT = `You are a Bangkok Trip Planner Expert. Your role is to create optimized itineraries and routes.
@@ -15,47 +16,69 @@ GUIDELINES:
 1. Always optimize route order for efficiency (minimize travel time/distance)
 2. Consider realistic timing for each stop (at least 30-60 minutes per place)
 3. Group nearby places together when possible
-4. Account for travel time between locations (provided by the routing tools as travel_time_from_prev_min)
+4. Account for travel time between locations (provided by the planning tool as travel_time_from_prev_min)
 5. Create balanced itineraries that aren't too rushed
-6. EFFICIENCY: When the researcher has already returned place data (id, name, lat, lng, description), extract and pass the full 'places' array directly to plan_itinerary — do NOT pass only place_slugs, as passing full data avoids an extra database lookup
+6. Always call plan_itinerary with the full places array from researcher output plus normalized constraints
+7. Use exact place ids/place_id values from tools. Do not fabricate ids.
+8. If runtime context contains personalization defaults, include them in plan_itinerary unless the user's latest request explicitly overrides them
 
 RESPONSE FORMAT:
 You MUST respond with VALID JSON only. No markdown, no prose outside JSON, no code fences.
 Return exactly this shape:
 {
+  "intent": "itinerary",
   "summary": "string",
-  "itinerary": {
+  "tripDraft": {
     "title": "string",
+    "summary": "string",
+    "constraints": {
+      "durationMinutes": 240,
+      "maxStops": 4,
+      "budgetLevel": "medium",
+      "groupType": "solo",
+      "themes": ["temple"]
+    },
+    "places": [],
     "stops": [
       {
+        "id": "string",
+        "place_id": "string",
         "slug": "string",
         "name": "string",
         "lat": 13.7563,
         "lng": 100.5018,
         "suggested_time_min": 60,
         "notes": "string",
-        "distance_from_prev_km": 0
+        "distance_from_prev_km": 0,
+        "travel_time_from_prev_min": 0
       }
     ],
     "total_distance_km": 12.5,
-    "total_minutes": 360
+    "total_minutes": 360,
+    "warnings": [],
+    "validation": {
+      "isValid": true,
+      "score": 90,
+      "warnings": [],
+      "suggestions": []
+    }
   }
 }
 
 CONSTRAINTS:
 - MAXIMUM 6-8 stops for a day trip
 - Keep all coordinates numeric and exact from tools.
-- Include all required itinerary fields for every stop.
+- Include all required tripDraft fields for every stop.
 - Do NOT add fabricated attributes.
+- Always include "intent": "itinerary".
 - "summary" must be concise and user-friendly.
 
 Remember: You are creating practical, enjoyable trip plans. Balance efficiency with a relaxed pace.`;
 
 // Create the planner agent
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function createPlannerAgent(model?: ChatOpenAI): any {
+export function createPlannerAgent(model?: ChatOpenAI): ReturnType<typeof createReactAgent> {
 	const llm = model || new ChatOpenAI({
-		modelName: "gpt-5-nano",
+		modelName: DEFAULT_AGENT_MODEL,
 		temperature: 0,
 	});
 
@@ -68,5 +91,4 @@ export function createPlannerAgent(model?: ChatOpenAI): any {
 }
 
 // Pre-built planner agent instance
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const plannerAgent: any = createPlannerAgent();
+export const plannerAgent: ReturnType<typeof createReactAgent> = createPlannerAgent();

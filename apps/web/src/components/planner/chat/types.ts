@@ -10,6 +10,51 @@ export interface PlaceItem {
 	description?: string;
 }
 
+export interface PlanningConstraints {
+	durationMinutes: number;
+	maxStops: number;
+	budgetLevel: "low" | "medium" | "high" | "flexible";
+	groupType: "solo" | "couple" | "family" | "group";
+	themes: string[];
+	locationBias?: {
+		mode: "none" | "near_user" | "near_area";
+		origin?: { lat: number; lng: number };
+		label?: string;
+	};
+}
+
+export interface TripValidation {
+	isValid: boolean;
+	score: number;
+	warnings: string[];
+	suggestions: string[];
+}
+
+export interface TripDraftStop {
+	id: string;
+	place_id: string;
+	slug: string;
+	name: string;
+	lat?: number;
+	lng?: number;
+	suggested_time_min: number;
+	travel_time_from_prev_min: number;
+	distance_from_prev_km: number;
+	notes: string;
+}
+
+export interface TripDraft {
+	title: string;
+	summary: string;
+	constraints: PlanningConstraints;
+	places: PlaceItem[];
+	stops: TripDraftStop[];
+	total_distance_km: number;
+	total_minutes: number;
+	warnings: string[];
+	validation: TripValidation;
+}
+
 export type WorkflowStepType =
 	| "planner"
 	| "search"
@@ -37,7 +82,7 @@ export interface AssistantTurn {
 	workflowSteps: WorkflowStepData[];
 	latency?: number;
 	suggestions: PlaceItem[];
-	itinerary: unknown;
+	tripDraft: TripDraft | null;
 	errors: string[];
 	ui?: UiResponsePayload;
 	id: string;
@@ -48,10 +93,12 @@ export type Turn = UserTurn | AssistantTurn;
 export interface UiResponsePayload {
 	version: "1.0";
 	intent: "chat" | "place_recommendation" | "itinerary";
+	sessionId?: string;
 	summary: string;
 	places: PlaceItem[];
-	itinerary: unknown | null;
+	tripDraft: TripDraft | null;
 	actions: Array<{ type: string; label: string }>;
+	warnings: string[];
 	raw_text: string;
 }
 
@@ -59,7 +106,7 @@ export interface PendingTurn {
 	workflowSteps: WorkflowStepData[];
 	text: string;
 	suggestions: PlaceItem[];
-	itinerary: unknown;
+	tripDraft: TripDraft | null;
 	errors: string[];
 	ui?: UiResponsePayload;
 }
@@ -88,8 +135,9 @@ export interface ParsedItinerary {
 export interface ChatPanelProps {
 	onPlacesFound?: (places: PlaceItem[]) => void;
 	onAddPlaceToTrip?: (place: PlaceItem) => void;
-	onItineraryCreated?: (itinerary: unknown) => void;
-	onPreviewItinerary?: (itinerary: any) => void;
+	onTripDraftCreated?: (tripDraft: TripDraft) => void;
+	onPreviewTripDraft?: (tripDraft: TripDraft) => void;
+	onItinerarySaved?: (savedTrip: { id: string; title?: string; created_at?: string }, tripDraft: TripDraft) => void;
 	userLocation?: { lat: number; lng: number };
 	defaultOpen?: boolean;
 	sessionId?: string | null;

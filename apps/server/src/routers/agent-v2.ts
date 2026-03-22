@@ -103,7 +103,7 @@ agentV2.post(
 			success: true,
 			response: result.response,
 			tools_used: result.tools_used,
-			itinerary: result.itinerary,
+			tripDraft: result.tripDraft,
 			places: result.places,
 			user: user?.id || null,
 		});

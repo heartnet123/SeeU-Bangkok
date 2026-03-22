@@ -1,11 +1,14 @@
 export interface TripStop {
   id: string;
+  placeId?: string;
   name: string;
   address: string;
   category: "Temple" | "Cafe" | "Restaurant" | "Shopping" | "Viewpoint";
   suggestedDurationMin: number;
   lat: number;
   lng: number;
+  notes?: string;
+  distanceFromPrevKm?: number;
 }
 
 export interface Trip {
@@ -17,4 +20,6 @@ export interface Trip {
   estimatedBudget: number;
   notes: string;
   stops: TripStop[];
+  source?: "saved" | "draft";
+  warnings?: string[];
 }

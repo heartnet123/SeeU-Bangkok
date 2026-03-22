@@ -134,12 +134,12 @@ export function handleStreamEvent(
 		}
 
 		case "itinerary": {
-			const itinerary = parseJson<unknown>(joined, null);
-			if (itinerary !== null) {
-				const itineraryObj = itinerary as { title?: string; stops?: unknown[] };
+			const tripDraft = parseJson<unknown>(joined, null);
+			if (tripDraft !== null) {
+				const itineraryObj = tripDraft as { title?: string; stops?: unknown[] };
 				updateLocal((prev) => ({
 					...prev,
-					itinerary,
+					tripDraft: tripDraft as PendingTurn["tripDraft"],
 					workflowSteps: [
 						...prev.workflowSteps.map((s) => ({ ...s, status: "complete" as const })),
 						{
@@ -162,7 +162,7 @@ export function handleStreamEvent(
 					ui: parsedUnknown,
 					text: parsedUnknown.summary || prev.text,
 					suggestions: parsedUnknown.places?.length ? parsedUnknown.places : prev.suggestions,
-					itinerary: parsedUnknown.itinerary ?? prev.itinerary,
+					tripDraft: parsedUnknown.tripDraft ?? prev.tripDraft,
 				}));
 			}
 			break;

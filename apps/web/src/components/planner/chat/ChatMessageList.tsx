@@ -28,7 +28,7 @@ import {
 	isPlaceListText,
 	looksLikeMarkdown,
 } from "./lib/chat-parsers";
-import type { AssistantTurn, PendingTurn, PlaceItem, Turn } from "./types";
+import type { AssistantTurn, PendingTurn, PlaceItem, TripDraft, Turn } from "./types";
 
 interface ChatMessageListProps {
 	turns: Turn[];
@@ -42,7 +42,7 @@ interface ChatMessageListProps {
 	onAddPlace?: (place: PlaceItem) => void;
 	onViewPlace?: (slug: string) => void;
 	onSaveItinerary?: () => void;
-	onPreviewItinerary?: (itinerary: Record<string, unknown>) => void;
+	onPreviewTripDraft?: (tripDraft: TripDraft) => void;
 	onFollowUp?: (text: string) => void;
 }
 
@@ -235,7 +235,7 @@ function AssistantMessage({
 	onAddPlace,
 	onViewPlace,
 	onSaveItinerary,
-	onPreviewItinerary,
+	onPreviewTripDraft,
 	isSavingItinerary,
 	isItinerarySaved,
 	onFollowUp,
@@ -245,7 +245,7 @@ function AssistantMessage({
 	onAddPlace?: (place: PlaceItem) => void;
 	onViewPlace?: (slug: string) => void;
 	onSaveItinerary?: () => void;
-	onPreviewItinerary?: (itinerary: Record<string, unknown>) => void;
+	onPreviewTripDraft?: (tripDraft: TripDraft) => void;
 	isSavingItinerary?: boolean;
 	isItinerarySaved?: boolean;
 	onFollowUp?: (text: string) => void;
@@ -289,6 +289,7 @@ function AssistantMessage({
 
 	const displayText = turn.ui?.summary || (introText !== null ? introText : turn.text);
 	const uiActions = turn.ui?.actions ?? [];
+	const previewTripDraft = turn.tripDraft;
 
 	return (
 		<motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex gap-3">
@@ -345,21 +346,18 @@ function AssistantMessage({
 				)}
 
 				<AnimatePresence>
-					{Boolean(turn.itinerary) && !itineraryDismissed && (
+					{previewTripDraft !== null && !itineraryDismissed && (
 						<motion.div
 							initial={{ opacity: 1 }}
 							exit={{ opacity: 0, height: 0, marginTop: 0 }}
 							transition={{ duration: 0.2 }}
 						>
 							<ItineraryPreview
-								itinerary={turn.itinerary as Record<string, unknown>}
+								itinerary={previewTripDraft}
 								onSave={isLast ? onSaveItinerary : undefined}
 								onPreview={
-									onPreviewItinerary
-										? () =>
-											onPreviewItinerary(
-												turn.itinerary as Record<string, unknown>,
-											)
+									onPreviewTripDraft
+										? () => onPreviewTripDraft(previewTripDraft)
 										: undefined
 								}
 								onDismiss={() => setItineraryDismissed(true)}
@@ -484,7 +482,7 @@ export function ChatMessageList({
 	onAddPlace,
 	onViewPlace,
 	onSaveItinerary,
-	onPreviewItinerary,
+	onPreviewTripDraft,
 	onFollowUp,
 }: ChatMessageListProps) {
 	return (
@@ -527,7 +525,7 @@ export function ChatMessageList({
 						onAddPlace={onAddPlace}
 						onViewPlace={onViewPlace}
 						onSaveItinerary={onSaveItinerary}
-						onPreviewItinerary={onPreviewItinerary}
+						onPreviewTripDraft={onPreviewTripDraft}
 						isSavingItinerary={isSavingItinerary}
 						isItinerarySaved={isItinerarySaved}
 						onFollowUp={onFollowUp}

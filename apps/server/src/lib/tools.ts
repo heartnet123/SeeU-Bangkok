@@ -1,6 +1,8 @@
 import { supabase } from './supabase'
 import { nameToSlug } from './slug-utils'
 import { traceable } from 'langsmith/traceable'
+import type { PersonalizationDefaults } from '@/agent/personalization'
+import { rerankPlacesByPersonalization } from '@/agent/personalization'
 
 export type LatLng = { lat: number; lng: number }
 
@@ -33,10 +35,11 @@ export interface SearchPlacesParams {
   radius_km?: number
   categories?: string[]
   limit?: number
+  personalizationDefaults?: PersonalizationDefaults
 }
 
 export async function search_places(params: SearchPlacesParams): Promise<PlaceItem[]> {
-  const { query, categories, limit = 10 } = params
+  const { query, categories, limit = 10, personalizationDefaults } = params
 
   let q = supabase.from('bangkok_unseen').select('*').order('name').limit(limit)
 
@@ -55,7 +58,7 @@ export async function search_places(params: SearchPlacesParams): Promise<PlaceIt
   const { data, error } = await q
   if (error) throw error
 
-  return (data || []).map(cleanPlace)
+  return rerankPlacesByPersonalization((data || []).map(cleanPlace), personalizationDefaults)
 }
 
 export interface NearbyPlacesParams {
@@ -106,6 +109,21 @@ export interface BuiltRoute {
   total_mins?: number
 }
 
+interface DirectionsRouteData {
+  legs: Array<{
+    distance_km: number
+    duration_min?: number
+  }>
+  total_km: number
+  total_mins?: number
+}
+
+function toMapboxProfile(mode: TravelMode = 'car'): 'driving' | 'walking' | 'cycling' {
+  if (mode === 'walk') return 'walking'
+  if (mode === 'bike') return 'cycling'
+  return 'driving'
+}
+
 async function fetchMapboxMatrix(coords: LatLng[]): Promise<{ distances: number[][], durations: number[][] } | null> {
   const token = process.env.MAPBOX_ACCESS_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
   if (!token || coords.length < 2 || coords.length > 25) return null;
@@ -126,8 +144,8 @@ async function fetchMapboxMatrix(coords: LatLng[]): Promise<{ distances: number[
       distances: data.distances, // in meters
       durations: data.durations  // in seconds
     };
-  } catch (e: any) {
-    if (e?.name !== 'AbortError') {
+  } catch (e) {
+    if ((e as { name?: string })?.name !== 'AbortError') {
       console.error('Mapbox Matrix fetch error:', e);
     }
     return null;
@@ -136,9 +154,46 @@ async function fetchMapboxMatrix(coords: LatLng[]): Promise<{ distances: number[
   }
 }
 
+async function fetchMapboxDirectionsRoute(coords: LatLng[], mode: TravelMode = 'car'): Promise<DirectionsRouteData | null> {
+  const token = process.env.MAPBOX_ACCESS_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN
+  if (!token || coords.length < 2 || coords.length > 25) return null
+
+  const profile = toMapboxProfile(mode)
+  const coordStr = coords.map(c => `${c.lng},${c.lat}`).join(';')
+  const url = `https://api.mapbox.com/directions/v5/mapbox/${profile}/${coordStr}?alternatives=false&steps=false&overview=full&geometries=geojson&access_token=${token}`
+
+  const timeoutMs = Number(process.env.MAPBOX_DIRECTIONS_TIMEOUT_MS || 2600)
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const res = await fetch(url, { signal: controller.signal })
+    if (!res.ok) return null
+    const data = await res.json()
+    const route = Array.isArray(data.routes) ? data.routes[0] : null
+    if (data.code !== 'Ok' || !route || !Array.isArray(route.legs)) return null
+
+    return {
+      legs: route.legs.map((leg: { distance?: number, duration?: number }) => ({
+        distance_km: round1((leg.distance || 0) / 1000),
+        duration_min: typeof leg.duration === 'number' ? Math.max(1, Math.ceil(leg.duration / 60)) : undefined
+      })),
+      total_km: round1((route.distance || 0) / 1000),
+      total_mins: typeof route.duration === 'number' ? Math.max(1, Math.ceil(route.duration / 60)) : undefined
+    }
+  } catch (e) {
+    if ((e as { name?: string })?.name !== 'AbortError') {
+      console.error('Mapbox Directions fetch error:', e)
+    }
+    return null
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 export const build_route = traceable(
   async (params: BuildRouteParams): Promise<BuiltRoute> => {
-    const { places, origin } = params
+    const { places, origin, mode = 'car' } = params
     const pts = places.filter((p) => isFiniteNum(p.lat) && isFiniteNum(p.lng))
     if (pts.length < 2) return { order: pts.map((p) => p.slug), legs: [], total_km: 0 }
 
@@ -211,6 +266,30 @@ export const build_route = traceable(
       unvisited.delete(currentSlug)
     }
 
+    const directionsRoute = await fetchMapboxDirectionsRoute(
+      order.map((slug) => {
+        const place = bySlug.get(slug)!
+        return { lat: place.lat!, lng: place.lng! }
+      }),
+      mode
+    )
+
+    if (directionsRoute && directionsRoute.legs.length === Math.max(order.length - 1, 0)) {
+      const routedLegs = order.slice(1).map((to, index) => ({
+        from: order[index]!,
+        to,
+        distance_km: directionsRoute.legs[index]!.distance_km,
+        duration_min: directionsRoute.legs[index]!.duration_min,
+      }))
+
+      return {
+        order,
+        legs: routedLegs,
+        total_km: directionsRoute.total_km,
+        total_mins: directionsRoute.total_mins ?? routedLegs.reduce((sum, leg) => sum + (leg.duration_min || 0), 0),
+      }
+    }
+
     const total_km = round1(legs.reduce((s, l) => s + l.distance_km, 0))
     const total_mins = legs.reduce((s, l) => s + (l.duration_min || 0), 0)
     return { order, legs, total_km, total_mins }
@@ -255,7 +334,7 @@ function cleanPlace(p: PlaceRow): PlaceItem {
   }
 }
 
-function isFiniteNum(n: any): n is number { return typeof n === 'number' && isFinite(n) }
+function isFiniteNum(n: unknown): n is number { return typeof n === 'number' && isFinite(n) }
 
 export function haversineKm(a: LatLng, b: LatLng): number {
   const R = 6371
@@ -275,8 +354,27 @@ export interface PlanItineraryParams {
   title?: string
 }
 
+interface PlanItineraryStop {
+  slug: string;
+  name: string;
+  lat: number | undefined;
+  lng: number | undefined;
+  suggested_time_min: number;
+  notes: string;
+  distance_from_prev_km: number;
+  travel_time_from_prev_min: number;
+}
+
+interface PlanItineraryResult {
+  title: string;
+  stops: PlanItineraryStop[];
+  total_distance_km: number;
+  total_travel_minutes: number;
+  total_minutes: number;
+}
+
 export const plan_itinerary = traceable(
-  async (params: PlanItineraryParams): Promise<any> => {
+  async (params: PlanItineraryParams): Promise<PlanItineraryResult> => {
     const { place_slugs, title = "Suggested Itinerary" } = params
 
     // Single fetch for place details and coordinates (reduces DB round-trips)

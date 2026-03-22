@@ -25,7 +25,7 @@ function createPendingTurn(): PendingTurn {
 		workflowSteps: [],
 		text: "",
 		suggestions: [],
-		itinerary: null,
+		tripDraft: null,
 		errors: [],
 		ui: undefined,
 	};

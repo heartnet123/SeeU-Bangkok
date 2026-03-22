@@ -33,6 +33,8 @@ interface Props {
   onReorderStops?: (tripId: string, orderedStopIds: string[]) => void;
   totalDurationMin?: number | null;
   totalDistanceKm?: number | null;
+  mode?: "saved" | "draft";
+  warnings?: string[];
 }
 
 const categoryColors: Record<TripStop["category"], string> = {
@@ -51,13 +53,17 @@ export function ItineraryColumn({
   onReorderStops,
   totalDurationMin = null,
   totalDistanceKm = null,
+  mode = "saved",
+  warnings = [],
 }: Props) {
   const [orderedStops, setOrderedStops] = useState<TripStop[]>(
     trip?.stops ?? []
   );
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   useEffect(() => {
     setOrderedStops(trip?.stops ?? []);
+    setHasUnsavedChanges(false);
   }, [trip]);
 
   const sensors = useSensors(
@@ -82,6 +88,7 @@ export function ItineraryColumn({
     if (currentIndex === -1 || overIndex === -1) return;
     const newOrder = arrayMove(orderedStops, currentIndex, overIndex);
     setOrderedStops(newOrder);
+    setHasUnsavedChanges(true);
     if (trip && onReorderStops)
       onReorderStops(
         trip.id,
@@ -125,6 +132,7 @@ export function ItineraryColumn({
   }
 
   const handleSaveTrip = () => {
+    setHasUnsavedChanges(false);
     onSaveTrip?.(trip.id, orderedStops);
   };
 
@@ -136,12 +144,17 @@ export function ItineraryColumn({
     >
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
-        <h2
-          className="text-xl font-bold text-slate-800 truncate pr-2"
-          title={trip.name}
-        >
-          {trip.name}
-        </h2>
+        <div className="min-w-0">
+          <h2
+            className="text-xl font-bold text-slate-800 truncate pr-2"
+            title={trip.name}
+          >
+            {trip.name}
+          </h2>
+          {mode === "draft" && (
+            <p className="text-xs text-amber-700 mt-1">AI Draft preview</p>
+          )}
+        </div>
         <div className="flex gap-2 shrink-0">
           {onEditTrip && (
             <Button
@@ -158,9 +171,10 @@ export function ItineraryColumn({
             size="sm"
             onClick={handleSaveTrip}
             aria-label="Save trip changes"
+            className={cn(hasUnsavedChanges && mode !== "draft" && "animate-pulse bg-amber-500 hover:bg-amber-600")}
           >
             <Save className="w-4 h-4 mr-1" />
-            Save
+            {mode === "draft" ? "Save Draft" : hasUnsavedChanges ? "Save*" : "Save"}
           </Button>
         </div>
       </div>
@@ -177,6 +191,12 @@ export function ItineraryColumn({
         <span>•</span>
         <span>{displayTotalDistanceKm.toFixed(1)} km</span>
       </div>
+
+      {warnings.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          {warnings[0]}
+        </div>
+      )}
 
       {/* Stops list with drag-and-drop */}
       <div

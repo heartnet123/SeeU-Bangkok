@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import type { AssistantTurn, PendingTurn, Turn } from "../types";
+import type { AssistantTurn, PendingTurn, TripDraft, Turn } from "../types";
 import { uid } from "../constants";
+import { parseStoredAssistantMessage } from "../lib/session-message-parser";
 
 interface UseChatHistoryParams {
 	onPlacesFound?: (places: AssistantTurn["suggestions"]) => void;
-	onItineraryCreated?: (itinerary: unknown) => void;
+	onTripDraftCreated?: (tripDraft: TripDraft) => void;
 }
 
 interface UseChatHistoryResult {
@@ -23,7 +24,7 @@ interface UseChatHistoryResult {
 
 export function useChatHistory({
 	onPlacesFound,
-	onItineraryCreated,
+	onTripDraftCreated,
 }: UseChatHistoryParams): UseChatHistoryResult {
 	const [turns, setTurns] = useState<Turn[]>([]);
 	const [pendingTurn, setPendingTurn] = useState<PendingTurn | null>(null);
@@ -43,11 +44,11 @@ export function useChatHistory({
 	}, [lastAssistantTurn, onPlacesFound]);
 
 	useEffect(() => {
-		if (lastAssistantTurn?.itinerary && onItineraryCreated) {
-			onItineraryCreated(lastAssistantTurn.itinerary);
+		if (lastAssistantTurn?.tripDraft && onTripDraftCreated) {
+			onTripDraftCreated(lastAssistantTurn.tripDraft);
 			setIsItinerarySaved(false);
 		}
-	}, [lastAssistantTurn?.itinerary, onItineraryCreated]);
+	}, [lastAssistantTurn?.tripDraft, onTripDraftCreated]);
 
 	const appendUserTurn = useCallback((text: string) => {
 		setTurns((prev) => [...prev, { role: "user", text, id: uid() }]);
@@ -61,7 +62,7 @@ export function useChatHistory({
 			workflowSteps: pending.workflowSteps.map((step) => ({ ...step, status: "complete" })),
 			latency,
 			suggestions: pending.suggestions,
-			itinerary: pending.itinerary,
+			tripDraft: pending.tripDraft,
 			errors: pending.errors,
 			ui: pending.ui,
 		};
@@ -82,15 +83,17 @@ export function useChatHistory({
 				if (m.role === "user") {
 					return { role: "user" as const, text: m.content, id: uid() };
 				}
+				const parsed = parseStoredAssistantMessage(m.content);
 				return {
 					role: "assistant" as const,
 					id: uid(),
-					text: m.content,
+					text: parsed.text,
 					workflowSteps: [],
 					latency: undefined,
-					suggestions: [],
-					itinerary: null,
+					suggestions: parsed.suggestions,
+					tripDraft: parsed.tripDraft,
 					errors: [],
+					ui: parsed.ui,
 				} satisfies AssistantTurn;
 			});
 		setTurns(converted);

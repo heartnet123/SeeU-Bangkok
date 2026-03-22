@@ -18,8 +18,9 @@ import type { ChatPanelProps } from "./chat/types";
 export function ChatPanel({
 	onPlacesFound,
 	onAddPlaceToTrip,
-	onItineraryCreated,
-	onPreviewItinerary,
+	onTripDraftCreated,
+	onPreviewTripDraft,
+	onItinerarySaved,
 	userLocation,
 	defaultOpen = false,
 	sessionId,
@@ -49,7 +50,7 @@ export function ChatPanel({
 		commitPending,
 		clearConversation,
 		loadSession,
-	} = useChatHistory({ onPlacesFound, onItineraryCreated });
+	} = useChatHistory({ onPlacesFound, onTripDraftCreated });
 
 	// Load session messages when a session is selected from history
 	useEffect(() => {
@@ -86,6 +87,7 @@ export function ChatPanel({
 		user,
 		session,
 		setIsItinerarySaved,
+		onItinerarySaved,
 		clearConversation: () => {
 			clearConversation();
 			onSessionCreated?.(null);
@@ -174,7 +176,7 @@ export function ChatPanel({
 									onSaveItinerary={() => {
 										void handleSaveItinerary();
 									}}
-									onPreviewItinerary={onPreviewItinerary}
+									onPreviewTripDraft={onPreviewTripDraft}
 									onFollowUp={(text) => {
 										void startWithMessage(text);
 									}}
