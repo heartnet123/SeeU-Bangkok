@@ -10,6 +10,7 @@ interface UseChatActionsParams {
 	user: unknown;
 	session: { access_token?: string } | null;
 	setIsItinerarySaved: (value: boolean) => void;
+	onItinerarySaved?: (savedTrip: { id: string; title?: string; created_at?: string }, tripDraft: TripDraft) => void;
 	clearConversation: () => void;
 }
 
@@ -30,6 +31,7 @@ export function useChatActions({
 	user,
 	session,
 	setIsItinerarySaved,
+	onItinerarySaved,
 	clearConversation,
 }: UseChatActionsParams): UseChatActionsResult {
 	const [input, setInput] = useState("");
@@ -80,13 +82,20 @@ export function useChatActions({
 				body: JSON.stringify(buildTripDraftSavePayload(tripDraft)),
 			});
 
-			const body = (await res.json()) as { success: boolean; error?: string };
+			const body = (await res.json()) as {
+				success: boolean;
+				error?: string;
+				data?: { id: string; title?: string; created_at?: string };
+			};
 
 			if (!res.ok || !body.success) {
 				throw new Error(body.error ?? `Request failed (${res.status})`);
 			}
 
 			setIsItinerarySaved(true);
+			if (body.data?.id) {
+				onItinerarySaved?.(body.data, tripDraft);
+			}
 			toast.success("Itinerary saved!", {
 				action: {
 					label: "View",
@@ -99,7 +108,7 @@ export function useChatActions({
 		} finally {
 			setIsSavingItinerary(false);
 		}
-	}, [lastAssistantTurn, session, setIsItinerarySaved, user]);
+	}, [lastAssistantTurn, onItinerarySaved, session, setIsItinerarySaved, user]);
 
 	const handleViewPlace = useCallback((slug: string) => {
 		window.open(`/places/${slug}`, "_blank");

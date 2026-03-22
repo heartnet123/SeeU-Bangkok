@@ -94,7 +94,7 @@ itineraries.get('/', authMiddleware, async (c) => {
 	try {
 		const { data: trips, error } = await supabase
 			.from('itineraries')
-			.select('id, title, total_minutes, total_distance_km, created_at')
+			.select('id, title, total_minutes, total_distance_km, created_at, context')
 			.eq('user_id', user.id)
 			.order('created_at', { ascending: false });
 

@@ -14,6 +14,8 @@ interface EditStop {
 interface Trip {
   id: string;
   title: string;
+  date?: string;
+  notes?: string;
   stops: Array<{
     id: string;
     place?: { name: string };
@@ -40,6 +42,8 @@ export function EditTripDialog({
   sessionToken = "",
 }: EditTripDialogProps) {
   const [editTitle, setEditTitle] = useState("");
+  const [editDate, setEditDate] = useState("");
+  const [editNotes, setEditNotes] = useState("");
   const [editStops, setEditStops] = useState<EditStop[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -47,6 +51,9 @@ export function EditTripDialog({
   useEffect(() => {
     if (trip) {
       setEditTitle(trip.title);
+      // Only pre-fill date if it looks like an ISO date (YYYY-MM-DD), not a locale string
+      setEditDate(/^\d{4}-\d{2}-\d{2}$/.test(trip.date ?? "") ? (trip.date ?? "") : "");
+      setEditNotes(trip.notes ?? "");
       setEditStops(
         trip.stops.map((s: any) => ({
           // Support both saved-trips shape (s.place.name) and map/trip shape (s.name)
@@ -73,6 +80,7 @@ export function EditTripDialog({
         body: JSON.stringify({
           title: editTitle,
           stops: editStops,
+          context: { planned_date: editDate || null, notes: editNotes || null },
         }),
       });
 
@@ -156,6 +164,31 @@ export function EditTripDialog({
               onChange={(e) => setEditTitle(e.target.value)}
               className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="e.g., Weekend Temple Tour"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Planned Date (optional)
+            </label>
+            <input
+              type="date"
+              value={editDate}
+              onChange={(e) => setEditDate(e.target.value)}
+              className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Description (optional)
+            </label>
+            <textarea
+              value={editNotes}
+              onChange={(e) => setEditNotes(e.target.value)}
+              placeholder="Add notes or a description..."
+              rows={3}
+              className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             />
           </div>
 

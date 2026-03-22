@@ -137,6 +137,7 @@ export interface ChatPanelProps {
 	onAddPlaceToTrip?: (place: PlaceItem) => void;
 	onTripDraftCreated?: (tripDraft: TripDraft) => void;
 	onPreviewTripDraft?: (tripDraft: TripDraft) => void;
+	onItinerarySaved?: (savedTrip: { id: string; title?: string; created_at?: string }, tripDraft: TripDraft) => void;
 	userLocation?: { lat: number; lng: number };
 	defaultOpen?: boolean;
 	sessionId?: string | null;
