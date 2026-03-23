@@ -12,7 +12,7 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { MapPin, Search, Star, Bookmark, ArrowRight, Sparkles, Check, ChevronDown } from "lucide-react";
+import { MapPin, Search, Check } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -178,27 +178,21 @@ export default function PlacesPage() {
     <div className="bg-slate-50 text-slate-900 antialiased selection:bg-blue-100 selection:text-blue-900 min-h-screen flex flex-col font-sans">
 
       {/* Search/Hero Section */}
-      <header className="relative overflow-hidden bg-white border-b border-blue-100/50 pt-16 pb-20">
+      <header className="bg-white border-b border-blue-100/50 pt-14 pb-12">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full max-w-7xl pointer-events-none opacity-40">
           <div className="absolute top-[-10%] left-[-10%] w-[40%] aspect-square rounded-full bg-blue-50 blur-3xl"></div>
           <div className="absolute bottom-[-20%] right-[-10%] w-[50%] aspect-square rounded-full bg-sky-50 blur-3xl"></div>
         </div>
 
         <div className="relative max-w-3xl mx-auto px-6 text-center flex flex-col items-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-blue-600 text-xs font-medium mb-6">
-            <Sparkles className="w-4 h-4" />
-            Bangkok hidden gems
-          </div>
-
-          <h1 className="text-4xl md:text-5xl font-semibold tracking-tight text-slate-900 mb-4">
+          <h1 className="text-4xl md:text-5xl font-semibold tracking-tight text-slate-900 mb-3">
             Uncover the <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-sky-500">unseen Bangkok.</span>
           </h1>
-          <p className="text-base text-slate-500 mb-10 max-w-xl">
+          <p className="text-base text-slate-500 mb-8 max-w-xl">
             Search by vibe, neighborhood, or category to find places worth the detour.
           </p>
 
-          <div className="w-full relative group shadow-sm rounded-2xl">
-            <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-sky-300 rounded-2xl blur opacity-20 group-hover:opacity-30 transition-opacity duration-500"></div>
+          <div className="w-full relative rounded-2xl shadow-sm">
             <div className="relative flex items-center bg-white border border-blue-200 rounded-2xl overflow-hidden focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
               <div className="pl-5 text-blue-400 flex items-center justify-center">
                 <Search className="w-6 h-6" />
@@ -217,32 +211,7 @@ export default function PlacesPage() {
                   setCurrentPage(1);
                 }}
               />
-              <button
-                type="button"
-                onClick={() => setCurrentPage(1)}
-                className="mr-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-xl transition-colors shadow-sm flex items-center gap-2 whitespace-nowrap"
-              >
-                Show places
-                <ArrowRight className="w-4 h-4" />
-              </button>
             </div>
-          </div>
-
-          <div className="flex flex-wrap justify-center gap-2 mt-6">
-            <span className="text-xs text-slate-400 mr-2 self-center">Popular searches:</span>
-            {["Riverside cafes", "Talat Noi art spots", "Late-night street food"].map(prompt => (
-              <button
-                key={prompt}
-                type="button"
-                onClick={() => {
-                  setSearchTerm(prompt);
-                  setCurrentPage(1);
-                }}
-                className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-600 hover:border-blue-300 hover:bg-blue-50 transition-colors"
-              >
-                {prompt}
-              </button>
-            ))}
           </div>
         </div>
       </header>
@@ -305,19 +274,12 @@ export default function PlacesPage() {
 
         {/* Places Grid */}
         <div id="places-grid" className="flex-grow">
-          <div className="flex items-center justify-between mb-6">
+          <div className="mb-6">
             <div>
               <h2 className="text-xl font-semibold tracking-tight text-slate-900">Curated Gems</h2>
               <p className="text-sm text-slate-500 mt-1" aria-live="polite">
                 {filteredPlaces.length} place{filteredPlaces.length === 1 ? "" : "s"} ready to explore
               </p>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-slate-500">
-              <span>Sort by:</span>
-              <button type="button" aria-disabled="true" className="font-medium text-slate-900 flex items-center gap-1 hover:text-blue-600 transition-colors">
-                Recommended first
-                <ChevronDown className="w-4 h-4" />
-              </button>
             </div>
           </div>
 
