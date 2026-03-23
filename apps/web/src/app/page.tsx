@@ -14,11 +14,11 @@ export default function Home() {
 		<div className="min-h-screen bg-white">
 			{/* Hero Section */}
 			<div className="relative min-h-screen bg-gradient-to-br from-gray-800 via-gray-700 to-gray-900 flex items-center justify-center overflow-hidden">
-				{/* Background Pattern/Texture */}
-				<div className="absolute inset-0 bg-black/20"></div>
-				
 				{/* Background Image Placeholder (if you want to add the actual image later) */}
-				<div className="absolute inset-0 bg-[url('/test.gif')] bg-cover bg-center bg-no-repeat"></div>
+				<div className="absolute inset-0 bg-[url('https://www.journee-mondiale.com/de/wp-content/uploads/2025/05/2025-05-26-12-35-08_.webp')] bg-cover bg-center bg-no-repeat"></div>
+				
+				{/* Sky-to-ground gradient filter for better foreground contrast */}
+				<div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/25 to-black/60"></div>
 				
 				<div className="relative z-10 container mx-auto max-w-6xl px-6 text-center">
 					<InView>
@@ -27,7 +27,7 @@ export default function Home() {
 								as="h1"
 								preset="fade-in-blur"
 								per="word"
-								className="text-5xl md:text-7xl lg:text-8xl font-bold text-white mb-4 leading-tight"
+								className="home-hero-title-soft-shadow text-5xl md:text-7xl lg:text-8xl font-bold text-white mb-4 leading-tight"
 							>
 								{t("home.title1")}
 							</TextEffect>
@@ -36,7 +36,7 @@ export default function Home() {
 								preset="fade-in-blur"
 								per="word"
 								delay={0.3}
-								className="text-5xl md:text-7xl lg:text-8xl font-bold text-orange-500 mb-8 leading-tight"
+								className="home-hero-title-soft-shadow hidden-gems-brass text-5xl md:text-7xl lg:text-8xl font-bold mb-8 leading-tight"
 							>
 								{t("home.title2")}
 							</TextEffect>

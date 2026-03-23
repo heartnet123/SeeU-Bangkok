@@ -191,7 +191,7 @@ export default function ProfilePage() {
                     : 'Survey not completed yet. Complete it to get better travel plans.'}
                 </p>
               </div>
-              <Button type="button" onClick={() => router.push('/onboarding')}>
+              <Button type="button" className='bg-blue-700 text-white hover:bg-blue-800' onClick={() => router.push('/onboarding')}>
                 {profile?.onboarding_completed ? 'Edit Survey' : 'Complete Survey'}
               </Button>
             </CardContent>
@@ -431,7 +431,7 @@ export default function ProfilePage() {
             <Button
               type="submit"
               disabled={saving}
-              className="min-w-[150px]"
+              className="min-w-[150px] bg-blue-700 text-white hover:bg-blue-800"
             >
               {saving ? (
                 <>

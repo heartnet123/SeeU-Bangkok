@@ -39,7 +39,7 @@ export default function PlacesPage() {
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string>("All Gems");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
   const placesPerPage = 6;
   const supabase = createClient();
@@ -81,14 +81,49 @@ export default function PlacesPage() {
     }
   };
 
+  const normalizeTag = (value: string) =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/&/g, "and")
+      .replace(/\s+/g, " ");
+
+  const formatTagLabel = (value: string) =>
+    value
+      .split(" ")
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+
+  const categories = useMemo(() => {
+    const counter = new Map<string, number>();
+
+    for (const place of places) {
+      for (const tag of place.tags || []) {
+        const normalized = normalizeTag(tag);
+        if (!normalized) continue;
+        counter.set(normalized, (counter.get(normalized) || 0) + 1);
+      }
+    }
+
+    const dynamicCategories = Array.from(counter.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([value]) => ({
+        value,
+        label: formatTagLabel(value),
+      }));
+
+    return [{ value: "all", label: "All Gems" }, ...dynamicCategories];
+  }, [places]);
+
   const filteredPlaces = useMemo(() => {
     let result = places;
 
     // Category filter
-    if (selectedCategory !== "All Gems") {
+    if (selectedCategory !== "all") {
       result = result.filter(place => {
-        const placeTags = Array.isArray(place.tags) ? place.tags.map(t => t.toLowerCase()) : [];
-        return placeTags.includes(selectedCategory.toLowerCase());
+        const placeTags = Array.isArray(place.tags) ? place.tags.map((t) => normalizeTag(t)) : [];
+        return placeTags.includes(selectedCategory);
       });
     }
 
@@ -132,8 +167,6 @@ export default function PlacesPage() {
       setCurrentPage(totalPages);
     }
   }, [currentPage, totalPages]);
-
-  const categories = ["All Gems", "Cafe & Roast", "Art & Culture", "Street Food", "Architecture", "Nature", "Nightlife"];
 
   if (loading) {
     return (
@@ -233,17 +266,17 @@ export default function PlacesPage() {
             <h3 className="text-sm font-semibold tracking-tight text-slate-900 mb-4">Categories</h3>
             <div className="space-y-2">
               {categories.map((cat) => {
-                const isSelected = selectedCategory === cat;
+                const isSelected = selectedCategory === cat.value;
                 return (
-                  <label key={cat} className="flex items-center gap-3 cursor-pointer group" onClick={() => {
-                    setSelectedCategory(cat);
+                  <label key={cat.value} className="flex items-center gap-3 cursor-pointer group" onClick={() => {
+                    setSelectedCategory(cat.value);
                     setCurrentPage(1);
                   }}>
                     <div className={`relative w-4 h-4 rounded border flex items-center justify-center transition-colors ${isSelected ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white group-hover:border-blue-400'}`}>
                       {isSelected && <Check className="w-3 h-3" />}
                     </div>
                     <span className={`text-sm transition-colors ${isSelected ? 'text-blue-700 font-medium' : 'text-slate-600 group-hover:text-slate-900'}`}>
-                      {cat}
+                      {cat.label}
                     </span>
                   </label>
                 );
@@ -335,21 +368,9 @@ export default function PlacesPage() {
                         
                         {/* Action Buttons */}
                         <div className="flex flex-col sm:flex-row gap-3">
-                          <Button
-                            asChild
-                            className="flex-1 w-full bg-blue-700 hover:bg-blue-800 text-white"
-                          >
-                            <Link
-                              href={`/places/${place.slug}`}
-                              onClick={(event) => event.stopPropagation()}
-                            >
-                              Explore More
-                            </Link>
-                          </Button>
                           <Button 
                             type="button"
-                            variant="outline" 
-                            className="flex-1 border-gray-300 text-gray-700 hover:bg-gray-50 flex items-center justify-center gap-2"
+                            className="flex-1 w-full bg-blue-700 hover:bg-blue-900 text-white border-0"
                             disabled={!hasCoordinates}
                             onClick={(event) => {
                               event.stopPropagation();
@@ -362,9 +383,6 @@ export default function PlacesPage() {
                             View on Map
                           </Button>
                         </div>
-                        <span className="flex-shrink-0 whitespace-nowrap">
-                          {place.price > 0 ? "฿".repeat(Math.ceil(place.price / 300)) : "Free"}
-                        </span>
                       </div>
                   </CardContent>
                 </Card>

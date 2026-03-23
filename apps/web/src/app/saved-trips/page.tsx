@@ -177,7 +177,7 @@ export default function SavedTripsPage() {
 
               <Button
                 onClick={() => setIsNewTripDialogOpen(true)}
-                className="h-10 bg-slate-900 px-4 text-white hover:bg-slate-800"
+                className="h-10 px-4 text-white bg-blue-600 hover:bg-blue-700"
               >
                 <Plus className="mr-2 h-4 w-4" />
                 New Trip
@@ -235,7 +235,7 @@ export default function SavedTripsPage() {
               return (
                 <button
                   key={trip.id}
-                  onClick={() => router.push(`/saved-trips/${trip.id}`)}
+                  onClick={() => setActiveTripId(trip.id)}
                   className={`grid w-full grid-cols-12 items-center gap-4 rounded-xl border px-4 py-4 text-left transition ${
                     isActive
                       ? 'border-blue-200 bg-white shadow-sm ring-1 ring-blue-50'
@@ -304,19 +304,18 @@ export default function SavedTripsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Button className="w-full bg-blue-600 text-white hover:bg-blue-700" onClick={() => handleViewDetail(activeTrip)}>
+                  <Button className="w-full bg-blue-700 text-white hover:bg-blue-800" onClick={() => handleViewDetail(activeTrip)}>
                     View Detail
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
 
                   <div className="flex gap-2">
-                    <Button variant="outline" className="flex-1" onClick={() => handleEditTrip(activeTrip)}>
+                    <Button className="flex-1 bg-gray-100 text-black hover:bg-gray-200" onClick={() => handleEditTrip(activeTrip)}>
                       <Edit className="mr-2 h-4 w-4" />
                       Edit
                     </Button>
                     <Button
-                      variant="destructive"
-                      className="flex-1"
+                      className="flex-1 bg-red-700 text-white hover:bg-red-800"
                       onClick={() => handleDelete(activeTrip.id)}
                       disabled={deletingTripId === activeTrip.id}
                     >

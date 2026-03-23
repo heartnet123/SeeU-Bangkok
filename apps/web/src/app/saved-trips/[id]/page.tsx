@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useParams } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { Button } from '@/components/ui/button'
@@ -14,7 +15,7 @@ type Stop = {
   suggested_time_min?: number
   distance_from_prev_km?: number
   notes?: string
-  place: { id: string; name: string; lat?: number; lng?: number; tags?: string[] }
+  place: { id: string; name: string; lat?: number; lng?: number; tags?: string[]; image_url?: string }
 }
 
 type Trip = {
@@ -129,12 +130,12 @@ export default function SavedTripDetailPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <Button variant="outline" className="h-9 text-xs" onClick={() => toast.message('Share action can be connected here')}>
+                <Button className="h-9 text-xs bg-blue-600 hover:bg-blue-700" onClick={() => toast.message('Share action can be connected here')}>
                   <Share2 className="mr-1.5 h-4 w-4" />
                   Share
                 </Button>
                 <Link href="/map">
-                  <Button className="h-9 bg-slate-900 text-xs text-white hover:bg-slate-800">
+                  <Button className="h-9 bg-gray-100 text-xs text-black hover:bg-gray-200">
                     <Pencil className="mr-1.5 h-4 w-4" />
                     Edit in Planner
                   </Button>
@@ -194,7 +195,7 @@ export default function SavedTripDetailPage() {
 
           <section className="max-w-3xl flex-1">
             <div className="mb-8 flex items-center justify-between border-b border-slate-200 pb-4">
-              <h2 className="text-lg font-medium tracking-tight text-slate-900">Day 1 Schedule</h2>
+              <h2 className="text-lg font-medium tracking-tight text-slate-900">Schedule</h2>
             </div>
 
             <div className="relative">
@@ -210,7 +211,17 @@ export default function SavedTripDetailPage() {
 
                     <article className="flex flex-grow flex-col overflow-hidden rounded-xl border border-slate-200/60 bg-white shadow-sm transition-all duration-300 hover:border-slate-300 hover:shadow sm:flex-row">
                       <div className="relative aspect-[4/3] shrink-0 overflow-hidden bg-gradient-to-br from-blue-100 to-slate-200 sm:w-40 sm:aspect-auto">
-                        <div className="absolute inset-0 flex items-center justify-center text-[11px] uppercase tracking-wide text-slate-500">
+                        {stop.place?.image_url ? (
+                          <Image
+                            src={stop.place.image_url}
+                            alt={stop.place?.name || `Stop ${stop.position}`}
+                            fill
+                            className="object-cover"
+                            sizes="(max-width: 640px) 100vw, 160px"
+                          />
+                        ) : null}
+                        <div className="absolute inset-0 bg-black/10" />
+                        <div className="absolute left-2 top-2 rounded-md bg-black/50 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-white">
                           Stop {stop.position}
                         </div>
                       </div>
@@ -233,7 +244,7 @@ export default function SavedTripDetailPage() {
                             <Clock3 className="h-3.5 w-3.5" />
                             {stop.suggested_time_min || 60} min
                           </div>
-                          {typeof stop.distance_from_prev_km === 'number' && <div>+{stop.distance_from_prev_km} km</div>}
+                          {/* {typeof stop.distance_from_prev_km === 'number' && <div>+{stop.distance_from_prev_km} km</div>} */}
                         </div>
 
                         <p className="text-xs leading-relaxed text-slate-500">

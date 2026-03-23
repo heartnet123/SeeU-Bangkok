@@ -28,13 +28,15 @@ interface PaginationInfo {
   total: number
 }
 
+const ITEMS_PER_PAGE = 9
+
 export default function AdminPlacesPage() {
   const [places, setPlaces] = useState<Place[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
-  const [pagination, setPagination] = useState<PaginationInfo>({ limit: 20, offset: 0, count: 0, total: 0 })
+  const [pagination, setPagination] = useState<PaginationInfo>({ limit: ITEMS_PER_PAGE, offset: 0, count: 0, total: 0 })
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null)
   const router = useRouter()
 
@@ -43,7 +45,7 @@ export default function AdminPlacesPage() {
       setLoading(true)
       setError(null)
       
-      const limit = 20
+      const limit = ITEMS_PER_PAGE
       const offset = (page - 1) * limit
       const params = new URLSearchParams({
         limit: limit.toString(),
