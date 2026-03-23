@@ -2,6 +2,7 @@
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { ChatOpenAI } from "@langchain/openai";
 import { CRITIC_TOOLS } from "../tools";
+import { DEFAULT_AGENT_MODEL } from "../config";
 
 // Critic agent configuration
 const CRITIC_PROMPT = `You are a Bangkok Trip Quality Assurance Expert. Your role is to validate itineraries and suggest improvements.
@@ -33,16 +34,10 @@ RESPONSE FORMAT:
 Remember: Your goal is to ensure users get high-quality, feasible trip plans. Be helpful, not overly critical.`;
 
 // Create the critic agent
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function createCriticAgent(model?: ChatOpenAI): any {
+export function createCriticAgent(model?: ChatOpenAI): ReturnType<typeof createReactAgent> {
 	const llm = model || new ChatOpenAI({
-<<<<<<< HEAD
 		modelName: DEFAULT_AGENT_MODEL,
 		temperature: 1,
-=======
-		modelName: "gpt-5-nano",
-		temperature: 0,
->>>>>>> parent of 608a6ad (feat:Add personalization & supervisor routing)
 	});
 
 	return createReactAgent({
@@ -54,5 +49,4 @@ export function createCriticAgent(model?: ChatOpenAI): any {
 }
 
 // Pre-built critic agent instance
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const criticAgent: any = createCriticAgent();
+export const criticAgent: ReturnType<typeof createReactAgent> = createCriticAgent();

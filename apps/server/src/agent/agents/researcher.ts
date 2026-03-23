@@ -2,6 +2,7 @@
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { ChatOpenAI } from "@langchain/openai";
 import { RESEARCHER_TOOLS } from "../tools";
+import { DEFAULT_AGENT_MODEL } from "../config";
 
 // Researcher agent configuration
 const RESEARCHER_PROMPT = `You are a Bangkok Travel Research Expert. Your role is to find and gather information about places in Bangkok.
@@ -18,6 +19,7 @@ GUIDELINES:
 4. Use vector_search only when intent is ambiguous, semantic recall is needed, or search_places returns weak results
 5. Avoid redundant tool calls; prefer one strong tool call over multiple overlapping calls
 6. Return concise, high-signal place information
+7. If runtime context contains personalization defaults, apply them silently when choosing search categories and when calling search_places, unless the user's latest request clearly overrides them
 
 RESPONSE FORMAT:
 You MUST respond with VALID JSON only. No markdown, no prose outside JSON, no code fences.
@@ -44,27 +46,16 @@ CONSTRAINTS:
 - Always include "summary".
 - "places" must be an array containing ONLY the string "id" field of the places you found (can be empty if no matches). The application will retrieve the full place data.
 - Include "planningConstraints" when the user is asking for a planned trip, route, or itinerary.
-<<<<<<< HEAD
 - Pass "personalizationDefaults" to search_places when runtime context provides them and the user has not explicitly contradicted them.
 - Do NOT output itinerary fields.
-=======
-- Keep coordinates numeric when available.
-- Do NOT output itinerary fields ('- Location:', '- Duration:', '- Distance from previous:', '- Travel Time:', '- Description:').
->>>>>>> parent of 608a6ad (feat:Add personalization & supervisor routing)
 
 Remember: You are gathering information for trip planning. Focus on relevance and quality.`;
 
 // Create the researcher agent
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function createResearcherAgent(model?: ChatOpenAI): any {
+export function createResearcherAgent(model?: ChatOpenAI): ReturnType<typeof createReactAgent> {
 	const llm = model || new ChatOpenAI({
-<<<<<<< HEAD
 		modelName: DEFAULT_AGENT_MODEL,
 		temperature: 1,
-=======
-		modelName: "gpt-5-nano",
-		temperature: 0,
->>>>>>> parent of 608a6ad (feat:Add personalization & supervisor routing)
 	});
 
 	return createReactAgent({
@@ -76,5 +67,4 @@ export function createResearcherAgent(model?: ChatOpenAI): any {
 }
 
 // Pre-built researcher agent instance
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const researcherAgent: any = createResearcherAgent();
+export const researcherAgent: ReturnType<typeof createReactAgent> = createResearcherAgent();

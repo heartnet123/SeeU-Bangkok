@@ -1,6 +1,6 @@
 // Long-term memory - manages user preferences and persistent knowledge
 import { supabase } from "@/lib/supabase";
-import type { UserPreference } from "./index";
+import type { JsonValue, UserPreference } from "./index";
 
 /**
  * Long-term Memory Manager
@@ -10,7 +10,7 @@ export class LongTermMemory {
 	/**
 	 * Get a user preference by key
 	 */
-	static async getPreference(userId: string, key: string): Promise<any | null> {
+	static async getPreference(userId: string, key: string): Promise<JsonValue | null> {
 		const { data, error } = await supabase
 			.from("agent_memory")
 			.select("value")
@@ -25,7 +25,7 @@ export class LongTermMemory {
 			throw new Error(`Failed to get preference: ${error.message}`);
 		}
 
-		return data.value;
+		return data.value as JsonValue;
 	}
 
 	/**
@@ -34,7 +34,7 @@ export class LongTermMemory {
 	static async setPreference(
 		userId: string,
 		key: string,
-		value: any
+		value: JsonValue
 	): Promise<void> {
 		const { error } = await supabase
 			.from("agent_memory")
@@ -74,7 +74,7 @@ export class LongTermMemory {
 	 */
 	static async getAllPreferences(
 		userId: string
-	): Promise<Record<string, any>> {
+	): Promise<Record<string, JsonValue>> {
 		const { data, error } = await supabase
 			.from("agent_memory")
 			.select("key, value")
@@ -84,9 +84,9 @@ export class LongTermMemory {
 			throw new Error(`Failed to get preferences: ${error.message}`);
 		}
 
-		const preferences: Record<string, any> = {};
+		const preferences: Record<string, JsonValue> = {};
 		for (const row of data) {
-			preferences[row.key] = row.value;
+			preferences[row.key] = row.value as JsonValue;
 		}
 
 		return preferences;
@@ -98,7 +98,7 @@ export class LongTermMemory {
 	static async getPreferences(
 		userId: string,
 		keys: string[]
-	): Promise<Record<string, any>> {
+	): Promise<Record<string, JsonValue>> {
 		const { data, error } = await supabase
 			.from("agent_memory")
 			.select("key, value")
@@ -109,9 +109,9 @@ export class LongTermMemory {
 			throw new Error(`Failed to get preferences: ${error.message}`);
 		}
 
-		const preferences: Record<string, any> = {};
+		const preferences: Record<string, JsonValue> = {};
 		for (const row of data) {
-			preferences[row.key] = row.value;
+			preferences[row.key] = row.value as JsonValue;
 		}
 
 		return preferences;
@@ -122,7 +122,7 @@ export class LongTermMemory {
 	 */
 	static async setPreferences(
 		userId: string,
-		preferences: Record<string, any>
+		preferences: Record<string, JsonValue>
 	): Promise<void> {
 		const records = Object.entries(preferences).map(([key, value]) => ({
 			user_id: userId,
@@ -166,3 +166,6 @@ export class LongTermMemory {
 		LANGUAGE_PREFERENCE: "language_preference",
 	} as const;
 }
+
+// Re-export UserPreference to satisfy any existing imports
+export type { UserPreference };

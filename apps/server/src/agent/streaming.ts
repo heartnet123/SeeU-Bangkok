@@ -1,6 +1,18 @@
-import { invokeSupervisor, streamSupervisor } from "./supervisor";
+import {
+	buildExecutionMessages,
+	invokeSupervisor,
+	resolveAgentExecutionPlan,
+	streamSupervisor,
+} from "./supervisor";
+import { researcherAgent } from "./agents";
 import { MemoryManager } from "./memory";
 import { SessionMemory } from "./memory/session";
+import {
+	loadUserProfileSnapshot,
+	normalizePersonalizationDefaults,
+	rerankPlacesByPersonalization,
+	type PersonalizationDefaults,
+} from "./personalization";
 import {
 	PlannerAgentOutputSchema,
 	ResearcherAgentOutputSchema,
@@ -27,6 +39,22 @@ type UiAction = {
 	type: "add_all_to_trip" | "preview_itinerary" | "save_trip_draft";
 	label: string;
 };
+
+function findLatestAssistantMessage(
+	messages: Array<{ role?: string; content?: unknown }>
+): string | null {
+	for (const message of [...messages].reverse()) {
+		if (
+			message.role === "assistant" &&
+			typeof message.content === "string" &&
+			message.content.trim().length > 0
+		) {
+			return message.content;
+		}
+	}
+
+	return null;
+}
 
 export async function* streamAgentExecution(
 	options: AgentStreamOptions
@@ -57,9 +85,29 @@ export async function* streamAgentExecution(
 		}
 	}
 
+	const executionPlan = resolveAgentExecutionPlan(conversationMessages);
+
 	let userPreferences: Record<string, unknown> = {};
+	let personalizationDefaults: PersonalizationDefaults | null = null;
 	if (userId) {
-		userPreferences = await memory.getUserPreferences();
+		try {
+			userPreferences = await memory.getUserPreferences();
+		} catch {
+			// Fallback to empty preferences — personalization will use defaults
+		}
+		try {
+			const profile = await loadUserProfileSnapshot(userId);
+			personalizationDefaults = normalizePersonalizationDefaults({
+				profile,
+				userPreferences,
+			});
+		} catch {
+			// Fallback to no personalization — non-fatal, continue without it
+		}
+		userPreferences = {
+			...userPreferences,
+			...(personalizationDefaults ? { personalization_defaults: personalizationDefaults } : {}),
+		};
 	}
 
 	const toolsUsed: Array<{ tool: string; args: unknown }> = [];
@@ -73,14 +121,12 @@ export async function* streamAgentExecution(
 	let latestUiPayload: UiResponsePayload | null = null;
 
 	try {
-		const stream = streamSupervisor(conversationMessages, {
-			userLocation,
-			sessionId,
-			userId,
-			userPreferences,
-		});
+		if (executionPlan.mode === "direct_researcher") {
+			yield {
+				event: "agent",
+				data: JSON.stringify({ agent: "researcher_agent" }),
+			};
 
-<<<<<<< HEAD
 			const directResult = await researcherAgent.invoke({
 				messages: buildExecutionMessages(conversationMessages, {
 					userLocation,
@@ -145,122 +191,43 @@ export async function* streamAgentExecution(
 									data: JSON.stringify({ places: rankedPlaces }),
 								};
 							}
-=======
-		for await (const event of stream) {
-			switch (event.type) {
-				case "agent":
-					if (event.data.agent !== lastAgent) {
-						lastAgent = event.data.agent;
-						yield {
-							event: "agent",
-							data: JSON.stringify({ agent: event.data.agent }),
-						};
-					}
-					break;
-
-				case "tool":
-					toolsUsed.push({
-						tool: event.data.tool,
-						args: event.data.args,
-					});
-					yield {
-						event: "tools",
-						data: JSON.stringify({ tools: toolsUsed }),
-					};
-					break;
-
-				case "message":
-					if (!event.data.content) break;
-
-					{
-						const content = event.data.content;
-						const role = event.data.role || "assistant";
-
-						if (role === "tool" && lastAgent === "researcher_agent") {
-							try {
-								const parsed = JSON.parse(content);
-								if (Array.isArray(parsed)) {
-									const places = parsed.filter(
-										(place) => place && typeof place === "object" && "id" in place
-									) as CandidatePlace[];
-									suggestedPlaces.push(...places);
-								}
-							} catch {
-								// Ignore raw tool text.
-							}
-							break;
 						}
-
-						let parsedHandled = false;
-						if (role === "assistant") {
-							try {
-								const parsedJson = JSON.parse(content);
-								const plannerParsed = PlannerAgentOutputSchema.safeParse(parsedJson);
-								if (plannerParsed.success) {
-									const { summary, tripDraft } = plannerParsed.data;
-									latestAssistantSummary = summary;
-									lastAssistantMessage = summary;
-									currentTripDraft = tripDraft;
-									latestTripDraft = tripDraft;
-									latestWarnings = tripDraft.warnings;
-									parsedHandled = true;
-								} else {
-									const researcherParsed = ResearcherAgentOutputSchema.safeParse(parsedJson);
-									if (researcherParsed.success) {
-										const { summary, places } = researcherParsed.data;
-										latestAssistantSummary = summary;
-										lastAssistantMessage = summary;
-										if (places.length > 0) suggestedPlaces.push(...places);
-										parsedHandled = true;
-									}
-								}
-							} catch {
-								// Keep plain text fallback.
-							}
-						}
-
-						if (event.data.agent === "researcher_agent" && suggestedPlaces.length > 0) {
-							yield {
-								event: "context",
-								data: JSON.stringify({
-									documents: suggestedPlaces.length,
-									top_docs: suggestedPlaces.slice(0, 3),
-								}),
-							};
-
-							yield {
-								event: "suggestions",
-								data: JSON.stringify({ places: suggestedPlaces }),
-							};
->>>>>>> parent of 608a6ad (feat:Add personalization & supervisor routing)
-						}
-
-						if (currentTripDraft) {
-							yield {
-								event: "itinerary",
-								data: JSON.stringify(currentTripDraft),
-							};
-							currentTripDraft = null;
-						}
-
-						if (!parsedHandled) {
-							lastAssistantMessage = content;
-						}
-
 						yield {
 							event: "message",
-							data: latestAssistantSummary || content,
+							data: summary,
+						};
+					} else {
+						yield {
+							event: "message",
+							data: assistantContent,
 						};
 					}
-					break;
+				} catch {
+					yield {
+						event: "message",
+						data: assistantContent,
+					};
+				}
+			}
+		} else {
+			const stream = streamSupervisor(conversationMessages, {
+				userLocation,
+				sessionId,
+				userId,
+				userPreferences,
+				includeCritic: executionPlan.includeCritic,
+			});
 
-				case "done":
-					{
-						const userMessage = messages[messages.length - 1];
-						if (userMessage) {
-							await memory.addMessage("user", userMessage.content);
+			for await (const event of stream) {
+				switch (event.type) {
+					case "agent":
+						if (event.data.agent !== lastAgent) {
+							lastAgent = event.data.agent;
+							yield {
+								event: "agent",
+								data: JSON.stringify({ agent: event.data.agent }),
+							};
 						}
-<<<<<<< HEAD
 						break;
 
 					case "tool":
@@ -401,25 +368,27 @@ export async function* streamAgentExecution(
 								event: "message",
 								data: latestAssistantSummary || content,
 							};
-=======
-						if (latestUiPayload) {
-							await memory.addMessage("assistant", JSON.stringify(latestUiPayload));
-						} else if (lastAssistantMessage) {
-							await memory.addMessage("assistant", lastAssistantMessage);
->>>>>>> parent of 608a6ad (feat:Add personalization & supervisor routing)
 						}
-					}
-					break;
+						break;
+
+					case "done":
+						break;
+				}
 			}
 		}
 
-		const uniquePlaces = Array.from(
+		const userMessage = messages[messages.length - 1];
+		if (userMessage) {
+			await memory.addMessage("user", userMessage.content);
+		}
+
+		const uniquePlaces = rerankPlacesByPersonalization(Array.from(
 			new Map(
 				suggestedPlaces
 					.filter((place) => place && (place.id || place.slug || place.name))
 					.map((place) => [String(place.id || place.slug || place.name), place])
 			).values()
-		);
+		), personalizationDefaults);
 
 		if (lastAssistantMessage) {
 			const actions: UiAction[] = [
@@ -460,6 +429,12 @@ export async function* streamAgentExecution(
 			};
 		}
 
+		if (latestUiPayload) {
+			await memory.addMessage("assistant", JSON.stringify(latestUiPayload));
+		} else if (lastAssistantMessage) {
+			await memory.addMessage("assistant", lastAssistantMessage);
+		}
+
 		yield {
 			event: "done",
 			data: "ok",
@@ -476,6 +451,7 @@ export async function* streamAgentExecution(
 					sessionId,
 					userId,
 					userPreferences,
+					includeCritic: executionPlan.includeCritic,
 				});
 				const assistantMessage = [...(fallbackResult.messages || [])]
 					.reverse()

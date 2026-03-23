@@ -16,6 +16,10 @@ import {
 	extractPlanningConstraints,
 	selectTripCandidates,
 } from "../domain/planning";
+import {
+	applyPersonalizationDefaultsToConstraints,
+	type PersonalizationDefaults,
+} from "../personalization";
 
 interface BuildRouteParams {
 	places: CandidatePlace[];
@@ -52,6 +56,7 @@ interface PlanTripDraftParams {
 	title?: string;
 	summary?: string;
 	userQuery?: string;
+	personalizationDefaults?: PersonalizationDefaults;
 }
 
 export const plan_itinerary = traceable(
@@ -62,16 +67,21 @@ export const plan_itinerary = traceable(
 		title,
 		summary,
 		userQuery,
+		personalizationDefaults,
 	}: PlanTripDraftParams): Promise<TripDraft> => {
-		const mergedConstraints = PlanningConstraintsSchema.parse({
+		const initialConstraints = PlanningConstraintsSchema.parse({
 			...constraints,
 			...(userQuery
 				? extractPlanningConstraints(userQuery, {
 					userLocation: constraints.locationBias?.origin || origin,
+					defaults: personalizationDefaults,
 				})
 				: {}),
-			...constraints,
 		});
+		const mergedConstraints = applyPersonalizationDefaultsToConstraints(
+			initialConstraints,
+			personalizationDefaults,
+		);
 
 		const planningOrigin =
 			mergedConstraints.locationBias?.mode === "near_user"
@@ -152,6 +162,7 @@ export const planItineraryTool = tool(
 			title: input.title,
 			summary: input.summary,
 			userQuery: input.userQuery,
+			personalizationDefaults: input.personalizationDefaults,
 		});
 		return JSON.stringify(result);
 	},
@@ -166,6 +177,15 @@ export const planItineraryTool = tool(
 			title: z.string().optional().describe("Optional title for the trip draft"),
 			summary: z.string().optional().describe("Optional summary for the trip draft"),
 			userQuery: z.string().optional().describe("Original user query for fallback constraint extraction"),
+			personalizationDefaults: z.object({
+				budgetLevel: z.enum(["low", "medium", "high", "flexible"]),
+				pace: z.enum(["relaxed", "balanced", "packed"]),
+				preferredTransport: z.enum(["walk", "bike", "public", "grab"]),
+				themes: z.array(z.string()),
+				culinaryPreferences: z.array(z.string()),
+				avoidList: z.array(z.string()),
+				languagePreference: z.string().optional(),
+			}).optional().describe("Silent personalization defaults derived from user profile and memory"),
 		}),
 	}
 );

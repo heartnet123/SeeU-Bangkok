@@ -1,8 +1,19 @@
 import { Hono } from 'hono'
 import { supabase } from '../lib/supabase'
 import { nameToSlug, slugToName } from '../lib/slug-utils'
+import { optionalAuthMiddleware } from '../middleware/auth'
+import {
+	applyPlaceFilters,
+	cleanPlaceRecord,
+	parsePlaceListQuery,
+} from './places-query'
+import {
+	rerankPlacesByPersonalization,
+} from '../agent/personalization'
+import { resolvePlacePersonalizationDefaults } from './places-personalization'
 
 const places = new Hono()
+places.use('*', optionalAuthMiddleware)
 
 interface Place {
   id: string;
@@ -20,23 +31,32 @@ interface Place {
 // GET /places - Get all places with optional search and pagination
 places.get('/', async (c) => {
   try {
-    const { search, limit = '10', offset = '0' } = c.req.query()
-    
+    const user = c.get('user')
+    const placeQuery = parsePlaceListQuery(c.req.query())
+    const personalizationDefaults = await resolvePlacePersonalizationDefaults(user?.id)
+
     let query = supabase
       .from('bangkok_unseen')
       .select('*')
       .order('name')
-    
-    // Add search functionality if search parameter is provided
-    if (search) {
-      query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`)
+
+    let countQuery = supabase
+      .from('bangkok_unseen')
+      .select('*', { count: 'exact', head: true })
+
+    if (placeQuery.searchTerm) {
+      const searchExpr = `name.ilike.%${placeQuery.searchTerm}%,description.ilike.%${placeQuery.searchTerm}%`
+      query = query.or(searchExpr)
+      countQuery = countQuery.or(searchExpr)
     }
-    
-    // Pagination
-    const limitNum = parseInt(limit)
-    const offsetNum = parseInt(offset)
-    query = query.range(offsetNum, offsetNum + limitNum - 1)
-    
+
+    if (placeQuery.categories.length > 0) {
+      query = query.overlaps('tags', placeQuery.categories)
+      countQuery = countQuery.overlaps('tags', placeQuery.categories)
+    }
+
+    query = query.range(placeQuery.offset, placeQuery.offset + placeQuery.limit - 1)
+
     const { data, error } = await query
     
     if (error) {
@@ -49,26 +69,28 @@ places.get('/', async (c) => {
       }, 500)
     }
     
-    // Get total count for pagination
-    const { count: totalCount } = await supabase
-      .from('bangkok_unseen')
-      .select('*', { count: 'exact', head: true })
+    const { count: totalCount, error: countError } = await countQuery
+    if (countError) {
+      console.error('Error counting places:', countError)
+      return c.json({
+        success: false,
+        message: 'Failed to fetch places',
+        data: [],
+        error: countError.message
+      }, 500)
+    }
     
-    // Clean the data to ensure no problematic values
-    const cleanData = (data || []).map(place => ({
-      ...place,
-      image_url: place.image_url || '',
-      tags: Array.isArray(place.tags) ? place.tags : [],
-      price: typeof place.price === 'number' ? place.price : 0,
-      slug: nameToSlug(place.name || 'unknown-place') // Add slug to each place
-    }))
+    const cleanData = rerankPlacesByPersonalization(
+      applyPlaceFilters((data || []).map(cleanPlaceRecord), placeQuery),
+      personalizationDefaults,
+    )
     
     return c.json({
       success: true,
       data: cleanData,
       pagination: {
-        limit: limitNum,
-        offset: offsetNum,
+        limit: placeQuery.limit,
+        offset: placeQuery.offset,
         count: cleanData.length,
         total: totalCount || 0
       }
@@ -161,13 +183,10 @@ places.get('/:slug', async (c) => {
     
     // Clean the data to ensure no problematic values
     const cleanData = {
-      ...data,
-      image_url: data.image_url || '',
-      tags: Array.isArray(data.tags) ? data.tags : [],
-      price: typeof data.price === 'number' ? data.price : 0,
+      ...cleanPlaceRecord(data),
       address: data.address || '',
       description: data.description || '',
-      slug: nameToSlug(data.name) // Add slug to response
+      slug: nameToSlug(data.name)
     }
     
     return c.json({
@@ -285,3 +304,4 @@ places.get('/:slug/nearby', async (c) => {
 })
 
 export default places
+

@@ -6,6 +6,16 @@ import { supabase } from "@/lib/supabase";
 import { openaiEmbed } from "@/lib/openai";
 import type { RetrievedDoc } from "../state";
 
+interface MatchPlaceRow {
+  id: string;
+  name: string;
+  description?: string | null;
+  tags?: string[] | null;
+  lat?: number | null;
+  lng?: number | null;
+  similarity: number;
+}
+
 // Retrieve documents using vector search
 export const retrieveDocuments = traceable(
 	async (
@@ -19,7 +29,7 @@ export const retrieveDocuments = traceable(
 			// Try with similarity_threshold parameter (new version)
 			// Use a lower threshold (0.15) for better recall with Thai text
 			let { data, error } = await supabase.rpc("match_places", {
-				query_embedding: queryEmbedding as any,
+				query_embedding: queryEmbedding,
 				match_count: topK,
 				search: null,
 				similarity_threshold: 0.15, // Lower threshold for initial retrieval
@@ -31,7 +41,7 @@ export const retrieveDocuments = traceable(
 					"Falling back to match_places without threshold parameter"
 				);
 				const result = await supabase.rpc("match_places", {
-					query_embedding: queryEmbedding as any,
+					query_embedding: queryEmbedding,
 					match_count: topK,
 					search: null,
 				});
@@ -44,20 +54,12 @@ export const retrieveDocuments = traceable(
 				return [];
 			}
 
-			console.log(
-				`Vector search found ${data.length} results for query: "${query}"`
-			);
-
 			// Client-side filtering to ensure quality
-			const filtered = data.filter(
-				(item: any) => item.similarity >= minSimilarity
+			const filtered = (data as MatchPlaceRow[]).filter(
+				(item: MatchPlaceRow) => item.similarity >= minSimilarity
 			);
 
-			console.log(
-				`After filtering (min similarity ${minSimilarity}): ${filtered.length} results`
-			);
-
-			return filtered.map((item: any) => ({
+			return filtered.map((item: MatchPlaceRow) => ({
 				content: `${item.name}: ${item.description || "No description"}`,
 				metadata: {
 					id: item.id,

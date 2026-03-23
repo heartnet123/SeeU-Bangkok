@@ -5,6 +5,20 @@ import { createResearcherAgent } from "./agents/researcher";
 import { createPlannerAgent } from "./agents/planner";
 import { createCriticAgent } from "./agents/critic";
 import { UiResponsePayloadSchema, type TripDraft } from "./state";
+import { DEFAULT_AGENT_MODEL } from "./config";
+
+interface CompiledSupervisorGraph {
+	invoke(input: { messages: unknown[] }): Promise<{ messages: Array<{ role: string; content: string }> }>;
+	stream(input: { messages: unknown[] }, options?: { streamMode?: string }): Promise<AsyncIterable<Record<string, unknown>>>;
+}
+
+export type AgentExecutionIntent = "informational" | "itinerary";
+
+export interface AgentExecutionPlan {
+	mode: "direct_researcher" | "supervisor";
+	intent: AgentExecutionIntent;
+	includeCritic: boolean;
+}
 
 // Supervisor system prompt
 const SUPERVISOR_PROMPT = `You are the Bangkok Trip Planning Supervisor. Your role is to coordinate specialized agents to help users plan trips in Bangkok.
@@ -43,6 +57,53 @@ Remember: Your goal is to provide the best trip planning experience by coordinat
 export interface SupervisorConfig {
 	model?: ChatOpenAI;
 	recursionLimit?: number;
+	includeCritic?: boolean;
+}
+
+function getLatestUserMessage(
+	messages: Array<{ role: string; content: string }>
+): string {
+	for (const message of [...messages].reverse()) {
+		if (message.role === "user" && typeof message.content === "string") {
+			return message.content;
+		}
+	}
+
+	return "";
+}
+
+export function classifyIntent(input: string): AgentExecutionIntent {
+	const normalized = input.trim().toLowerCase();
+	if (!normalized) {
+		return "informational";
+	}
+
+	const itineraryPattern =
+		/\b(plan|create|build|arrange|design|itinerary|route|trip|tour|schedule)\b/;
+	return itineraryPattern.test(normalized) ? "itinerary" : "informational";
+}
+
+export function shouldUseCriticAgent(input: string): boolean {
+	const normalized = input.trim().toLowerCase();
+	if (!normalized) {
+		return false;
+	}
+
+	return /\b(validate|validation|review|revise|revision|improve|check|audit)\b/.test(normalized);
+}
+
+export function resolveAgentExecutionPlan(
+	messages: Array<{ role: string; content: string }>
+): AgentExecutionPlan {
+	const latestUserMessage = getLatestUserMessage(messages);
+	const intent = classifyIntent(latestUserMessage);
+	const includeCritic = shouldUseCriticAgent(latestUserMessage);
+
+	return {
+		mode: intent === "informational" ? "direct_researcher" : "supervisor",
+		intent,
+		includeCritic,
+	};
 }
 
 function parseLatestTripDraft(
@@ -88,28 +149,41 @@ function buildRuntimeContextMessage(
 	};
 }
 
+export function buildExecutionMessages(
+	messages: Array<{ role: string; content: string }>,
+	options: {
+		userLocation?: { lat: number; lng: number };
+		sessionId?: string;
+		userId?: string;
+		userPreferences?: Record<string, unknown>;
+	}
+): Array<{ role: "user" | "assistant" | "system"; content: string }> {
+	return [
+		buildRuntimeContextMessage(messages, options),
+		...messages,
+	].map((msg) => ({
+		role: msg.role as "user" | "assistant" | "system",
+		content: msg.content,
+	}));
+}
+
 // Create the multi-agent supervisor graph
-// Using explicit 'any' return type to avoid bun's cross-module type resolution issues
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function createTripPlannerSupervisor(config: SupervisorConfig = {}): any {
+export function createTripPlannerSupervisor(config: SupervisorConfig = {}): CompiledSupervisorGraph {
 	const llm = config.model || new ChatOpenAI({
-<<<<<<< HEAD
 		modelName: DEFAULT_AGENT_MODEL,
 		temperature: 1,
-=======
-		modelName: "gpt-4o-mini",
-		temperature: 0,
->>>>>>> parent of 608a6ad (feat:Add personalization & supervisor routing)
 	});
 
 	// Create agents with shared model for consistency
 	const researcherAgent = createResearcherAgent(llm);
 	const plannerAgent = createPlannerAgent(llm);
-	const criticAgent = createCriticAgent(llm);
+	const agents = config.includeCritic
+		? [researcherAgent, plannerAgent, createCriticAgent(llm)]
+		: [researcherAgent, plannerAgent];
 
 	// Create supervisor workflow
 	const supervisor = createSupervisor({
-		agents: [researcherAgent, plannerAgent, criticAgent],
+		agents,
 		llm,
 		prompt: SUPERVISOR_PROMPT,
 	});
@@ -121,14 +195,11 @@ export function createTripPlannerSupervisor(config: SupervisorConfig = {}): any 
 }
 
 // Pre-built supervisor instance (lazy initialization)
-// Using 'any' here to avoid cross-module type issues with bun's module resolution
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _supervisorInstance: any = null;
+let _supervisorInstance: CompiledSupervisorGraph | null = null;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function getSupervisorInstance(): any {
+export function getSupervisorInstance(): CompiledSupervisorGraph {
 	if (!_supervisorInstance) {
-		_supervisorInstance = createTripPlannerSupervisor();
+		_supervisorInstance = createTripPlannerSupervisor({ includeCritic: false });
 	}
 	return _supervisorInstance;
 }
@@ -146,18 +217,16 @@ export async function invokeSupervisor(
 		sessionId?: string;
 		userId?: string;
 		userPreferences?: Record<string, unknown>;
+		includeCritic?: boolean;
 	} = {}
 ): Promise<{ messages: Array<{ role: string; content: string }> }> {
-	const supervisor = getSupervisorInstance();
+	const supervisor =
+		options.includeCritic === undefined
+			? getSupervisorInstance()
+			: createTripPlannerSupervisor({ includeCritic: options.includeCritic });
 
 	// Format messages for LangGraph
-	const formattedMessages = [
-		buildRuntimeContextMessage(messages, options),
-		...messages,
-	].map((msg) => ({
-		role: msg.role as "user" | "assistant" | "system",
-		content: msg.content,
-	}));
+	const formattedMessages = buildExecutionMessages(messages, options);
 
 	// Invoke the supervisor
 	const result = await supervisor.invoke({
@@ -175,21 +244,19 @@ export async function* streamSupervisor(
 		sessionId?: string;
 		userId?: string;
 		userPreferences?: Record<string, unknown>;
+		includeCritic?: boolean;
 	} = {}
 ): AsyncGenerator<{
 	type: "agent" | "tool" | "message" | "done";
-	data: any;
+	data: Record<string, unknown>;
 }> {
-	const supervisor = getSupervisorInstance();
+	const supervisor =
+		options.includeCritic === undefined
+			? getSupervisorInstance()
+			: createTripPlannerSupervisor({ includeCritic: options.includeCritic });
 
 	// Format messages for LangGraph
-	const formattedMessages = [
-		buildRuntimeContextMessage(messages, options),
-		...messages,
-	].map((msg) => ({
-		role: msg.role as "user" | "assistant" | "system",
-		content: msg.content,
-	}));
+	const formattedMessages = buildExecutionMessages(messages, options);
 
 	// Stream events from the supervisor
 	const stream = await supervisor.stream(
@@ -213,34 +280,44 @@ export async function* streamSupervisor(
 
 			// Handle different types of updates
 			if (nodeData && typeof nodeData === "object") {
-				const data = nodeData as Record<string, any>;
+				const data = nodeData as Record<string, unknown>;
 
 				// Check for tool calls
-				if (data.tool_calls || data.toolCalls) {
-					const toolCalls = data.tool_calls || data.toolCalls;
+				const toolCalls = Array.isArray(data.tool_calls)
+					? data.tool_calls
+					: Array.isArray(data.toolCalls)
+						? data.toolCalls
+						: null;
+				if (toolCalls) {
 					for (const toolCall of toolCalls) {
-						yield {
-							type: "tool",
-							data: {
-								tool: toolCall.name || toolCall.tool,
-								args: toolCall.args || toolCall.input,
-							},
-						};
+						if (toolCall && typeof toolCall === "object") {
+							const tc = toolCall as Record<string, unknown>;
+							yield {
+								type: "tool",
+								data: {
+									tool: tc.name ?? tc.tool ?? "",
+									args: tc.args ?? tc.input ?? {},
+								},
+							};
+						}
 					}
 				}
 
 				// Check for messages
-				if (data.messages) {
+				if (Array.isArray(data.messages)) {
 					for (const message of data.messages) {
-						if (message.content) {
-							yield {
-								type: "message",
-								data: {
-									role: message.role || "assistant",
-									content: message.content,
-									agent: currentAgent,
-								},
-							};
+						if (message && typeof message === "object") {
+							const msg = message as Record<string, unknown>;
+							if (msg.content) {
+								yield {
+									type: "message",
+									data: {
+										role: msg.role ?? "assistant",
+										content: msg.content,
+										agent: currentAgent,
+									},
+								};
+							}
 						}
 					}
 				}
