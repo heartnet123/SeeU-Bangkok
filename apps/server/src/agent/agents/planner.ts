@@ -60,7 +60,7 @@ Remember: You are creating practical, enjoyable trip plans. Balance efficiency w
 export function createPlannerAgent(model?: ChatOpenAI): ReturnType<typeof createReactAgent> {
 	const llm = model || new ChatOpenAI({
 		modelName: DEFAULT_AGENT_MODEL,
-		temperature: 0,
+		temperature: 1,
 	});
 
 	return createReactAgent({

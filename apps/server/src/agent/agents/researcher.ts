@@ -55,7 +55,7 @@ Remember: You are gathering information for trip planning. Focus on relevance an
 export function createResearcherAgent(model?: ChatOpenAI): ReturnType<typeof createReactAgent> {
 	const llm = model || new ChatOpenAI({
 		modelName: DEFAULT_AGENT_MODEL,
-		temperature: 0,
+		temperature: 1,
 	});
 
 	return createReactAgent({
