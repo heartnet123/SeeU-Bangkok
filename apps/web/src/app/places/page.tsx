@@ -33,6 +33,17 @@ interface Place {
   slug?: string;
 }
 
+function getPriceLabel(price: number) {
+  if (price <= 0) {
+    return "Free";
+  }
+
+  const level = Math.min(4, Math.max(1, Math.ceil(price / 300)));
+  const labels = ["Budget", "Moderate", "Premium", "Luxury"];
+
+  return `${labels[level - 1]} (${"฿".repeat(level)})`;
+}
+
 export default function PlacesPage() {
   const [places, setPlaces] = useState<Place[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,7 +78,7 @@ export default function PlacesPage() {
         ...place,
         image_url: place.image_url || '',
         tags: Array.isArray(place.tags) ? place.tags : [],
-        description: place.description || 'No description available',
+        description: place.description || 'Details coming soon.',
         price: typeof place.price === 'number' ? place.price : 0,
         slug: nameToSlug(place.name || 'unknown-place')
       }));
@@ -75,7 +86,7 @@ export default function PlacesPage() {
       setPlaces(safeData);
     } catch (err) {
       console.error('Error fetching places:', err);
-      setError('Failed to load places. Please try again later.');
+      setError('We could not load places right now.');
     } finally {
       setLoading(false);
     }
@@ -137,10 +148,10 @@ export default function PlacesPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center" aria-busy="true">
+        <div className="text-center" role="status" aria-live="polite">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-xl text-slate-600">Loading hidden gems...</p>
+          <p className="text-xl text-slate-600">Finding places around Bangkok...</p>
         </div>
       </div>
     );
@@ -149,9 +160,13 @@ export default function PlacesPage() {
   if (error) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center">
+        <div className="text-center max-w-md px-6" role="alert" aria-live="assertive">
+          <h1 className="text-2xl font-semibold text-slate-900 mb-2">Places are unavailable right now</h1>
           <p className="text-xl text-red-600 mb-4">{error}</p>
-          <Button onClick={fetchPlaces} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl">
+          <p className="text-sm text-slate-500 mb-6">
+            Check your connection, then try again. If it still does not work, come back in a bit.
+          </p>
+          <Button type="button" onClick={fetchPlaces} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl">
             Try Again
           </Button>
         </div>
@@ -172,15 +187,14 @@ export default function PlacesPage() {
         <div className="relative max-w-3xl mx-auto px-6 text-center flex flex-col items-center">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-blue-600 text-xs font-medium mb-6">
             <Sparkles className="w-4 h-4" />
-            Hidden Gems Discovery
+            Bangkok hidden gems
           </div>
 
           <h1 className="text-4xl md:text-5xl font-semibold tracking-tight text-slate-900 mb-4">
             Uncover the <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-sky-500">unseen Bangkok.</span>
           </h1>
           <p className="text-base text-slate-500 mb-10 max-w-xl">
-            Skip the tourist traps. Search for a vibe, category or area and find a personalized
-            list of hidden alleys, secret cafes, and local favorites.
+            Search by vibe, neighborhood, or category to find places worth the detour.
           </p>
 
           <div className="w-full relative group shadow-sm rounded-2xl">
@@ -189,9 +203,13 @@ export default function PlacesPage() {
               <div className="pl-5 text-blue-400 flex items-center justify-center">
                 <Search className="w-6 h-6" />
               </div>
+              <label htmlFor="places-search" className="sr-only">
+                Search by place name, vibe, neighborhood, or tag
+              </label>
               <input
+                id="places-search"
                 type="text"
-                placeholder="E.g., A quiet riverside cafe followed by indie art galleries..."
+                placeholder="Try riverside cafe, street food, or Talat Noi"
                 className="w-full py-4 pl-3 pr-4 text-base bg-transparent border-none focus:outline-none text-slate-800 placeholder:text-slate-400"
                 value={searchTerm}
                 onChange={(e) => {
@@ -199,18 +217,23 @@ export default function PlacesPage() {
                   setCurrentPage(1);
                 }}
               />
-              <button className="mr-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-xl transition-colors shadow-sm flex items-center gap-2 whitespace-nowrap">
-                Search
+              <button
+                type="button"
+                onClick={() => setCurrentPage(1)}
+                className="mr-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-xl transition-colors shadow-sm flex items-center gap-2 whitespace-nowrap"
+              >
+                Show places
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
           </div>
 
           <div className="flex flex-wrap justify-center gap-2 mt-6">
-            <span className="text-xs text-slate-400 mr-2 self-center">Try:</span>
-            {["Local street food", "Vintage shopping", "Hidden temples"].map(prompt => (
+            <span className="text-xs text-slate-400 mr-2 self-center">Popular searches:</span>
+            {["Riverside cafes", "Talat Noi art spots", "Late-night street food"].map(prompt => (
               <button
                 key={prompt}
+                type="button"
                 onClick={() => {
                   setSearchTerm(prompt);
                   setCurrentPage(1);
@@ -230,22 +253,31 @@ export default function PlacesPage() {
         {/* Sidebar Filters */}
         <aside className="w-full lg:w-64 flex-shrink-0 space-y-8">
           <div>
-            <h3 className="text-sm font-semibold tracking-tight text-slate-900 mb-4">Categories</h3>
-            <div className="space-y-2">
+            <h2 id="places-category-heading" className="text-sm font-semibold tracking-tight text-slate-900 mb-4">
+              Browse by category
+            </h2>
+            <div className="space-y-2" role="radiogroup" aria-labelledby="places-category-heading">
               {categories.map((cat) => {
                 const isSelected = selectedCategory === cat;
                 return (
-                  <label key={cat} className="flex items-center gap-3 cursor-pointer group" onClick={() => {
-                    setSelectedCategory(cat);
-                    setCurrentPage(1);
-                  }}>
+                  <button
+                    key={cat}
+                    type="button"
+                    role="radio"
+                    aria-checked={isSelected}
+                    className="flex w-full items-center gap-3 cursor-pointer group text-left rounded-lg px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
+                    onClick={() => {
+                      setSelectedCategory(cat);
+                      setCurrentPage(1);
+                    }}
+                  >
                     <div className={`relative w-4 h-4 rounded border flex items-center justify-center transition-colors ${isSelected ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white group-hover:border-blue-400'}`}>
                       {isSelected && <Check className="w-3 h-3" />}
                     </div>
                     <span className={`text-sm transition-colors ${isSelected ? 'text-blue-700 font-medium' : 'text-slate-600 group-hover:text-slate-900'}`}>
                       {cat}
                     </span>
-                  </label>
+                  </button>
                 );
               })}
             </div>
@@ -274,11 +306,16 @@ export default function PlacesPage() {
         {/* Places Grid */}
         <div id="places-grid" className="flex-grow">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold tracking-tight text-slate-900">Curated Gems</h2>
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight text-slate-900">Curated Gems</h2>
+              <p className="text-sm text-slate-500 mt-1" aria-live="polite">
+                {filteredPlaces.length} place{filteredPlaces.length === 1 ? "" : "s"} ready to explore
+              </p>
+            </div>
             <div className="flex items-center gap-2 text-sm text-slate-500">
               <span>Sort by:</span>
-              <button className="font-medium text-slate-900 flex items-center gap-1 hover:text-blue-600 transition-colors">
-                Recommended
+              <button type="button" aria-disabled="true" className="font-medium text-slate-900 flex items-center gap-1 hover:text-blue-600 transition-colors">
+                Recommended first
                 <ChevronDown className="w-4 h-4" />
               </button>
             </div>
@@ -287,7 +324,7 @@ export default function PlacesPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {currentPlaces.length === 0 ? (
               <div className="col-span-full rounded-2xl border border-dashed border-slate-300 bg-white/70 p-12 text-center text-slate-500">
-                No places match your search yet. Try different keywords.
+                No places match that search yet. Try another vibe, area, or category.
               </div>
             ) : (
               currentPlaces.map((place) => {
@@ -300,8 +337,7 @@ export default function PlacesPage() {
               return (
                 <Card 
                   key={place.id} 
-                  className="group hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 cursor-pointer bg-gray-200"
-                  onClick={() => router.push(`/places/${place.slug}`)}
+                  className="group hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 bg-gray-200"
                 >
                   <CardContent className="p-0 flex flex-col h-full">
                       {/* Always show placeholder image */}
@@ -313,8 +349,8 @@ export default function PlacesPage() {
                     className="object-cover transition-transform duration-300 group-hover:scale-105"
                 />
                         <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors duration-300" />
-                        <div className="absolute bottom-4 left-4 text-white">
-                          <h3 className="text-xl font-semibold">{place.name}</h3>
+                        <div className="absolute bottom-4 left-4 right-4 text-white min-w-0">
+                          <h3 className="text-xl font-semibold break-words">{place.name}</h3>
                           {place.tags && place.tags.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-2">
                               {place.tags.slice(0, 2).map((tag, index) => (
@@ -328,10 +364,14 @@ export default function PlacesPage() {
                       </div>
                       
                       {/* Content */}
-                      <div className="px-6 py-5 flex flex-col flex-grow">
-                        <p className="text-gray-600 mb-4 leading-relaxed flex-grow">
+                      <div className="px-6 py-5 flex flex-col flex-grow min-w-0">
+                        <p className="text-gray-600 mb-4 leading-relaxed flex-grow break-words line-clamp-4">
                           {place.description}
                         </p>
+                        <p className="text-sm text-gray-500 mb-4 break-words">{place.address || "Location details coming soon"}</p>
+                        <span className="flex-shrink-0 whitespace-nowrap text-sm text-gray-700 mb-4" aria-label={`Price level: ${getPriceLabel(place.price)}`}>
+                          {getPriceLabel(place.price)}
+                        </span>
                         
                         {/* Action Buttons */}
                         <div className="flex flex-col sm:flex-row gap-3">
@@ -341,30 +381,26 @@ export default function PlacesPage() {
                           >
                             <Link
                               href={`/places/${place.slug}`}
-                              onClick={(event) => event.stopPropagation()}
-                            >
-                              Explore More
+                              >
+                              View details
                             </Link>
-                          </Button>
+</Button>
                           <Button 
                             type="button"
                             variant="outline" 
                             className="flex-1 border-gray-300 text-gray-700 hover:bg-gray-50 flex items-center justify-center gap-2"
                             disabled={!hasCoordinates}
-                            onClick={(event) => {
-                              event.stopPropagation();
+                            aria-label={hasCoordinates ? `Open ${place.name} on Google Maps` : `Map coordinates unavailable for ${place.name}`}
+                            onClick={() => {
                               if (mapUrl) {
                                 window.open(mapUrl, "_blank", "noopener,noreferrer");
                               }
                             }}
                           >
                             <MapPin className="w-4 h-4" />
-                            View on Map
+                            Open map
                           </Button>
                         </div>
-                        <span className="flex-shrink-0 whitespace-nowrap">
-                          {place.price > 0 ? "฿".repeat(Math.ceil(place.price / 300)) : "Free"}
-                        </span>
                       </div>
                   </CardContent>
                 </Card>

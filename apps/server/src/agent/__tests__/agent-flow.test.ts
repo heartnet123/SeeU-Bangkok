@@ -101,7 +101,7 @@ describe.skipIf(!RUN_LIVE_AGENT_TESTS)("Multi-Agent System", () => {
 			// Research queries shouldn't generate itineraries
 		}, 30000); // 30s timeout
 
-		test("planning query uses researcher → planner → critic flow", async () => {
+		test("planning query can use researcher → planner flow without mandatory critic step", async () => {
 			const { runAgent } = await import("../streaming");
 			const result = await runAgent({
 				messages: [{ role: "user", content: "Plan a day trip to 3 temples near Khao San Road" }],

@@ -189,10 +189,24 @@ auth.put('/onboarding', authMiddleware, zValidator('json', onboardingSchema), as
   try {
     const now = new Date().toISOString()
     const skipped = Boolean(onboardingData.skipped)
+
+    const { data: existingProfile } = await supabase
+      .from('user_profiles')
+      .select('nick_name')
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    const fallbackNickName = existingProfile?.nick_name
+      || user.user_metadata?.display_name
+      || user.user_metadata?.full_name
+      || user.email.split('@')[0]
+      || 'Traveler'
+
     const { data, error } = await supabase
       .from('user_profiles')
       .upsert({
         user_id: user.id,
+        nick_name: fallbackNickName,
         onboarding_completed: !skipped,
         onboarding_completed_at: skipped ? null : now,
         onboarding_skipped_at: skipped ? now : null,

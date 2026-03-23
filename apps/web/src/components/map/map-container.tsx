@@ -5,7 +5,6 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Supercluster from 'supercluster';
 import { MapControls } from './map-controls';
-import { SmartFilterBar, type FilterCategory } from './smart-filter-bar';
 import { PlacePopupContent } from './place-popup-content';
 import { createRoot } from 'react-dom/client';
 import type { Root } from 'react-dom/client';
@@ -211,6 +210,8 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const superclusterRef = useRef<Supercluster | null>(null);
   const markerRootsRef = useRef<Map<string, Root>>(new Map());
   const clusterRootsRef = useRef<Map<number, Root>>(new Map());
+  const lastTripRouteKeyRef = useRef<string | null>(null);
+  const lastPreviewRouteKeyRef = useRef<string | null>(null);
 
   // Callback refs to avoid stale closures in event handlers
   const onPlaceDeselectRef = useRef(onPlaceDeselect);
@@ -242,7 +243,6 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const [currentBounds, setCurrentBounds] = useState<[number, number, number, number] | null>(null);
   const [is3DEnabled, setIs3DEnabled] = useState(show3D);
   const [isTrafficEnabled, setIsTrafficEnabled] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<FilterCategory>('all');
 
   // Initialize Supercluster
   const initSupercluster = useCallback(() => {
@@ -268,19 +268,11 @@ const MapContainer: React.FC<MapContainerProps> = ({
       }));
   }, []);
 
-  // Filter places by active category filter
-  const filteredPlaces = useMemo(() => {
-    if (activeFilter === 'all') return places;
-    return places.filter((place) =>
-      place.tags.some((tag) => tag.toLowerCase().includes(activeFilter))
-    );
-  }, [places, activeFilter]);
-
   // Get clustered features
   const clusteredFeatures = useMemo(() => {
     if (!superclusterRef.current || !currentBounds) return [];
 
-    const features = placesToFeatures(filteredPlaces);
+    const features = placesToFeatures(places);
     superclusterRef.current.load(features);
 
     if (previewItinerary) {
@@ -292,7 +284,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
       currentBounds,
       Math.floor(currentZoom)
     ) as SuperclusterFeature[];
-  }, [filteredPlaces, currentBounds, currentZoom, placesToFeatures, previewItinerary]);
+  }, [places, currentBounds, currentZoom, placesToFeatures, previewItinerary]);
 
   // Emit currently visible (unclustered) places to parent for UI sync
   useEffect(() => {
@@ -589,7 +581,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
   // Draw trip route following actual roads using Mapbox Directions API
   useEffect(() => {
-    if (!map.current || !mapLoaded || !tripRoute || tripRoute.length < 2) {
+    if (!map.current || !mapLoaded || previewItinerary || !tripRoute || tripRoute.length < 2) {
       // Remove route layer if trip route is empty
       if (map.current?.getLayer('trip-route')) {
         map.current.removeLayer('trip-route');
@@ -597,8 +589,15 @@ const MapContainer: React.FC<MapContainerProps> = ({
       if (map.current?.getSource('trip-route')) {
         map.current.removeSource('trip-route');
       }
+      lastTripRouteKeyRef.current = null;
       return;
     }
+
+    const routeKey = tripRoute.map(([lng, lat]) => `${lng},${lat}`).join(';');
+    if (lastTripRouteKeyRef.current === routeKey && map.current.getSource('trip-route')) {
+      return;
+    }
+    lastTripRouteKeyRef.current = routeKey;
 
     const fetchRouteDirections = async () => {
       try {
@@ -797,7 +796,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
     };
 
     fetchRouteDirections();
-  }, [tripRoute, mapLoaded]);
+  }, [tripRoute, mapLoaded, previewItinerary]);
 
   // Update map style
   useEffect(() => {
@@ -1114,6 +1113,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
       if (map.current.getSource(sourceId)) {
         map.current.removeSource(sourceId);
       }
+      lastPreviewRouteKeyRef.current = null;
       return;
     }
 
@@ -1123,6 +1123,12 @@ const MapContainer: React.FC<MapContainerProps> = ({
       .map((s) => [s.lng, s.lat]);
 
     if (coordinates.length < 2) return;
+
+    const previewRouteKey = coordinates.map((c: number[]) => c.join(',')).join(';');
+    if (lastPreviewRouteKeyRef.current === previewRouteKey && map.current.getSource(sourceId)) {
+      return;
+    }
+    lastPreviewRouteKeyRef.current = previewRouteKey;
 
     const geojson = {
       type: 'Feature',
@@ -1343,13 +1349,6 @@ const MapContainer: React.FC<MapContainerProps> = ({
     <div className="relative w-full h-full">
       {/* Map container */}
       <div ref={mapContainer} className="w-full h-full" />
-
-      {/* Smart filter bar */}
-      <SmartFilterBar
-        activeFilter={activeFilter}
-        onFilterChange={setActiveFilter}
-        isDarkMode={mapStyle === 'dark'}
-      />
 
       {/* Map controls */}
       <MapControls

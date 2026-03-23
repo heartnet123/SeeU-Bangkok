@@ -211,22 +211,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
+      const requestBody = {
+        ...payload,
+        skipped: Boolean(options?.skipped),
+      }
+
       const response = await fetch('http://localhost:3000/api/auth/onboarding', {
         method: 'PUT',
         headers: {
           Authorization: `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          ...payload,
-          skipped: Boolean(options?.skipped),
-        }),
+        body: JSON.stringify(requestBody),
       })
 
       if (!response.ok) {
         const errorData = await response.json()
-        return { completed: false, error: errorData.error || 'Failed to save onboarding' }
+
+        return { completed: false, error: errorData?.error || 'Failed to save onboarding' }
       }
+
+      await response.json()
 
       await refreshProfile()
       return { completed: true, error: null }

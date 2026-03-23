@@ -142,7 +142,10 @@ export default function TripPlannerPage() {
       distanceFromPrevKm: stop.distance_from_prev_km,
     })),
   }), []);
-  const displayedTrip = activeTripDraft ? draftToTrip(activeTripDraft) : selectedTrip;
+  const displayedTrip = useMemo(
+    () => (activeTripDraft ? draftToTrip(activeTripDraft) : selectedTrip),
+    [activeTripDraft, draftToTrip, selectedTrip]
+  );
 
   const CATEGORIES = useMemo(() => DEFAULT_CATEGORIES.map(c => ({ ...c, label: t(c.key) })), [t]);
 
@@ -728,13 +731,17 @@ export default function TripPlannerPage() {
 
   // Generate trip route coordinates from selected trip stops
   const tripRoute = useMemo(() => {
+    if (enrichedTripDraft) {
+      return [];
+    }
+
     if (!displayedTrip || !displayedTrip.stops || displayedTrip.stops.length < 2) {
       return [];
     }
     return displayedTrip.stops
       .filter((stop) => stop.lat && stop.lng)
       .map((stop) => [stop.lng, stop.lat] as [number, number]);
-  }, [displayedTrip]);
+  }, [displayedTrip, enrichedTripDraft]);
 
   const stopsSuggestedDuration = useMemo(() => {
     if (!displayedTrip || !displayedTrip.stops) return 0;

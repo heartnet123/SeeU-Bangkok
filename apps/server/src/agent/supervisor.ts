@@ -4,7 +4,7 @@ import { ChatOpenAI } from "@langchain/openai";
 import { createResearcherAgent } from "./agents/researcher";
 import { createPlannerAgent } from "./agents/planner";
 import { createCriticAgent } from "./agents/critic";
-import { UiResponsePayloadSchema, type TripDraft } from "./state";
+import { parseLatestTripDraft } from "./payload-parsing";
 
 // Supervisor system prompt
 const SUPERVISOR_PROMPT = `You are the Bangkok Trip Planning Supervisor. Your role is to coordinate specialized agents to help users plan trips in Bangkok.
@@ -56,25 +56,6 @@ Remember: Your goal is to provide the best trip planning experience by coordinat
 export interface SupervisorConfig {
 	model?: ChatOpenAI;
 	recursionLimit?: number;
-}
-
-function parseLatestTripDraft(
-	messages: Array<{ role: string; content: string }>
-): TripDraft | undefined {
-	for (const message of [...messages].reverse()) {
-		if (message.role !== "assistant") continue;
-		try {
-			const parsed = JSON.parse(message.content);
-			const result = UiResponsePayloadSchema.safeParse(parsed);
-			if (result.success && result.data.tripDraft) {
-				return result.data.tripDraft;
-			}
-		} catch {
-			// Ignore non-JSON assistant messages.
-		}
-	}
-
-	return undefined;
 }
 
 function buildRuntimeContextMessage(
