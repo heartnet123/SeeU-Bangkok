@@ -1,365 +1,283 @@
-import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
-import { z } from "zod";
-import { authMiddleware } from "../middleware/auth";
-import { supabase, supabaseAuth } from "../lib/supabase";
-import { LongTermMemory } from "../agent/memory/longterm";
-import {
-	buildOnboardingState,
-	hydrateOnboardingState,
-	isOnboardingProfileSchemaError,
-	type OnboardingPreferencesPayload,
-	type OnboardingState,
-} from "./onboarding-storage";
+import { Hono } from 'hono'
+import { zValidator } from '@hono/zod-validator'
+import { z } from 'zod'
+import { authMiddleware } from '../middleware/auth'
+import { supabase, supabaseAuth } from '../lib/supabase'
+import { LongTermMemory } from '../agent/memory/longterm'
 
-const auth = new Hono();
+const auth = new Hono()
 
+// Validation schemas
 const loginSchema = z.object({
-	email: z.string().email(),
-	password: z.string().min(6),
-});
+  email: z.string().email(),
+  password: z.string().min(6),
+})
 
 const registerSchema = z.object({
-	email: z.string().email(),
-	password: z.string().min(6),
-	display_name: z.string().optional(),
-});
+  email: z.string().email(),
+  password: z.string().min(6),
+  display_name: z.string().optional(),
+})
 
 const resetPasswordSchema = z.object({
-	email: z.string().email(),
-});
+  email: z.string().email(),
+})
 
 const updateProfileSchema = z.object({
-	nick_name: z.string().optional(),
-	avatar_url: z.string().url().optional().or(z.literal("")),
-	birth_year: z.number().int().min(1900).max(2010).optional(),
-	travel_style: z
-		.array(z.enum(["slow-life", "budget", "instagram", "foodie", "history"]))
-		.optional(),
-	mobility: z.enum(["walk", "bike", "public", "grab"]).optional(),
-	budget_per_day: z.number().int().positive().optional(),
-	languages: z.array(z.string()).optional(),
-	onboarding_completed: z.boolean().optional(),
-	onboarding_completed_at: z.string().optional(),
-	onboarding_skipped_at: z.string().optional(),
-	onboarding_preferences: z.unknown().optional(),
-});
+  nick_name: z.string().optional(),
+  avatar_url: z.string().url().optional().or(z.literal('')),
+  birth_year: z.number().int().min(1900).max(2010).optional(),
+  travel_style: z.array(z.enum(['slow-life', 'budget', 'instagram', 'foodie', 'history'])).optional(),
+  mobility: z.enum(['walk', 'bike', 'public', 'grab']).optional(),
+  budget_per_day: z.number().int().positive().optional(),
+  languages: z.array(z.string()).optional(),
+  onboarding_completed: z.boolean().optional(),
+  onboarding_completed_at: z.string().optional(),
+  onboarding_skipped_at: z.string().optional(),
+  onboarding_preferences: z.any().optional(),
+})
 
 const onboardingSchema = z.object({
-	vibes: z.array(z.string()).default([]),
-	travelStyle: z.string().optional().default(""),
-	pace: z.number().int().min(0).max(100).default(50),
-	transit: z.array(z.string()).default([]),
-	culinary: z.array(z.string()).default([]),
-	boundaries: z.array(z.string()).default([]),
-	skipped: z.boolean().default(false),
-});
+  vibes: z.array(z.string()).default([]),
+  travelStyle: z.string().optional().default(''),
+  pace: z.number().int().min(0).max(100).default(50),
+  transit: z.array(z.string()).default([]),
+  culinary: z.array(z.string()).default([]),
+  boundaries: z.array(z.string()).default([]),
+  skipped: z.boolean().default(false),
+})
 
-interface OnboardingProfileRow {
-	onboarding_completed?: boolean | null;
-	onboarding_completed_at?: string | null;
-	onboarding_skipped_at?: string | null;
-	onboarding_preferences?: unknown;
-}
+// Auth routes (these handle authentication via Supabase client-side)
+// Get current user profile
+auth.get('/me', authMiddleware, async (c) => {
+  const user = c.get('user')
+  
+  try {
+    // Fetch additional user profile data
+    const { data: profile, error } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .eq('user_id', user.id)
+      .single()
 
-interface OnboardingMemoryStatus {
-	completed?: boolean | null;
-	completedAt?: string | null;
-	skippedAt?: string | null;
-}
+    // Handle various error cases gracefully
+    if (error) {
+      // PGRST116 = "not found" (user has no profile row)
+      // PGRST101 = "table does not exist" (user_profiles table not created)
+      if (error.code === 'PGRST116' || error.code === 'PGRST101') {
+        // Table doesn't exist or user has no profile - return user data without profile
+        return c.json({
+          user: {
+            id: user.id,
+            email: user.email,
+            ...user.user_metadata,
+            profile: null,
+          },
+          message: error.code === 'PGRST101' ? 'Profile table not set up yet' : null
+        })
+      }
+      
+      // Other database errors
+      console.error('Database error in /me endpoint:', error)
+      return c.json({ error: 'Failed to fetch profile' }, 500)
+    }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
-}
+    return c.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        ...user.user_metadata,
+        profile: profile || null,
+      },
+    })
+  } catch (error) {
+    console.error('Unexpected error in /me endpoint:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
 
-function readStringArray(value: unknown): string[] {
-	if (!Array.isArray(value)) {
-		return [];
-	}
+// Update user profile
+auth.put('/profile', authMiddleware, zValidator('json', updateProfileSchema), async (c) => {
+  const user = c.get('user')
+  const profileData = c.req.valid('json')
 
-	return value.filter((item): item is string => typeof item === "string");
-}
+  try {
+    // Update or insert user profile
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .upsert({
+        user_id: user.id,
+        ...profileData,
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .single()
 
-function readOnboardingPreferences(
-	value: unknown
-): OnboardingPreferencesPayload | null {
-	if (!isRecord(value)) {
-		return null;
-	}
+    if (error) {
+      // Handle table not existing
+      if (error.code === 'PGRST101') {
+        return c.json({ 
+          error: 'Profile table not set up. Please run the database setup first.' 
+        }, 400)
+      }
+      
+      console.error('Database error in /profile endpoint:', error)
+      return c.json({ error: 'Failed to update profile' }, 500)
+    }
 
-	return {
-		vibes: readStringArray(value.vibes),
-		travelStyle:
-			typeof value.travelStyle === "string" ? value.travelStyle : "",
-		pace: typeof value.pace === "number" ? Math.min(100, Math.max(0, value.pace)) : 50,
-		transit: readStringArray(value.transit),
-		culinary: readStringArray(value.culinary),
-		boundaries: readStringArray(value.boundaries),
-	};
-}
+    return c.json({ profile: data })
+  } catch (error) {
+    console.error('Unexpected error in /profile endpoint:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
 
-function readOnboardingMemoryStatus(
-	value: unknown
-): OnboardingMemoryStatus | null {
-	if (!isRecord(value)) {
-		return null;
-	}
+auth.get('/onboarding', authMiddleware, async (c) => {
+  const user = c.get('user')
 
-	return {
-		completed:
-			typeof value.completed === "boolean" ? value.completed : null,
-		completedAt:
-			typeof value.completedAt === "string" ? value.completedAt : null,
-		skippedAt:
-			typeof value.skippedAt === "string" ? value.skippedAt : null,
-	};
-}
+  try {
+    const { data: profile, error } = await supabase
+      .from('user_profiles')
+      .select('onboarding_completed,onboarding_completed_at,onboarding_skipped_at,onboarding_preferences')
+      .eq('user_id', user.id)
+      .maybeSingle()
 
-function profileRowToOnboardingState(
-	profile: OnboardingProfileRow
-): OnboardingState {
-	return hydrateOnboardingState({
-		profile: {
-			completed: profile.onboarding_completed ?? false,
-			completed_at: profile.onboarding_completed_at ?? null,
-			skipped_at: profile.onboarding_skipped_at ?? null,
-			preferences: readOnboardingPreferences(profile.onboarding_preferences),
-		},
-	});
-}
+    if (error) {
+      if (error.code === 'PGRST101') {
+        return c.json({ error: 'Profile table not set up. Please run the database setup first.' }, 400)
+      }
 
-async function loadOnboardingFromMemory(userId: string): Promise<OnboardingState> {
-	try {
-		const memoryStatusRaw = await LongTermMemory.getPreference(
-			userId,
-			"onboarding_status"
-		);
-		const memoryPreferencesRaw = await LongTermMemory.getPreference(
-			userId,
-			"onboarding_preferences"
-		);
+      console.error('Database error in /onboarding endpoint:', error)
+      return c.json({ error: 'Failed to fetch onboarding' }, 500)
+    }
 
-		return hydrateOnboardingState({
-			memoryStatus: readOnboardingMemoryStatus(memoryStatusRaw),
-			memoryPreferences: readOnboardingPreferences(memoryPreferencesRaw),
-		});
-	} catch (error) {
-		console.error("Failed to fetch onboarding from agent_memory:", error);
-		return hydrateOnboardingState({});
-	}
-}
+    const onboarding = {
+      completed: profile?.onboarding_completed ?? false,
+      completed_at: profile?.onboarding_completed_at ?? null,
+      skipped_at: profile?.onboarding_skipped_at ?? null,
+      preferences: profile?.onboarding_preferences ?? null,
+    }
 
-auth.get("/me", authMiddleware, async (c) => {
-	const user = c.get("user");
+    if (!profile) {
+      try {
+        const mem = await LongTermMemory.getPreference(user.id, 'onboarding_status')
+        const memPrefs = await LongTermMemory.getPreference(user.id, 'onboarding_preferences')
+        if (mem) {
+          onboarding.completed = Boolean(mem?.completed)
+          onboarding.completed_at = mem?.completedAt || null
+          onboarding.skipped_at = mem?.skippedAt || null
+        }
+        if (memPrefs) {
+          onboarding.preferences = memPrefs
+        }
+      } catch (error) {
+        console.error('Failed to fetch onboarding from agent_memory:', error)
+      }
+    }
 
-	try {
-		const { data: profile, error } = await supabase
-			.from("user_profiles")
-			.select("*")
-			.eq("user_id", user.id)
-			.single();
+    return c.json({ onboarding })
+  } catch (error) {
+    console.error('Unexpected error in GET /onboarding endpoint:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
 
-		if (error) {
-			if (error.code === "PGRST116" || error.code === "PGRST101") {
-				return c.json({
-					user: {
-						id: user.id,
-						email: user.email,
-						...user.user_metadata,
-						profile: null,
-					},
-					message:
-						error.code === "PGRST101"
-							? "Profile table not set up yet"
-							: null,
-				});
-			}
+auth.put('/onboarding', authMiddleware, zValidator('json', onboardingSchema), async (c) => {
+  const user = c.get('user')
+  const onboardingData = c.req.valid('json')
 
-			console.error("Database error in /me endpoint:", error);
-			return c.json({ error: "Failed to fetch profile" }, 500);
-		}
+  try {
+    const now = new Date().toISOString()
+    const skipped = Boolean(onboardingData.skipped)
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .upsert({
+        user_id: user.id,
+        onboarding_completed: !skipped,
+        onboarding_completed_at: skipped ? null : now,
+        onboarding_skipped_at: skipped ? now : null,
+        onboarding_preferences: {
+          vibes: onboardingData.vibes,
+          travelStyle: onboardingData.travelStyle,
+          pace: onboardingData.pace,
+          transit: onboardingData.transit,
+          culinary: onboardingData.culinary,
+          boundaries: onboardingData.boundaries,
+        },
+        updated_at: now,
+      })
+      .select('onboarding_completed,onboarding_completed_at,onboarding_skipped_at,onboarding_preferences')
+      .single()
 
-		return c.json({
-			user: {
-				id: user.id,
-				email: user.email,
-				...user.user_metadata,
-				profile: profile || null,
-			},
-		});
-	} catch (error) {
-		console.error("Unexpected error in /me endpoint:", error);
-		return c.json({ error: "Internal server error" }, 500);
-	}
-});
+    if (error) {
+      if (error.code === 'PGRST101') {
+        return c.json({ error: 'Profile table not set up. Please run the database setup first.' }, 400)
+      }
 
-auth.put("/profile", authMiddleware, zValidator("json", updateProfileSchema), async (c) => {
-	const user = c.get("user");
-	const profileData = c.req.valid("json");
+      console.error('Database error in PUT /onboarding endpoint:', error)
+      return c.json({ error: 'Failed to save onboarding' }, 500)
+    }
 
-	try {
-		const { data, error } = await supabase
-			.from("user_profiles")
-			.upsert({
-				user_id: user.id,
-				...profileData,
-				updated_at: new Date().toISOString(),
-			})
-			.select()
-			.single();
+    const onboardingPayload = {
+      completed: data?.onboarding_completed ?? !skipped,
+      completed_at: data?.onboarding_completed_at ?? (skipped ? null : now),
+      skipped_at: data?.onboarding_skipped_at ?? (skipped ? now : null),
+      preferences: data?.onboarding_preferences ?? null,
+    }
 
-		if (error) {
-			if (error.code === "PGRST101") {
-				return c.json(
-					{
-						error: "Profile table not set up. Please run the database setup first.",
-					},
-					400
-				);
-			}
+    try {
+      await LongTermMemory.setPreferences(user.id, {
+        onboarding_status: {
+          completed: onboardingPayload.completed,
+          completedAt: onboardingPayload.completed_at,
+          skippedAt: onboardingPayload.skipped_at,
+        },
+        onboarding_preferences: onboardingPayload.preferences,
+      })
+    } catch (error) {
+      console.error('Failed to save onboarding to agent_memory:', error)
+    }
 
-			console.error("Database error in /profile endpoint:", error);
-			return c.json({ error: "Failed to update profile" }, 500);
-		}
+    return c.json({ onboarding: onboardingPayload })
+  } catch (error) {
+    console.error('Unexpected error in PUT /onboarding endpoint:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
 
-		return c.json({ profile: data });
-	} catch (error) {
-		console.error("Unexpected error in /profile endpoint:", error);
-		return c.json({ error: "Internal server error" }, 500);
-	}
-});
+// Verify token endpoint (useful for frontend token validation)
+auth.post('/verify', async (c) => {
+  const authHeader = c.req.header('Authorization')
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return c.json({ error: 'Missing authorization header' }, 401)
+  }
 
-auth.get("/onboarding", authMiddleware, async (c) => {
-	const user = c.get("user");
+  const token = authHeader.substring(7)
 
-	try {
-		const { data: profile, error } = await supabase
-			.from("user_profiles")
-			.select(
-				"onboarding_completed,onboarding_completed_at,onboarding_skipped_at,onboarding_preferences"
-			)
-			.eq("user_id", user.id)
-			.maybeSingle();
+  try {
+    const { data: { user }, error } = await supabaseAuth.auth.getUser(token)
+    
+    if (error || !user) {
+      return c.json({ error: 'Invalid token' }, 401)
+    }
 
-		if (error) {
-			if (error.code !== "PGRST101" && !isOnboardingProfileSchemaError(error)) {
-				console.error("Database error in /onboarding endpoint:", error);
-				return c.json({ error: "Failed to fetch onboarding" }, 500);
-			}
-		} else if (profile) {
-			return c.json({ onboarding: profileRowToOnboardingState(profile) });
-		}
+    return c.json({ 
+      valid: true, 
+      user: {
+        id: user.id,
+        email: user.email,
+        ...user.user_metadata,
+      }
+    })
+  } catch (error) {
+    return c.json({ error: 'Token verification failed' }, 401)
+  }
+})
 
-		const onboarding = await loadOnboardingFromMemory(user.id);
-		return c.json({ onboarding });
-	} catch (error) {
-		console.error("Unexpected error in GET /onboarding endpoint:", error);
-		return c.json({ error: "Internal server error" }, 500);
-	}
-});
+// Health check for auth service
+auth.get('/health', (c) => {
+  return c.json({ status: 'ok', service: 'auth' })
+})
 
-auth.put("/onboarding", authMiddleware, zValidator("json", onboardingSchema), async (c) => {
-	const user = c.get("user");
-	const onboardingData = c.req.valid("json");
-
-	try {
-		const now = new Date().toISOString();
-		let onboardingPayload = buildOnboardingState(onboardingData, now);
-
-		const { data: profileRow, error: profileLookupError } = await supabase
-			.from("user_profiles")
-			.select("user_id")
-			.eq("user_id", user.id)
-			.maybeSingle();
-
-		if (profileLookupError && profileLookupError.code !== "PGRST101") {
-			console.error(
-				"Database error while checking onboarding profile row:",
-				profileLookupError
-			);
-			return c.json({ error: "Failed to save onboarding" }, 500);
-		}
-
-		if (profileRow) {
-			const { data, error } = await supabase
-				.from("user_profiles")
-				.update({
-					onboarding_completed: onboardingPayload.completed,
-					onboarding_completed_at: onboardingPayload.completed_at,
-					onboarding_skipped_at: onboardingPayload.skipped_at,
-					onboarding_preferences: onboardingPayload.preferences,
-					updated_at: now,
-				})
-				.eq("user_id", user.id)
-				.select(
-					"onboarding_completed,onboarding_completed_at,onboarding_skipped_at,onboarding_preferences"
-				)
-				.single();
-
-			if (error) {
-				if (!isOnboardingProfileSchemaError(error)) {
-					console.error("Database error in PUT /onboarding endpoint:", error);
-					return c.json({ error: "Failed to save onboarding" }, 500);
-				}
-			} else {
-				onboardingPayload = profileRowToOnboardingState(data);
-			}
-		}
-
-		try {
-			await LongTermMemory.setPreferences(user.id, {
-				onboarding_status: {
-					completed: onboardingPayload.completed,
-					completedAt: onboardingPayload.completed_at,
-					skippedAt: onboardingPayload.skipped_at,
-				},
-				onboarding_preferences: onboardingPayload.preferences,
-			});
-		} catch (error) {
-			console.error("Failed to save onboarding to agent_memory:", error);
-		}
-
-		return c.json({ onboarding: onboardingPayload });
-	} catch (error) {
-		console.error("Unexpected error in PUT /onboarding endpoint:", error);
-		return c.json({ error: "Internal server error" }, 500);
-	}
-});
-
-auth.post("/verify", async (c) => {
-	const authHeader = c.req.header("Authorization");
-
-	if (!authHeader || !authHeader.startsWith("Bearer ")) {
-		return c.json({ error: "Missing authorization header" }, 401);
-	}
-
-	const token = authHeader.substring(7);
-
-	try {
-		const {
-			data: { user },
-			error,
-		} = await supabaseAuth.auth.getUser(token);
-
-		if (error || !user) {
-			return c.json({ error: "Invalid token" }, 401);
-		}
-
-		return c.json({
-			valid: true,
-			user: {
-				id: user.id,
-				email: user.email,
-				...user.user_metadata,
-			},
-		});
-	} catch (error) {
-		return c.json({ error: "Token verification failed" }, 401);
-	}
-});
-
-auth.get("/health", (c) => {
-	return c.json({ status: "ok", service: "auth" });
-});
-
-export default auth;
+export default auth

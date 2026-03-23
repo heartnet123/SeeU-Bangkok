@@ -2,7 +2,6 @@
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { ChatOpenAI } from "@langchain/openai";
 import { PLANNER_TOOLS } from "../tools";
-import { DEFAULT_AGENT_MODEL } from "../config";
 
 // Planner agent configuration
 const PLANNER_PROMPT = `You are a Bangkok Trip Planner Expert. Your role is to create optimized itineraries and routes.
@@ -20,7 +19,6 @@ GUIDELINES:
 5. Create balanced itineraries that aren't too rushed
 6. Always call plan_itinerary with the full places array from researcher output plus normalized constraints
 7. Use exact place ids/place_id values from tools. Do not fabricate ids.
-8. If runtime context contains personalization defaults, include them in plan_itinerary unless the user's latest request explicitly overrides them
 
 RESPONSE FORMAT:
 You MUST respond with VALID JSON only. No markdown, no prose outside JSON, no code fences.
@@ -57,10 +55,16 @@ CONSTRAINTS:
 Remember: You are creating practical, enjoyable trip plans. Balance efficiency with a relaxed pace.`;
 
 // Create the planner agent
-export function createPlannerAgent(model?: ChatOpenAI): ReturnType<typeof createReactAgent> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function createPlannerAgent(model?: ChatOpenAI): any {
 	const llm = model || new ChatOpenAI({
+<<<<<<< HEAD
 		modelName: DEFAULT_AGENT_MODEL,
 		temperature: 1,
+=======
+		modelName: "gpt-5-nano",
+		temperature: 0,
+>>>>>>> parent of 608a6ad (feat:Add personalization & supervisor routing)
 	});
 
 	return createReactAgent({
@@ -72,4 +76,5 @@ export function createPlannerAgent(model?: ChatOpenAI): ReturnType<typeof create
 }
 
 // Pre-built planner agent instance
-export const plannerAgent: ReturnType<typeof createReactAgent> = createPlannerAgent();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const plannerAgent: any = createPlannerAgent();

@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ImageUpload } from '@/components/ui/image-upload'
 import { Checkbox } from '@/components/ui/checkbox'
-import { User, Save, Loader2, Mail, Calendar, MapPin, DollarSign, Globe, Heart } from 'lucide-react'
+import { User, Save, Loader2, Mail, Calendar, MapPin, DollarSign, Languages, Heart } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 
@@ -41,7 +41,7 @@ export default function ProfilePage() {
     travel_style: [] as string[],
     mobility: 'public' as 'walk' | 'bike' | 'public' | 'grab',
     budget_per_day: undefined as number | undefined,
-    language: 'th',
+    languages: ['th'] as string[],
   })
 
   // Redirect if not authenticated
@@ -68,7 +68,7 @@ export default function ProfilePage() {
               travel_style: profileData?.travel_style || [],
               mobility: profileData?.mobility || 'public',
               budget_per_day: profileData?.budget_per_day || 1500,
-              language: profileData?.languages?.[0] || 'th',
+              languages: profileData?.languages || ['th'],
             })
           }
         } catch (error) {
@@ -99,6 +99,14 @@ export default function ProfilePage() {
     }))
   }
 
+  const handleLanguageChange = (index: number, value: string) => {
+    setFormData(prev => {
+      const newLanguages = [...prev.languages]
+      newLanguages[index] = value
+      return { ...prev, languages: newLanguages }
+    })
+  }
+
   const handleImageUpload = (url: string) => {
     setFormData(prev => ({ ...prev, avatar_url: url }))
   }
@@ -119,7 +127,7 @@ export default function ProfilePage() {
         travel_style: formData.travel_style.length > 0 ? formData.travel_style : undefined,
         mobility: formData.mobility,
         budget_per_day: formData.budget_per_day,
-        languages: [formData.language],
+        languages: formData.languages.filter(lang => lang.trim() !== ''),
       }
 
       const { profile: updatedProfile, error } = await updateProfile(updates)
@@ -137,7 +145,7 @@ export default function ProfilePage() {
             travel_style: updatedProfile.travel_style || [],
             mobility: updatedProfile.mobility || 'public',
             budget_per_day: updatedProfile.budget_per_day || 1500,
-            language: updatedProfile.languages?.[0] || 'th',
+            languages: updatedProfile.languages || ['th'],
           })
         }
         // Immediately refresh the profile in auth context for AuthButton
@@ -381,47 +389,56 @@ export default function ProfilePage() {
                 </div>
               </CardContent>
             </Card>
-          </div>          {/* Language */}
+          </div>          {/* Languages */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
-                <Globe className="h-5 w-5 text-purple-500" />
-                <span>Language</span>
+                <Languages className="h-5 w-5 text-purple-500" />
+                <span>Languages</span>
               </CardTitle>
               <CardDescription>
-                Your preferred language for travel recommendations
+                Languages you speak (helps connect with locals and other travelers)
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-2">
-                <Label htmlFor="language" className="flex items-center space-x-2">
-                  <Globe className="h-4 w-4" />
-                  <span>Preferred Language</span>
-                </Label>
-                <select
-                  id="language"
-                  name="language"
-                  value={formData.language}
-                  onChange={handleInputChange}
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              <div className="space-y-3">
+                {formData.languages.map((lang, index) => (
+                  <div key={index} className="flex items-center space-x-2">
+                    <Input
+                      type="text"
+                      value={lang}
+                      onChange={(e) => handleLanguageChange(index, e.target.value)}
+                      placeholder="e.g., th, en, zh"
+                    />
+                    {formData.languages.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setFormData(prev => ({
+                            ...prev,
+                            languages: prev.languages.filter((_, i) => i !== index)
+                          }))
+                        }}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFormData(prev => ({ ...prev, languages: [...prev.languages, ''] }))}
                 >
-                  <option value="th">🇹🇭 Thai (ภาษาไทย)</option>
-                  <option value="en">🇬🇧 English</option>
-                  <option value="zh">🇨🇳 Chinese (中文)</option>
-                  <option value="ja">🇯🇵 Japanese (日本語)</option>
-                  <option value="ko">🇰🇷 Korean (한국어)</option>
-                  <option value="fr">🇫🇷 French (Français)</option>
-                  <option value="de">🇩🇪 German (Deutsch)</option>
-                  <option value="es">🇪🇸 Spanish (Español)</option>
-                  <option value="ru">🇷🇺 Russian (Русский)</option>
-                  <option value="ar">🇸🇦 Arabic (العربية)</option>
-                  <option value="hi">🇮🇳 Hindi (हिन्दी)</option>
-                  <option value="pt">🇧🇷 Portuguese (Português)</option>
-                  <option value="it">🇮🇹 Italian (Italiano)</option>
-                  <option value="ms">🇲🇾 Malay (Bahasa Melayu)</option>
-                  <option value="id">🇮🇩 Indonesian (Bahasa Indonesia)</option>
-                  <option value="vi">🇻🇳 Vietnamese (Tiếng Việt)</option>
-                </select>
+                  + Add Language
+                </Button>
+                <p className="text-sm text-gray-600">
+                  Use language codes like 'th' (Thai), 'en' (English), 'zh' (Chinese).
+                </p>
               </div>
             </CardContent>
           </Card>

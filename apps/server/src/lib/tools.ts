@@ -1,8 +1,6 @@
 import { supabase } from './supabase'
 import { nameToSlug } from './slug-utils'
 import { traceable } from 'langsmith/traceable'
-import type { PersonalizationDefaults } from '@/agent/personalization'
-import { rerankPlacesByPersonalization } from '@/agent/personalization'
 
 export type LatLng = { lat: number; lng: number }
 
@@ -35,11 +33,10 @@ export interface SearchPlacesParams {
   radius_km?: number
   categories?: string[]
   limit?: number
-  personalizationDefaults?: PersonalizationDefaults
 }
 
 export async function search_places(params: SearchPlacesParams): Promise<PlaceItem[]> {
-  const { query, categories, limit = 10, personalizationDefaults } = params
+  const { query, categories, limit = 10 } = params
 
   let q = supabase.from('bangkok_unseen').select('*').order('name').limit(limit)
 
@@ -58,7 +55,7 @@ export async function search_places(params: SearchPlacesParams): Promise<PlaceIt
   const { data, error } = await q
   if (error) throw error
 
-  return rerankPlacesByPersonalization((data || []).map(cleanPlace), personalizationDefaults)
+  return (data || []).map(cleanPlace)
 }
 
 export interface NearbyPlacesParams {
@@ -144,8 +141,8 @@ async function fetchMapboxMatrix(coords: LatLng[]): Promise<{ distances: number[
       distances: data.distances, // in meters
       durations: data.durations  // in seconds
     };
-  } catch (e) {
-    if ((e as { name?: string })?.name !== 'AbortError') {
+  } catch (e: any) {
+    if (e?.name !== 'AbortError') {
       console.error('Mapbox Matrix fetch error:', e);
     }
     return null;
@@ -181,8 +178,8 @@ async function fetchMapboxDirectionsRoute(coords: LatLng[], mode: TravelMode = '
       total_km: round1((route.distance || 0) / 1000),
       total_mins: typeof route.duration === 'number' ? Math.max(1, Math.ceil(route.duration / 60)) : undefined
     }
-  } catch (e) {
-    if ((e as { name?: string })?.name !== 'AbortError') {
+  } catch (e: any) {
+    if (e?.name !== 'AbortError') {
       console.error('Mapbox Directions fetch error:', e)
     }
     return null
@@ -334,7 +331,7 @@ function cleanPlace(p: PlaceRow): PlaceItem {
   }
 }
 
-function isFiniteNum(n: unknown): n is number { return typeof n === 'number' && isFinite(n) }
+function isFiniteNum(n: any): n is number { return typeof n === 'number' && isFinite(n) }
 
 export function haversineKm(a: LatLng, b: LatLng): number {
   const R = 6371
@@ -354,27 +351,8 @@ export interface PlanItineraryParams {
   title?: string
 }
 
-interface PlanItineraryStop {
-  slug: string;
-  name: string;
-  lat: number | undefined;
-  lng: number | undefined;
-  suggested_time_min: number;
-  notes: string;
-  distance_from_prev_km: number;
-  travel_time_from_prev_min: number;
-}
-
-interface PlanItineraryResult {
-  title: string;
-  stops: PlanItineraryStop[];
-  total_distance_km: number;
-  total_travel_minutes: number;
-  total_minutes: number;
-}
-
 export const plan_itinerary = traceable(
-  async (params: PlanItineraryParams): Promise<PlanItineraryResult> => {
+  async (params: PlanItineraryParams): Promise<any> => {
     const { place_slugs, title = "Suggested Itinerary" } = params
 
     // Single fetch for place details and coordinates (reduces DB round-trips)

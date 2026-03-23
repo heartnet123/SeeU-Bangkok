@@ -59,11 +59,9 @@ export function ItineraryColumn({
   const [orderedStops, setOrderedStops] = useState<TripStop[]>(
     trip?.stops ?? []
   );
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   useEffect(() => {
     setOrderedStops(trip?.stops ?? []);
-    setHasUnsavedChanges(false);
   }, [trip]);
 
   const sensors = useSensors(
@@ -88,7 +86,6 @@ export function ItineraryColumn({
     if (currentIndex === -1 || overIndex === -1) return;
     const newOrder = arrayMove(orderedStops, currentIndex, overIndex);
     setOrderedStops(newOrder);
-    setHasUnsavedChanges(true);
     if (trip && onReorderStops)
       onReorderStops(
         trip.id,
@@ -132,7 +129,6 @@ export function ItineraryColumn({
   }
 
   const handleSaveTrip = () => {
-    setHasUnsavedChanges(false);
     onSaveTrip?.(trip.id, orderedStops);
   };
 
@@ -171,10 +167,9 @@ export function ItineraryColumn({
             size="sm"
             onClick={handleSaveTrip}
             aria-label="Save trip changes"
-            className={cn(hasUnsavedChanges && mode !== "draft" && "animate-pulse bg-amber-500 hover:bg-amber-600")}
           >
             <Save className="w-4 h-4 mr-1" />
-            {mode === "draft" ? "Save Draft" : hasUnsavedChanges ? "Save*" : "Save"}
+            {mode === "draft" ? "Save Draft" : "Save"}
           </Button>
         </div>
       </div>

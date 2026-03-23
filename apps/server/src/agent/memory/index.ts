@@ -2,22 +2,13 @@
 export { SessionMemory } from "./session";
 export { LongTermMemory } from "./longterm";
 
-// Recursive JSON-safe value type
-export type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonValue[]
-  | { [key: string]: JsonValue };
-
 // Memory types
 export interface Session {
 	id: string;
 	userId: string | null;
 	createdAt: Date;
 	updatedAt: Date;
-	metadata: Record<string, JsonValue>;
+	metadata: Record<string, any>;
 }
 
 export interface SessionMessage {
@@ -32,7 +23,7 @@ export interface UserPreference {
 	id: string;
 	userId: string;
 	key: string;
-	value: JsonValue;
+	value: any;
 	createdAt: Date;
 	updatedAt: Date;
 }
@@ -108,7 +99,7 @@ export class MemoryManager {
 	/**
 	 * Get user preferences for personalization
 	 */
-	async getUserPreferences(): Promise<Record<string, JsonValue>> {
+	async getUserPreferences(): Promise<Record<string, any>> {
 		if (!this.userId) {
 			return {};
 		}
@@ -120,7 +111,7 @@ export class MemoryManager {
 	/**
 	 * Set a user preference
 	 */
-	async setUserPreference(key: string, value: JsonValue): Promise<void> {
+	async setUserPreference(key: string, value: any): Promise<void> {
 		if (!this.userId) {
 			throw new Error("Cannot set preference without userId");
 		}
@@ -135,7 +126,7 @@ export class MemoryManager {
 	 */
 	async getAgentContext(): Promise<{
 		messages: Array<{ role: string; content: string }>;
-		userPreferences: Record<string, JsonValue>;
+		userPreferences: Record<string, any>;
 		sessionId: string | null;
 		userId: string | null;
 	}> {

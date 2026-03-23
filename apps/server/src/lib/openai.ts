@@ -44,7 +44,7 @@ export async function openaiGenerateText(input: string, opts: OpenAIOptions = {}
   }
   messages.push({ role: 'user', content: input })
 
-  const requestOptions: { timeout?: number } = {}
+  const requestOptions: any = {}
   if (opts.timeout_ms) requestOptions.timeout = opts.timeout_ms
 
   const res = await client.chat.completions.create({
@@ -72,7 +72,7 @@ export async function openaiEmbed(text: string, opts: OpenAIEmbedOptions = {}): 
   const model = opts.model || process.env.OPENAI_EMBED_MODEL || 'text-embedding-3-small'
   const client = getRawOpenAIClient()
 
-  const requestOptions: { timeout?: number } = {}
+  const requestOptions: any = {}
   if (opts.timeout_ms) requestOptions.timeout = opts.timeout_ms
 
   const resp = await client.embeddings.create({ model, input: text }, requestOptions)

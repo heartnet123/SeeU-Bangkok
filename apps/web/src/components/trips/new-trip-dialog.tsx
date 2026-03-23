@@ -36,8 +36,6 @@ export function NewTripDialog({
   sessionToken = "",
 }: NewTripDialogProps) {
   const [tripTitle, setTripTitle] = useState("");
-  const [tripDate, setTripDate] = useState("");
-  const [tripNotes, setTripNotes] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [allPlaces, setAllPlaces] = useState<Place[]>([]);
   const [filteredPlaces, setFilteredPlaces] = useState<Place[]>([]);
@@ -146,7 +144,6 @@ export function NewTripDialog({
         body: JSON.stringify({
           title: tripTitle,
           stops: stops,
-          context: { planned_date: tripDate || null, notes: tripNotes || null },
         }),
       });
 
@@ -157,8 +154,6 @@ export function NewTripDialog({
 
       toast.success("Trip created successfully!");
       setTripTitle("");
-      setTripDate("");
-      setTripNotes("");
       setSelectedPlaces([]);
       setSearchQuery("");
       onClose();
@@ -208,33 +203,6 @@ export function NewTripDialog({
                 onChange={(e) => setTripTitle(e.target.value)}
                 placeholder="e.g., Bangkok Temple Tour, Weekend Adventure"
                 className="w-full text-black"
-              />
-            </div>
-
-            {/* Planned Date */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Planned Date (optional)
-              </label>
-              <Input
-                type="date"
-                value={tripDate}
-                onChange={(e) => setTripDate(e.target.value)}
-                className="w-full text-black"
-              />
-            </div>
-
-            {/* Description / Notes */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Description (optional)
-              </label>
-              <textarea
-                value={tripNotes}
-                onChange={(e) => setTripNotes(e.target.value)}
-                placeholder="Add notes or a description for this trip..."
-                rows={3}
-                className="w-full px-3 py-2 border rounded-md text-sm text-black focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               />
             </div>
 

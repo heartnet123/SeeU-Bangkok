@@ -5,7 +5,6 @@ import type {
 	TripDraft,
 	TripValidation,
 } from "../state";
-import type { PersonalizationDefaults } from "../personalization";
 
 interface RouteLegMetrics {
 	from: string;
@@ -23,7 +22,6 @@ interface BuiltRouteMetrics {
 
 interface ExtractPlanningConstraintsOptions {
 	userLocation?: { lat: number; lng: number };
-	defaults?: PersonalizationDefaults;
 }
 
 interface BuildTripDraftParams {
@@ -83,16 +81,15 @@ export function extractPlanningConstraints(
 ): PlanningConstraints {
 	const lower = request.toLowerCase();
 	const durationMinutes = parseRequestedDurationMinutes(request) ?? 360;
-	let maxStops =
+	const maxStops =
 		parseRequestedStopCount(request) ??
 		(durationMinutes <= 120 ? 2 : durationMinutes <= 240 ? 4 : 5);
-	const defaults = options.defaults;
-	const hasExplicitBudget = /low budget|cheap|budget|under\s*฿|luxury|premium|high[- ]end/i.test(lower);
+
 	const budgetLevel = /low budget|cheap|budget|under\s*฿/i.test(lower)
 		? "low"
 		: /luxury|premium|high[- ]end/i.test(lower)
 			? "high"
-			: defaults?.budgetLevel || "medium";
+			: "medium";
 
 	const groupType = /family|kid|children/i.test(lower)
 		? "family"
@@ -102,12 +99,6 @@ export function extractPlanningConstraints(
 				? "group"
 				: "solo";
 
-	if (!parseRequestedStopCount(request) && defaults?.pace === "relaxed") {
-		maxStops = Math.min(maxStops, 3);
-	} else if (!parseRequestedStopCount(request) && defaults?.pace === "packed") {
-		maxStops = Math.min(maxStops + 1, 8);
-	}
-
 	const locationBias = /near me|close to me|around me/i.test(lower)
 		? {
 			mode: "near_user" as const,
@@ -115,15 +106,12 @@ export function extractPlanningConstraints(
 		}
 		: undefined;
 
-	const derivedThemes = inferThemes(request);
-	const themes = derivedThemes.length > 0 ? derivedThemes : defaults?.themes || [];
-
 	return {
 		durationMinutes,
 		maxStops: Math.min(Math.max(maxStops, 1), 8),
-		budgetLevel: hasExplicitBudget ? budgetLevel : defaults?.budgetLevel || budgetLevel,
+		budgetLevel,
 		groupType,
-		themes,
+		themes: inferThemes(request),
 		locationBias,
 	};
 }

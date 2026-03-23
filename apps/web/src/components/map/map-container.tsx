@@ -5,11 +5,11 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Supercluster from 'supercluster';
 import { MapControls } from './map-controls';
+import { SmartFilterBar, type FilterCategory } from './smart-filter-bar';
 import { PlacePopupContent } from './place-popup-content';
 import { createRoot } from 'react-dom/client';
 import type { Root } from 'react-dom/client';
 import { motion, AnimatePresence } from 'motion/react';
-import { getFocusTarget } from "./lib/focus-target";
 
 // Types
 interface Place {
@@ -28,7 +28,6 @@ interface Place {
 
 interface MapContainerProps {
   places: Place[];
-  focusedPlaces?: Array<Pick<Place, "lat" | "lng">> | null;
   selectedPlace?: Place | null;
   onPlaceSelect: (place: Place) => void;
   onPlaceDeselect: () => void;
@@ -184,7 +183,6 @@ const ClusterContent: React.FC<{
 
 const MapContainer: React.FC<MapContainerProps> = ({
   places,
-  focusedPlaces = null,
   selectedPlace,
   onPlaceSelect,
   onPlaceDeselect,
@@ -240,6 +238,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const lastBoundsRef = useRef<[number, number, number, number] | null>(null);
   const [is3DEnabled, setIs3DEnabled] = useState(show3D);
   const [isTrafficEnabled, setIsTrafficEnabled] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<FilterCategory>('all');
 
   // Initialize Supercluster
   const initSupercluster = useCallback(() => {
@@ -265,11 +264,19 @@ const MapContainer: React.FC<MapContainerProps> = ({
       }));
   }, []);
 
+  // Filter places by active category filter
+  const filteredPlaces = useMemo(() => {
+    if (activeFilter === 'all') return places;
+    return places.filter((place) =>
+      place.tags.some((tag) => tag.toLowerCase().includes(activeFilter))
+    );
+  }, [places, activeFilter]);
+
   // Get clustered features
   const clusteredFeatures = useMemo(() => {
     if (!superclusterRef.current || !currentBounds) return [];
 
-    const features = placesToFeatures(places);
+    const features = placesToFeatures(filteredPlaces);
     superclusterRef.current.load(features);
 
     if (previewItinerary) {
@@ -281,7 +288,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
       currentBounds,
       Math.floor(currentZoom)
     ) as SuperclusterFeature[];
-  }, [places, currentBounds, currentZoom, placesToFeatures, previewItinerary]);
+  }, [filteredPlaces, currentBounds, currentZoom, placesToFeatures, previewItinerary]);
 
   // Emit currently visible (unclustered) places to parent for UI sync
   const lastVisiblePlacesRef = useRef<string[]>([]);
@@ -605,8 +612,8 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
   // Draw trip route following actual roads using Mapbox Directions API
   useEffect(() => {
-    if (!map.current || !mapLoaded || !tripRoute || tripRoute.length < 2 || previewItinerary) {
-      // Remove route layer if trip route is empty or previewItinerary is active
+    if (!map.current || !mapLoaded || !tripRoute || tripRoute.length < 2) {
+      // Remove route layer if trip route is empty
       if (map.current?.getLayer('trip-route')) {
         map.current.removeLayer('trip-route');
       }
@@ -628,7 +635,11 @@ const MapContainer: React.FC<MapContainerProps> = ({
         // Build coordinates string for API: lng,lat;lng,lat;lng,lat
         const coordinatesString = tripRoute.map(([lng, lat]) => `${lng},${lat}`).join(';');
 
-        const directionsUrl = `https://api.mapbox.com/directions/v5/mapbox/walking/${coordinatesString}?access_token=${accessToken}&overview=full&geometries=geojson`;
+        // Build waypoints string - all points should be waypoints so we get a route through all
+        // Format: ?waypoints=0;1;2 for all points
+        const waypointIndices = Array.from({ length: tripRoute.length }, (_, i) => i).join(';');
+
+        const directionsUrl = `https://api.mapbox.com/directions/v5/mapbox/walking/${coordinatesString}?waypoints=${waypointIndices}&access_token=${accessToken}&overview=full&geometries=geojson`;
 
         console.log('Fetching route:', directionsUrl);
 
@@ -809,7 +820,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
     };
 
     fetchRouteDirections();
-  }, [tripRoute, mapLoaded, previewItinerary]);
+  }, [tripRoute, mapLoaded]);
 
   // Update map style
   useEffect(() => {
@@ -1129,29 +1140,27 @@ const MapContainer: React.FC<MapContainerProps> = ({
     }
 
     const stops = previewItinerary.stops as any[];
-    // Filter out stops with invalid coordinates
-    const coordinates: [number, number][] = stops
-      .filter((s) => typeof s.lng === 'number' && isFinite(s.lng) && typeof s.lat === 'number' && isFinite(s.lat))
+    const coordinates = stops
+      .filter((s) => typeof s.lng === 'number' && typeof s.lat === 'number')
       .map((s) => [s.lng, s.lat]);
 
     if (coordinates.length < 2) return;
 
-    // Draw straight-line immediately as a quick placeholder
-    const straightLineGeojson = {
-      type: 'Feature' as const,
+    const geojson = {
+      type: 'Feature',
       properties: {},
       geometry: {
-        type: 'LineString' as const,
+        type: 'LineString',
         coordinates,
       },
     };
 
     if (map.current.getSource(sourceId)) {
-      (map.current.getSource(sourceId) as mapboxgl.GeoJSONSource).setData(straightLineGeojson as any);
+      (map.current.getSource(sourceId) as mapboxgl.GeoJSONSource).setData(geojson as any);
     } else {
       map.current.addSource(sourceId, {
         type: 'geojson',
-        data: straightLineGeojson as any,
+        data: geojson as any,
       });
 
       map.current.addLayer({
@@ -1163,77 +1172,40 @@ const MapContainer: React.FC<MapContainerProps> = ({
           'line-cap': 'round',
         },
         paint: {
-          'line-color': '#2563eb',
+          'line-color': '#2563eb', // blue-600
           'line-width': 4,
+          // 'line-dasharray': [2, 2], // Temporary dash array, changes to solid line when routing is fetched
         },
       });
     }
 
-    // Use AbortController to cancel stale requests when previewItinerary changes rapidly
-    const abortController = new AbortController();
-
     // Fetch realistic road route from Mapbox Directions API
     const fetchDirections = async () => {
       try {
+        const coordsString = coordinates.map((c: number[]) => c.join(',')).join(';');
         const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
-        if (!token) return;
+        const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordsString}?geometries=geojson&access_token=${token}`;
 
-        // Mapbox Directions API supports max 25 waypoints per request.
-        // Chunk coordinates into groups of 25 (with 1 overlap so segments connect).
-        const MAX_WAYPOINTS = 25;
-        let mergedCoords: number[][] = [];
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.routes && data.routes.length > 0) {
+          const routeGeojson = data.routes[0].geometry;
+          if (map.current?.getSource(sourceId)) {
+            (map.current.getSource(sourceId) as mapboxgl.GeoJSONSource).setData({
+              type: 'Feature',
+              properties: {},
+              geometry: routeGeojson,
+            } as any);
 
-        if (coordinates.length <= MAX_WAYPOINTS) {
-          // Simple case: single request
-          const coordsString = coordinates.map((c) => c.join(',')).join(';');
-          const url = `https://api.mapbox.com/directions/v5/mapbox/walking/${coordsString}?geometries=geojson&overview=full&access_token=${token}`;
-          const res = await fetch(url, { signal: abortController.signal });
-          if (!res.ok) throw new Error(`Directions API ${res.status}`);
-          const data = await res.json();
-          if (data.routes?.[0]?.geometry?.coordinates) {
-            mergedCoords = data.routes[0].geometry.coordinates;
-          }
-        } else {
-          // Chunk into overlapping batches of MAX_WAYPOINTS
-          for (let i = 0; i < coordinates.length - 1; i += MAX_WAYPOINTS - 1) {
-            const chunk = coordinates.slice(i, i + MAX_WAYPOINTS);
-            if (chunk.length < 2) break;
-
-            const coordsString = chunk.map((c) => c.join(',')).join(';');
-            const url = `https://api.mapbox.com/directions/v5/mapbox/walking/${coordsString}?geometries=geojson&overview=full&access_token=${token}`;
-            const res = await fetch(url, { signal: abortController.signal });
-            if (!res.ok) throw new Error(`Directions API ${res.status}`);
-            const data = await res.json();
-
-            if (data.routes?.[0]?.geometry?.coordinates) {
-              const chunkCoords = data.routes[0].geometry.coordinates as number[][];
-              // Skip first point of subsequent chunks to avoid duplicates
-              mergedCoords.push(...(mergedCoords.length > 0 ? chunkCoords.slice(1) : chunkCoords));
-            }
+            // Re-render layer property with solid line implicitly initialized via layout
           }
         }
-
-        // Update the source with road-following route (only if not aborted)
-        if (mergedCoords.length > 0 && !abortController.signal.aborted && map.current?.getSource(sourceId)) {
-          (map.current.getSource(sourceId) as mapboxgl.GeoJSONSource).setData({
-            type: 'Feature',
-            properties: {},
-            geometry: { type: 'LineString', coordinates: mergedCoords },
-          } as any);
-        }
-      } catch (err: any) {
-        if (err?.name === 'AbortError') return; // Cancelled — ignore silently
-        console.error('Failed to fetch directions for preview itinerary, using straight line fallback', err);
-        // Straight-line is already rendered as the placeholder, so no further action needed
+      } catch (err) {
+        console.error('Failed to fetch directions for preview itinerary', err);
       }
     };
 
     fetchDirections();
-
-    // Cleanup: abort any in-flight request when effect re-runs or unmounts
-    return () => {
-      abortController.abort();
-    };
   }, [previewItinerary, mapLoaded]);
 
   // Add user location marker
@@ -1293,42 +1265,6 @@ const MapContainer: React.FC<MapContainerProps> = ({
       .setLngLat(userLocation)
       .addTo(map.current);
   }, [userLocation, mapLoaded]);
-
-  // Focus the map on the currently selected trip's pins.
-  useEffect(() => {
-    if (!map.current || !mapLoaded || previewItinerary || selectedPlace) return;
-
-    const target = getFocusTarget(focusedPlaces ?? []);
-    if (!target) return;
-
-    if (target.type === "point") {
-      map.current.flyTo({
-        center: target.center,
-        zoom: 16,
-        pitch: is3DEnabled ? 50 : 0,
-        bearing: 0,
-        duration: 1000,
-        essential: true,
-        easing: (t) => t * (2 - t),
-      });
-      return;
-    }
-
-    const bounds = new mapboxgl.LngLatBounds(
-      target.coordinates[0],
-      target.coordinates[0]
-    );
-
-    for (const coordinate of target.coordinates) {
-      bounds.extend(coordinate);
-    }
-
-    map.current.fitBounds(bounds, {
-      padding: { top: 80, bottom: 80, left: 80, right: 400 },
-      duration: 1000,
-      maxZoom: 15,
-    });
-  }, [focusedPlaces, is3DEnabled, mapLoaded, previewItinerary, selectedPlace]);
 
   // Fly to selected place with enhanced animation
   useEffect(() => {
@@ -1429,6 +1365,13 @@ const MapContainer: React.FC<MapContainerProps> = ({
     <div className="relative w-full h-full">
       {/* Map container */}
       <div ref={mapContainer} className="w-full h-full" />
+
+      {/* Smart filter bar */}
+      <SmartFilterBar
+        activeFilter={activeFilter}
+        onFilterChange={setActiveFilter}
+        isDarkMode={mapStyle === 'dark'}
+      />
 
       {/* Map controls */}
       <MapControls
