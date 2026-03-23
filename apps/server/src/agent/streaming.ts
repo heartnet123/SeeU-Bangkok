@@ -135,6 +135,26 @@ export async function* streamAgentExecution(
 					userPreferences,
 				}),
 			});
+
+			// Extract tool messages manually since stream output isn't available for .invoke()
+			if (Array.isArray(directResult?.messages)) {
+				for (const msg of directResult.messages) {
+					if (msg.role === "tool" && typeof msg.content === "string") {
+						try {
+							const parsed = JSON.parse(msg.content);
+							if (Array.isArray(parsed)) {
+								const toolPlaces = parsed.filter(
+									(place) => place && typeof place === "object" && "id" in place
+								) as CandidatePlace[];
+								suggestedPlaces.push(...toolPlaces);
+							}
+						} catch {
+							// Ignore raw tool text
+						}
+					}
+				}
+			}
+
 			const assistantContent = findLatestAssistantMessage(
 				Array.isArray(directResult?.messages) ? directResult.messages : []
 			);
@@ -148,23 +168,29 @@ export async function* streamAgentExecution(
 						const { summary, places } = researcherParsed.data;
 						latestAssistantSummary = summary;
 						lastAssistantMessage = summary;
+
 						if (places.length > 0) {
-							suggestedPlaces.push(...places);
-							const rankedPlaces = rerankPlacesByPersonalization(
-								places,
-								personalizationDefaults,
-							);
-							yield {
-								event: "context",
-								data: JSON.stringify({
-									documents: rankedPlaces.length,
-									top_docs: rankedPlaces.slice(0, 3),
-								}),
-							};
-							yield {
-								event: "suggestions",
-								data: JSON.stringify({ places: rankedPlaces }),
-							};
+							const populatedPlaces = places.map(p =>
+								suggestedPlaces.find(sp => sp.id === p.id)
+							).filter(Boolean) as CandidatePlace[];
+
+							if (populatedPlaces.length > 0) {
+								const rankedPlaces = rerankPlacesByPersonalization(
+									populatedPlaces,
+									personalizationDefaults,
+								);
+								yield {
+									event: "context",
+									data: JSON.stringify({
+										documents: rankedPlaces.length,
+										top_docs: rankedPlaces.slice(0, 3),
+									}),
+								};
+								yield {
+									event: "suggestions",
+									data: JSON.stringify({ places: rankedPlaces }),
+								};
+							}
 						}
 						yield {
 							event: "message",
@@ -246,9 +272,50 @@ export async function* streamAgentExecution(
 										const { summary, tripDraft } = plannerParsed.data;
 										latestAssistantSummary = summary;
 										lastAssistantMessage = summary;
-										currentTripDraft = tripDraft;
-										latestTripDraft = tripDraft;
-										latestWarnings = tripDraft.warnings;
+
+										// Reconstruct full objects if model missed them
+										const populatedStops = tripDraft.stops.map(stop => {
+											const fullPlace = suggestedPlaces.find(p => p.id === stop.id || p.id === stop.place_id);
+											return {
+												id: stop.id,
+												place_id: stop.place_id,
+												slug: fullPlace?.slug || stop.id,
+												name: fullPlace?.name || stop.id,
+												lat: fullPlace?.lat,
+												lng: fullPlace?.lng,
+												suggested_time_min: stop.suggested_time_min,
+												notes: stop.notes,
+												distance_from_prev_km: 0,
+												travel_time_from_prev_min: 0
+											};
+										});
+
+										const fullDraft = {
+											title: tripDraft.title || "Suggested Trip",
+											summary: tripDraft.summary || summary,
+											constraints: tripDraft.constraints || {
+												durationMinutes: 360,
+												maxStops: populatedStops.length,
+												budgetLevel: "medium" as const,
+												groupType: "solo" as const,
+												themes: []
+											},
+											places: suggestedPlaces.filter(p => populatedStops.some(s => s.place_id === p.id)),
+											stops: populatedStops,
+											total_distance_km: 0,
+											total_minutes: populatedStops.reduce((acc, stop) => acc + stop.suggested_time_min, 0),
+											warnings: [],
+											validation: {
+												isValid: true,
+												score: 100,
+												warnings: [],
+												suggestions: []
+											}
+										};
+
+										currentTripDraft = fullDraft;
+										latestTripDraft = fullDraft;
+										latestWarnings = [];
 										parsedHandled = true;
 									} else {
 										const researcherParsed = ResearcherAgentOutputSchema.safeParse(parsedJson);
@@ -256,7 +323,8 @@ export async function* streamAgentExecution(
 											const { summary, places } = researcherParsed.data;
 											latestAssistantSummary = summary;
 											lastAssistantMessage = summary;
-											if (places.length > 0) suggestedPlaces.push(...places);
+											// Places ID array - we already have full places from tools
+											// so no need to push these basic ID objects, rely on tools list
 											parsedHandled = true;
 										}
 									}
@@ -405,14 +473,56 @@ export async function* streamAgentExecution(
 						const plannerParsed = PlannerAgentOutputSchema.safeParse(parsed);
 						if (plannerParsed.success) {
 							safeSummary = plannerParsed.data.summary;
-							safeTripDraft = plannerParsed.data.tripDraft;
-							safeWarnings = plannerParsed.data.tripDraft.warnings;
+							const tDraft = plannerParsed.data.tripDraft;
+
+							const populatedStops = tDraft.stops.map(stop => {
+								const fullPlace = suggestedPlaces.find(p => p.id === stop.id || p.id === stop.place_id);
+								return {
+									id: stop.id,
+									place_id: stop.place_id,
+									slug: fullPlace?.slug || stop.id,
+									name: fullPlace?.name || stop.id,
+									lat: fullPlace?.lat,
+									lng: fullPlace?.lng,
+									suggested_time_min: stop.suggested_time_min,
+									notes: stop.notes,
+									distance_from_prev_km: 0,
+									travel_time_from_prev_min: 0
+								};
+							});
+
+							safeTripDraft = {
+								title: tDraft.title || "Suggested Trip",
+								summary: tDraft.summary || safeSummary,
+								constraints: tDraft.constraints || {
+									durationMinutes: 360,
+									maxStops: populatedStops.length,
+									budgetLevel: "medium" as const,
+									groupType: "solo" as const,
+									themes: []
+								},
+								places: suggestedPlaces.filter(p => populatedStops.some(s => s.place_id === p.id)),
+								stops: populatedStops,
+								total_distance_km: 0,
+								total_minutes: populatedStops.reduce((acc, stop) => acc + stop.suggested_time_min, 0),
+								warnings: [],
+								validation: {
+									isValid: true,
+									score: 100,
+									warnings: [],
+									suggestions: []
+								}
+							};
+							safeWarnings = [];
 						}
 
 						const researcherParsed = ResearcherAgentOutputSchema.safeParse(parsed);
 						if (researcherParsed.success) {
 							safeSummary = researcherParsed.data.summary;
-							safePlaces = researcherParsed.data.places;
+							const populatedPlaces = researcherParsed.data.places.map(p =>
+								suggestedPlaces.find(sp => sp.id === p.id)
+							).filter(Boolean) as CandidatePlace[];
+							safePlaces = populatedPlaces;
 						}
 					} catch {
 						// Keep plain text fallback.

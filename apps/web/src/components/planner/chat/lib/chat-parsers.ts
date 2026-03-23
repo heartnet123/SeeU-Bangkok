@@ -11,7 +11,7 @@ export function isPlaceListText(text: string): boolean {
 
 export function extractIntroText(text: string): string {
 	const idx = text.search(/\n\d+\.\s+\*\*/);
-	if (idx === -1) return "";
+	if (idx === -1) return text.trim();
 	return text.slice(0, idx).trim();
 }
 

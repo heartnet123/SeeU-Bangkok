@@ -38,38 +38,19 @@ Return exactly this shape:
       "groupType": "solo",
       "themes": ["temple"]
     },
-    "places": [],
     "stops": [
       {
         "id": "string",
         "place_id": "string",
-        "slug": "string",
-        "name": "string",
-        "lat": 13.7563,
-        "lng": 100.5018,
         "suggested_time_min": 60,
-        "notes": "string",
-        "distance_from_prev_km": 0,
-        "travel_time_from_prev_min": 0
+        "notes": "string"
       }
-    ],
-    "total_distance_km": 12.5,
-    "total_minutes": 360,
-    "warnings": [],
-    "validation": {
-      "isValid": true,
-      "score": 90,
-      "warnings": [],
-      "suggestions": []
-    }
+    ]
   }
 }
 
 CONSTRAINTS:
 - MAXIMUM 6-8 stops for a day trip
-- Keep all coordinates numeric and exact from tools.
-- Include all required tripDraft fields for every stop.
-- Do NOT add fabricated attributes.
 - Always include "intent": "itinerary".
 - "summary" must be concise and user-friendly.
 
