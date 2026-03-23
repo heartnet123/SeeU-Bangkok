@@ -131,15 +131,25 @@ export type UiResponsePayload = z.infer<typeof UiResponsePayloadSchema>;
 export const ResearcherAgentOutputSchema = z.object({
 	intent: z.literal("place_recommendation"),
 	summary: z.string(),
-	places: z.array(CandidatePlaceSchema).default([]),
+	places: z.array(z.object({ id: z.string() })).default([]),
 	planningConstraints: PlanningConstraintsSchema.optional(),
-}).strict();
+});
 
 export const PlannerAgentOutputSchema = z.object({
 	intent: z.literal("itinerary"),
 	summary: z.string(),
-	tripDraft: TripDraftSchema,
-}).strict();
+	tripDraft: z.object({
+		title: z.string().optional(),
+		summary: z.string().optional(),
+		constraints: PlanningConstraintsSchema.optional(),
+		stops: z.array(z.object({
+			id: z.string(),
+			place_id: z.string(),
+			suggested_time_min: z.number(),
+			notes: z.string()
+		}))
+	})
+});
 
 export type ResearcherAgentOutput = z.infer<typeof ResearcherAgentOutputSchema>;
 export type PlannerAgentOutput = z.infer<typeof PlannerAgentOutputSchema>;

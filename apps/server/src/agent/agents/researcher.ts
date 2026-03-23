@@ -29,13 +29,7 @@ Return exactly this shape:
   "summary": "string",
   "places": [
     {
-      "id": "string",
-      "name": "string",
-      "slug": "string",
-      "lat": 13.7563,
-      "lng": 100.5018,
-      "tags": ["temple", "riverside"],
-      "description": "string"
+      "id": "string"
     }
   ],
   "planningConstraints": {
@@ -50,12 +44,10 @@ Return exactly this shape:
 CONSTRAINTS:
 - Always include "intent": "place_recommendation".
 - Always include "summary".
-- "places" must be an array (can be empty if no matches).
-- Include only fields shown above for each place.
+- "places" must be an array containing ONLY the string "id" field of the places you found (can be empty if no matches). The application will retrieve the full place data.
 - Include "planningConstraints" when the user is asking for a planned trip, route, or itinerary.
 - Pass "personalizationDefaults" to search_places when runtime context provides them and the user has not explicitly contradicted them.
-- Keep coordinates numeric when available.
-- Do NOT output itinerary fields ('- Location:', '- Duration:', '- Distance from previous:', '- Travel Time:', '- Description:').
+- Do NOT output itinerary fields.
 
 Remember: You are gathering information for trip planning. Focus on relevance and quality.`;
 
@@ -63,7 +55,7 @@ Remember: You are gathering information for trip planning. Focus on relevance an
 export function createResearcherAgent(model?: ChatOpenAI): ReturnType<typeof createReactAgent> {
 	const llm = model || new ChatOpenAI({
 		modelName: DEFAULT_AGENT_MODEL,
-		temperature: 0,
+		temperature: 1,
 	});
 
 	return createReactAgent({
