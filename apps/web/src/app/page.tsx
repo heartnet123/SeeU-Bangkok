@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { MapPin, MessageCircle, Heart } from "lucide-react";
 import { useTranslation } from "@/contexts/language-context"; 
-import Link from "next/link";
 
 
 export default function Home() {
@@ -48,24 +47,19 @@ export default function Home() {
 						className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12"
 					>
 						<Magnetic intensity={0.3} range={80}>
-							<Button asChild className="bg-blue-600 hover:bg-blue-700 text-white px-12 py-6 text-xl font-semibold rounded-lg transition-all duration-300 flex items-center gap-3 shadow-lg hover:shadow-xl">
-								<Link href="/map">
-									<MapPin className="w-6 h-6" />
-									{t("home.exploreMap")}
-								</Link>
+							<Button className="bg-blue-600 hover:bg-blue-700 text-white px-12 py-6 text-xl font-semibold rounded-lg transition-all duration-300 flex items-center gap-3 shadow-lg hover:shadow-xl">
+								<MapPin className="w-6 h-6" />
+							{t("home.exploreMap")}
 							</Button>
 						</Magnetic>
 						
 						<Magnetic intensity={0.3} range={80}>
-							<Button
-								asChild
+							<Button 
 								variant="outline" 
 								className="bg-transparent border-2 border-white text-white hover:bg-white hover:text-gray-900 px-12 py-6 text-xl font-semibold rounded-lg transition-all duration-300 flex items-center gap-3 shadow-lg hover:shadow-xl"
 							>
-								<Link href="/map">
-									<MessageCircle className="w-6 h-6" />
-									{t("home.tripPlanner")}
-								</Link>
+								<MessageCircle className="w-6 h-6" />
+								{t("home.tripPlanner")}
 							</Button>
 						</Magnetic>
 					</AnimatedGroup>

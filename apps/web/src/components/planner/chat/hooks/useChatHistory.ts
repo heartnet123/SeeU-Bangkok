@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { AssistantTurn, PendingTurn, TripDraft, Turn } from "../types";
 import { uid } from "../constants";
-import { parseStoredAssistantMessage } from "../lib/session-message-parser";
 
 interface UseChatHistoryParams {
 	onPlacesFound?: (places: AssistantTurn["suggestions"]) => void;
@@ -83,17 +82,24 @@ export function useChatHistory({
 				if (m.role === "user") {
 					return { role: "user" as const, text: m.content, id: uid() };
 				}
-				const parsed = parseStoredAssistantMessage(m.content);
+				let parsedText = m.content;
+				let parsedTripDraft: AssistantTurn["tripDraft"] = null;
+				try {
+					const parsed = JSON.parse(m.content) as { summary?: string; tripDraft?: AssistantTurn["tripDraft"] };
+					parsedText = parsed.summary || parsedText;
+					parsedTripDraft = parsed.tripDraft ?? null;
+				} catch {
+					// Keep raw assistant text when session content is plain text.
+				}
 				return {
 					role: "assistant" as const,
 					id: uid(),
-					text: parsed.text,
+					text: parsedText,
 					workflowSteps: [],
 					latency: undefined,
-					suggestions: parsed.suggestions,
-					tripDraft: parsed.tripDraft,
+					suggestions: [],
+					tripDraft: parsedTripDraft,
 					errors: [],
-					ui: parsed.ui,
 				} satisfies AssistantTurn;
 			});
 		setTurns(converted);

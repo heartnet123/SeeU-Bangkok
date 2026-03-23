@@ -20,7 +20,6 @@ GUIDELINES:
 5. Create balanced itineraries that aren't too rushed
 6. Always call plan_itinerary with the full places array from researcher output plus normalized constraints
 7. Use exact place ids/place_id values from tools. Do not fabricate ids.
-8. If runtime context contains personalization defaults, include them in plan_itinerary unless the user's latest request explicitly overrides them
 
 RESPONSE FORMAT:
 You MUST respond with VALID JSON only. No markdown, no prose outside JSON, no code fences.

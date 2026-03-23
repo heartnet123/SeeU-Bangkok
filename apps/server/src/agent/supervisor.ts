@@ -7,6 +7,7 @@ import { createCriticAgent } from "./agents/critic";
 import { UiResponsePayloadSchema, type TripDraft } from "./state";
 import { DEFAULT_AGENT_MODEL } from "./config";
 
+<<<<<<< HEAD
 interface CompiledSupervisorGraph {
 	invoke(input: { messages: unknown[] }): Promise<{ messages: Array<{ role: string; content: string }> }>;
 	stream(input: { messages: unknown[] }, options?: { streamMode?: string }): Promise<AsyncIterable<Record<string, unknown>>>;
@@ -20,6 +21,8 @@ export interface AgentExecutionPlan {
 	includeCritic: boolean;
 }
 
+=======
+>>>>>>> parent of c8c0ae4 (feat:personalized)
 // Supervisor system prompt
 const SUPERVISOR_PROMPT = `You are the Bangkok Trip Planning Supervisor. Your role is to coordinate specialized agents to help users plan trips in Bangkok.
 
@@ -57,53 +60,6 @@ Remember: Your goal is to provide the best trip planning experience by coordinat
 export interface SupervisorConfig {
 	model?: ChatOpenAI;
 	recursionLimit?: number;
-	includeCritic?: boolean;
-}
-
-function getLatestUserMessage(
-	messages: Array<{ role: string; content: string }>
-): string {
-	for (const message of [...messages].reverse()) {
-		if (message.role === "user" && typeof message.content === "string") {
-			return message.content;
-		}
-	}
-
-	return "";
-}
-
-export function classifyIntent(input: string): AgentExecutionIntent {
-	const normalized = input.trim().toLowerCase();
-	if (!normalized) {
-		return "informational";
-	}
-
-	const itineraryPattern =
-		/\b(plan|create|build|arrange|design|itinerary|route|trip|tour|schedule)\b/;
-	return itineraryPattern.test(normalized) ? "itinerary" : "informational";
-}
-
-export function shouldUseCriticAgent(input: string): boolean {
-	const normalized = input.trim().toLowerCase();
-	if (!normalized) {
-		return false;
-	}
-
-	return /\b(validate|validation|review|revise|revision|improve|check|audit)\b/.test(normalized);
-}
-
-export function resolveAgentExecutionPlan(
-	messages: Array<{ role: string; content: string }>
-): AgentExecutionPlan {
-	const latestUserMessage = getLatestUserMessage(messages);
-	const intent = classifyIntent(latestUserMessage);
-	const includeCritic = shouldUseCriticAgent(latestUserMessage);
-
-	return {
-		mode: intent === "informational" ? "direct_researcher" : "supervisor",
-		intent,
-		includeCritic,
-	};
 }
 
 function parseLatestTripDraft(
@@ -149,41 +105,26 @@ function buildRuntimeContextMessage(
 	};
 }
 
-export function buildExecutionMessages(
-	messages: Array<{ role: string; content: string }>,
-	options: {
-		userLocation?: { lat: number; lng: number };
-		sessionId?: string;
-		userId?: string;
-		userPreferences?: Record<string, unknown>;
-	}
-): Array<{ role: "user" | "assistant" | "system"; content: string }> {
-	return [
-		buildRuntimeContextMessage(messages, options),
-		...messages,
-	].map((msg) => ({
-		role: msg.role as "user" | "assistant" | "system",
-		content: msg.content,
-	}));
-}
-
 // Create the multi-agent supervisor graph
 export function createTripPlannerSupervisor(config: SupervisorConfig = {}): CompiledSupervisorGraph {
 	const llm = config.model || new ChatOpenAI({
+<<<<<<< HEAD
 		modelName: DEFAULT_AGENT_MODEL,
 		temperature: 1,
+=======
+		modelName: "gpt-4o-mini",
+		temperature: 0,
+>>>>>>> parent of c8c0ae4 (feat:personalized)
 	});
 
 	// Create agents with shared model for consistency
 	const researcherAgent = createResearcherAgent(llm);
 	const plannerAgent = createPlannerAgent(llm);
-	const agents = config.includeCritic
-		? [researcherAgent, plannerAgent, createCriticAgent(llm)]
-		: [researcherAgent, plannerAgent];
+	const criticAgent = createCriticAgent(llm);
 
 	// Create supervisor workflow
 	const supervisor = createSupervisor({
-		agents,
+		agents: [researcherAgent, plannerAgent, criticAgent],
 		llm,
 		prompt: SUPERVISOR_PROMPT,
 	});
@@ -199,7 +140,7 @@ let _supervisorInstance: CompiledSupervisorGraph | null = null;
 
 export function getSupervisorInstance(): CompiledSupervisorGraph {
 	if (!_supervisorInstance) {
-		_supervisorInstance = createTripPlannerSupervisor({ includeCritic: false });
+		_supervisorInstance = createTripPlannerSupervisor();
 	}
 	return _supervisorInstance;
 }
@@ -217,16 +158,18 @@ export async function invokeSupervisor(
 		sessionId?: string;
 		userId?: string;
 		userPreferences?: Record<string, unknown>;
-		includeCritic?: boolean;
 	} = {}
 ): Promise<{ messages: Array<{ role: string; content: string }> }> {
-	const supervisor =
-		options.includeCritic === undefined
-			? getSupervisorInstance()
-			: createTripPlannerSupervisor({ includeCritic: options.includeCritic });
+	const supervisor = getSupervisorInstance();
 
 	// Format messages for LangGraph
-	const formattedMessages = buildExecutionMessages(messages, options);
+	const formattedMessages = [
+		buildRuntimeContextMessage(messages, options),
+		...messages,
+	].map((msg) => ({
+		role: msg.role as "user" | "assistant" | "system",
+		content: msg.content,
+	}));
 
 	// Invoke the supervisor
 	const result = await supervisor.invoke({
@@ -244,19 +187,21 @@ export async function* streamSupervisor(
 		sessionId?: string;
 		userId?: string;
 		userPreferences?: Record<string, unknown>;
-		includeCritic?: boolean;
 	} = {}
 ): AsyncGenerator<{
 	type: "agent" | "tool" | "message" | "done";
 	data: Record<string, unknown>;
 }> {
-	const supervisor =
-		options.includeCritic === undefined
-			? getSupervisorInstance()
-			: createTripPlannerSupervisor({ includeCritic: options.includeCritic });
+	const supervisor = getSupervisorInstance();
 
 	// Format messages for LangGraph
-	const formattedMessages = buildExecutionMessages(messages, options);
+	const formattedMessages = [
+		buildRuntimeContextMessage(messages, options),
+		...messages,
+	].map((msg) => ({
+		role: msg.role as "user" | "assistant" | "system",
+		content: msg.content,
+	}));
 
 	// Stream events from the supervisor
 	const stream = await supervisor.stream(

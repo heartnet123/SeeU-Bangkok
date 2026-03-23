@@ -5,11 +5,11 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Supercluster from 'supercluster';
 import { MapControls } from './map-controls';
+import { SmartFilterBar, type FilterCategory } from './smart-filter-bar';
 import { PlacePopupContent } from './place-popup-content';
 import { createRoot } from 'react-dom/client';
 import type { Root } from 'react-dom/client';
 import { motion, AnimatePresence } from 'motion/react';
-import { getFocusTarget } from "./lib/focus-target";
 
 // Types
 interface Place {
@@ -28,7 +28,6 @@ interface Place {
 
 interface MapContainerProps {
   places: Place[];
-  focusedPlaces?: Array<Pick<Place, "lat" | "lng">> | null;
   selectedPlace?: Place | null;
   onPlaceSelect: (place: Place) => void;
   onPlaceDeselect: () => void;
@@ -184,7 +183,6 @@ const ClusterContent: React.FC<{
 
 const MapContainer: React.FC<MapContainerProps> = ({
   places,
-  focusedPlaces = null,
   selectedPlace,
   onPlaceSelect,
   onPlaceDeselect,
@@ -240,6 +238,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const lastBoundsRef = useRef<[number, number, number, number] | null>(null);
   const [is3DEnabled, setIs3DEnabled] = useState(show3D);
   const [isTrafficEnabled, setIsTrafficEnabled] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<FilterCategory>('all');
 
   // Initialize Supercluster
   const initSupercluster = useCallback(() => {
@@ -265,11 +264,19 @@ const MapContainer: React.FC<MapContainerProps> = ({
       }));
   }, []);
 
+  // Filter places by active category filter
+  const filteredPlaces = useMemo(() => {
+    if (activeFilter === 'all') return places;
+    return places.filter((place) =>
+      place.tags.some((tag) => tag.toLowerCase().includes(activeFilter))
+    );
+  }, [places, activeFilter]);
+
   // Get clustered features
   const clusteredFeatures = useMemo(() => {
     if (!superclusterRef.current || !currentBounds) return [];
 
-    const features = placesToFeatures(places);
+    const features = placesToFeatures(filteredPlaces);
     superclusterRef.current.load(features);
 
     if (previewItinerary) {
@@ -281,7 +288,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
       currentBounds,
       Math.floor(currentZoom)
     ) as SuperclusterFeature[];
-  }, [places, currentBounds, currentZoom, placesToFeatures, previewItinerary]);
+  }, [filteredPlaces, currentBounds, currentZoom, placesToFeatures, previewItinerary]);
 
   // Emit currently visible (unclustered) places to parent for UI sync
   const lastVisiblePlacesRef = useRef<string[]>([]);
@@ -1294,42 +1301,6 @@ const MapContainer: React.FC<MapContainerProps> = ({
       .addTo(map.current);
   }, [userLocation, mapLoaded]);
 
-  // Focus the map on the currently selected trip's pins.
-  useEffect(() => {
-    if (!map.current || !mapLoaded || previewItinerary || selectedPlace) return;
-
-    const target = getFocusTarget(focusedPlaces ?? []);
-    if (!target) return;
-
-    if (target.type === "point") {
-      map.current.flyTo({
-        center: target.center,
-        zoom: 16,
-        pitch: is3DEnabled ? 50 : 0,
-        bearing: 0,
-        duration: 1000,
-        essential: true,
-        easing: (t) => t * (2 - t),
-      });
-      return;
-    }
-
-    const bounds = new mapboxgl.LngLatBounds(
-      target.coordinates[0],
-      target.coordinates[0]
-    );
-
-    for (const coordinate of target.coordinates) {
-      bounds.extend(coordinate);
-    }
-
-    map.current.fitBounds(bounds, {
-      padding: { top: 80, bottom: 80, left: 80, right: 400 },
-      duration: 1000,
-      maxZoom: 15,
-    });
-  }, [focusedPlaces, is3DEnabled, mapLoaded, previewItinerary, selectedPlace]);
-
   // Fly to selected place with enhanced animation
   useEffect(() => {
     if (!map.current || !mapLoaded || !selectedPlace) return;
@@ -1429,6 +1400,13 @@ const MapContainer: React.FC<MapContainerProps> = ({
     <div className="relative w-full h-full">
       {/* Map container */}
       <div ref={mapContainer} className="w-full h-full" />
+
+      {/* Smart filter bar */}
+      <SmartFilterBar
+        activeFilter={activeFilter}
+        onFilterChange={setActiveFilter}
+        isDarkMode={mapStyle === 'dark'}
+      />
 
       {/* Map controls */}
       <MapControls

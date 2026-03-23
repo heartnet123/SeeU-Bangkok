@@ -16,7 +16,6 @@ import type { Trip, TripStop } from "@/types/trip";
 import type { TripDraft, TripDraftStop } from "@/components/planner/chat/types";
 import { buildTripDraftSavePayload } from "@/components/planner/chat/lib/trip-draft";
 import { nameToSlug } from "@/lib/slug-utils";
-import { mapSavedTripFromDraft, mapServerTripToTrip } from "@/lib/trip-mappers";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -162,7 +161,29 @@ export default function TripPlannerPage() {
         : { success: false, error: 'Bad response' };
 
       if (response.ok && data.success && Array.isArray(data.data)) {
-        const serverTrips = data.data.map(mapServerTripToTrip);
+        // Transform server trip data to match Trip interface
+        const serverTrips = data.data.map((trip: any) => ({
+          id: trip.id,
+          name: trip.title || 'Unnamed Trip',
+          date: trip.created_at ? new Date(trip.created_at).toLocaleDateString() : 'No date',
+          stops: (trip.stops || []).map((stop: any) => ({
+            id: stop.id,
+            placeId: stop.place_id || stop.place?.id,
+            name: stop.place?.name || 'Unknown Stop',
+            address: stop.place?.name || 'Address unknown',
+            category: stop.place?.tags?.[0] || 'Viewpoint',
+            suggestedDurationMin: stop.suggested_time_min || 60,
+            lat: stop.place?.lat || 0,
+            lng: stop.place?.lng || 0,
+            notes: stop.notes || '',
+            distanceFromPrevKm: stop.distance_from_prev_km || 0,
+          })),
+          totalDurationMin: trip.total_minutes || 0,
+          totalDistanceKm: trip.total_distance_km || 0,
+          estimatedBudget: 0,
+          notes: '',
+          source: 'saved',
+        }));
 
         setTrips(serverTrips);
         if (serverTrips.length > 0 && !selectedTripId) {
@@ -234,11 +255,7 @@ export default function TripPlannerPage() {
   useEffect(() => {
     const fetchInitialPlaces = async () => {
       try {
-        const response = await fetch(`${serverUrl}/api/places?limit=50`, {
-          headers: session?.access_token
-            ? { Authorization: `Bearer ${session.access_token}` }
-            : undefined,
-        });
+        const response = await fetch(`${serverUrl}/api/places?limit=50`);
 
         if (!response.ok) {
           throw new Error("Failed to fetch initial places");
@@ -266,7 +283,7 @@ export default function TripPlannerPage() {
     };
 
     fetchInitialPlaces();
-  }, [serverUrl, session?.access_token]);
+  }, []);
 
   // Debounced search function
   const performSearch = useCallback(async (query: string, category: string) => {
@@ -288,11 +305,7 @@ export default function TripPlannerPage() {
       params.append('limit', '20');
       params.append('locale', locale);
 
-      const response = await fetch(`${serverUrl}/api/places?${params.toString()}`, {
-        headers: session?.access_token
-          ? { Authorization: `Bearer ${session.access_token}` }
-          : undefined,
-      });
+      const response = await fetch(`${serverUrl}/api/places?${params.toString()}`);
 
       if (!response.ok) {
         throw new Error('Search failed');
@@ -320,7 +333,7 @@ export default function TripPlannerPage() {
     } finally {
       setIsSearching(false);
     }
-  }, [locale, serverUrl, session?.access_token, t]);
+  }, [locale, serverUrl, t]);
 
   // Debounce search
   useEffect(() => {
@@ -340,18 +353,6 @@ export default function TripPlannerPage() {
     setActiveTripDraft(tripDraft);
     console.log("Received trip draft from agent:", tripDraft);
   };
-
-  const handleItinerarySaved = useCallback((savedTrip: { id: string; title?: string; created_at?: string }, tripDraft: TripDraft) => {
-    const nextTrip = mapSavedTripFromDraft({ savedTrip, tripDraft });
-
-    setTrips((prev) => {
-      const withoutDuplicate = prev.filter((trip) => trip.id !== nextTrip.id);
-      return [nextTrip, ...withoutDuplicate];
-    });
-    setSelectedTripId(nextTrip.id);
-    setActiveTripDraft(null);
-    void fetchSavedTrips();
-  }, [fetchSavedTrips]);
 
   const handleAddPlaceToTrip = (place: PlaceItem) => {
     if (!selectedTripId) {
@@ -708,14 +709,6 @@ export default function TripPlannerPage() {
     [enrichedTripDraft]
   );
 
-  const focusedTripPlaces = useMemo(() => {
-    if (leftPanelTab !== "trips" || !selectedTrip) {
-      return [];
-    }
-
-    return transformTripStopsForMap(selectedTrip);
-  }, [leftPanelTab, selectedTrip]);
-
   const allPlacesForMap = useMemo(() => {
     if (enrichedTripDraft) {
       return tripDraftStopsForMap;
@@ -764,7 +757,6 @@ export default function TripPlannerPage() {
       <div className="absolute inset-0 z-0 md:left-[400px] md:right-[400px]">
         <MapContainer
           places={allPlacesForMap}
-          focusedPlaces={focusedTripPlaces}
           selectedPlace={selectedPlace}
           onPlaceSelect={setSelectedPlace}
           onPlaceDeselect={() => setSelectedPlace(null)}
@@ -963,7 +955,6 @@ export default function TripPlannerPage() {
               selectedTripId={selectedTripId}
               onSelectTrip={(tripId) => {
                 setSelectedTripId(tripId);
-                setSelectedPlace(null);
                 setActiveTripDraft(null);
               }}
               onNewTripClick={handleNewTrip}
@@ -1025,7 +1016,6 @@ export default function TripPlannerPage() {
               selectedTripId={selectedTripId}
               onSelectTrip={(tripId) => {
                 setSelectedTripId(tripId);
-                setSelectedPlace(null);
                 setActiveTripDraft(null);
               }}
               onNewTripClick={handleNewTrip}
@@ -1060,7 +1050,6 @@ export default function TripPlannerPage() {
         onAddPlaceToTrip={handleAddPlaceToTrip}
         onTripDraftCreated={handleTripDraftCreated}
         onPreviewTripDraft={setActiveTripDraft}
-        onItinerarySaved={handleItinerarySaved}
         userLocation={userLocation}
         defaultOpen={isChatOpen}
         sessionId={activeSessionId}
