@@ -37,7 +37,7 @@ Remember: Your goal is to ensure users get high-quality, feasible trip plans. Be
 export function createCriticAgent(model?: ChatOpenAI): ReturnType<typeof createReactAgent> {
 	const llm = model || new ChatOpenAI({
 		modelName: DEFAULT_AGENT_MODEL,
-		temperature: 0,
+		temperature: 1,
 	});
 
 	return createReactAgent({

@@ -171,7 +171,7 @@ export function buildExecutionMessages(
 export function createTripPlannerSupervisor(config: SupervisorConfig = {}): CompiledSupervisorGraph {
 	const llm = config.model || new ChatOpenAI({
 		modelName: DEFAULT_AGENT_MODEL,
-		temperature: 0,
+		temperature: 1,
 	});
 
 	// Create agents with shared model for consistency
