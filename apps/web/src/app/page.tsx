@@ -17,28 +17,28 @@ export default function Home() {
 				<div className="absolute inset-0 bg-black/20"></div>
 				
 				{/* Background Image Placeholder (if you want to add the actual image later) */}
-				<div className="absolute inset-0 bg-[url('/test.gif')] bg-cover bg-center bg-no-repeat"></div>
+				<div className="absolute inset-0 bg-[url('https://www.journee-mondiale.com/de/wp-content/uploads/2025/05/2025-05-26-12-35-08_.webp')] bg-cover bg-center bg-no-repeat"></div>
 				
 				<div className="relative z-10 container mx-auto max-w-6xl px-6 text-center">
 					<InView>
 						<div className="mb-8">
 							<TextEffect
-								as="h1"
-								preset="fade-in-blur"
-								per="word"
-								className="text-5xl md:text-7xl lg:text-8xl font-bold text-white mb-4 leading-tight"
-							>
-								{t("home.title1")}
-							</TextEffect>
-							<TextEffect
-								as="h1"
-								preset="fade-in-blur"
-								per="word"
-								delay={0.3}
-								className="text-5xl md:text-7xl lg:text-8xl font-bold text-orange-500 mb-8 leading-tight"
-							>
-								{t("home.title2")}
-							</TextEffect>
+                                as="h1"
+                                preset="fade-in-blur"
+                                per="word"
+                                className="home-hero-title-soft-shadow text-5xl md:text-7xl lg:text-8xl font-bold text-white mb-4 leading-tight"
+                            >
+                                {t("home.title1")}
+                            </TextEffect>
+                            <TextEffect
+                                as="h1"
+                                preset="fade-in-blur"
+                                per="word"
+                                delay={0.3}
+                                className="home-hero-title-soft-shadow hidden-gems-brass text-5xl md:text-7xl lg:text-8xl font-bold mb-8 leading-tight"
+                            >
+                                {t("home.title2")}
+                            </TextEffect>
 						</div>
 					</InView>
 					

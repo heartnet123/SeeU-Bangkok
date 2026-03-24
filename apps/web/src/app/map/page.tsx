@@ -765,7 +765,7 @@ export default function TripPlannerPage() {
           onPlaceDeselect={() => setSelectedPlace(null)}
           onVisiblePlacesChange={setVisiblePlaces}
           userLocation={
-            userLocation ? [userLocation.lat, userLocation.lng] : undefined
+            userLocation ? [userLocation.lng, userLocation.lat] : undefined
           }
           initialCenter={[100.5018, 13.7563]}
           initialZoom={12}
