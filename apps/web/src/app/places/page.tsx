@@ -12,7 +12,7 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { MapPin, Search, Check } from "lucide-react";
+import { MapPin, Search, Star, Bookmark, ArrowRight, Sparkles, Check, ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -33,24 +33,13 @@ interface Place {
   slug?: string;
 }
 
-function getPriceLabel(price: number) {
-  if (price <= 0) {
-    return "Free";
-  }
-
-  const level = Math.min(4, Math.max(1, Math.ceil(price / 300)));
-  const labels = ["Budget", "Moderate", "Premium", "Luxury"];
-
-  return `${labels[level - 1]} (${"฿".repeat(level)})`;
-}
-
 export default function PlacesPage() {
   const [places, setPlaces] = useState<Place[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string>("All Gems");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
   const placesPerPage = 6;
   const supabase = createClient();
@@ -78,7 +67,7 @@ export default function PlacesPage() {
         ...place,
         image_url: place.image_url || '',
         tags: Array.isArray(place.tags) ? place.tags : [],
-        description: place.description || 'Details coming soon.',
+        description: place.description || 'No description available',
         price: typeof place.price === 'number' ? place.price : 0,
         slug: nameToSlug(place.name || 'unknown-place')
       }));
@@ -86,20 +75,55 @@ export default function PlacesPage() {
       setPlaces(safeData);
     } catch (err) {
       console.error('Error fetching places:', err);
-      setError('We could not load places right now.');
+      setError('Failed to load places. Please try again later.');
     } finally {
       setLoading(false);
     }
   };
 
+  const normalizeTag = (value: string) =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/&/g, "and")
+      .replace(/\s+/g, " ");
+
+  const formatTagLabel = (value: string) =>
+    value
+      .split(" ")
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+
+  const categories = useMemo(() => {
+    const counter = new Map<string, number>();
+
+    for (const place of places) {
+      for (const tag of place.tags || []) {
+        const normalized = normalizeTag(tag);
+        if (!normalized) continue;
+        counter.set(normalized, (counter.get(normalized) || 0) + 1);
+      }
+    }
+
+    const dynamicCategories = Array.from(counter.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([value]) => ({
+        value,
+        label: formatTagLabel(value),
+      }));
+
+    return [{ value: "all", label: "All Gems" }, ...dynamicCategories];
+  }, [places]);
+
   const filteredPlaces = useMemo(() => {
     let result = places;
 
     // Category filter
-    if (selectedCategory !== "All Gems") {
+    if (selectedCategory !== "all") {
       result = result.filter(place => {
-        const placeTags = Array.isArray(place.tags) ? place.tags.map(t => t.toLowerCase()) : [];
-        return placeTags.includes(selectedCategory.toLowerCase());
+        const placeTags = Array.isArray(place.tags) ? place.tags.map((t) => normalizeTag(t)) : [];
+        return placeTags.includes(selectedCategory);
       });
     }
 
@@ -144,8 +168,6 @@ export default function PlacesPage() {
     }
   }, [currentPage, totalPages]);
 
-  const categories = ["All Gems", "Cafe & Roast", "Art & Culture", "Street Food", "Architecture", "Nature", "Nightlife"];
-
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center" aria-busy="true">
@@ -179,11 +201,6 @@ export default function PlacesPage() {
 
       {/* Search/Hero Section */}
       <header className="bg-white border-b border-blue-100/50 pt-14 pb-12">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full max-w-7xl pointer-events-none opacity-40">
-          <div className="absolute top-[-10%] left-[-10%] w-[40%] aspect-square rounded-full bg-blue-50 blur-3xl"></div>
-          <div className="absolute bottom-[-20%] right-[-10%] w-[50%] aspect-square rounded-full bg-sky-50 blur-3xl"></div>
-        </div>
-
         <div className="relative max-w-3xl mx-auto px-6 text-center flex flex-col items-center">
           <h1 className="text-4xl md:text-5xl font-semibold tracking-tight text-slate-900 mb-3">
             Uncover the <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-sky-500">unseen Bangkok.</span>
@@ -197,11 +214,7 @@ export default function PlacesPage() {
               <div className="pl-5 text-blue-400 flex items-center justify-center">
                 <Search className="w-6 h-6" />
               </div>
-              <label htmlFor="places-search" className="sr-only">
-                Search by place name, vibe, neighborhood, or tag
-              </label>
               <input
-                id="places-search"
                 type="text"
                 placeholder="Try riverside cafe, street food, or Talat Noi"
                 className="w-full py-4 pl-3 pr-4 text-base bg-transparent border-none focus:outline-none text-slate-800 placeholder:text-slate-400"
@@ -222,31 +235,22 @@ export default function PlacesPage() {
         {/* Sidebar Filters */}
         <aside className="w-full lg:w-64 flex-shrink-0 space-y-8">
           <div>
-            <h2 id="places-category-heading" className="text-sm font-semibold tracking-tight text-slate-900 mb-4">
-              Browse by category
-            </h2>
-            <div className="space-y-2" role="radiogroup" aria-labelledby="places-category-heading">
+            <h3 className="text-sm font-semibold tracking-tight text-slate-900 mb-4">Categories</h3>
+            <div className="space-y-2">
               {categories.map((cat) => {
-                const isSelected = selectedCategory === cat;
+                const isSelected = selectedCategory === cat.value;
                 return (
-                  <button
-                    key={cat}
-                    type="button"
-                    role="radio"
-                    aria-checked={isSelected}
-                    className="flex w-full items-center gap-3 cursor-pointer group text-left rounded-lg px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
-                    onClick={() => {
-                      setSelectedCategory(cat);
-                      setCurrentPage(1);
-                    }}
-                  >
+                  <label key={cat.value} className="flex items-center gap-3 cursor-pointer group" onClick={() => {
+                    setSelectedCategory(cat.value);
+                    setCurrentPage(1);
+                  }}>
                     <div className={`relative w-4 h-4 rounded border flex items-center justify-center transition-colors ${isSelected ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white group-hover:border-blue-400'}`}>
                       {isSelected && <Check className="w-3 h-3" />}
                     </div>
                     <span className={`text-sm transition-colors ${isSelected ? 'text-blue-700 font-medium' : 'text-slate-600 group-hover:text-slate-900'}`}>
-                      {cat}
+                      {cat.label}
                     </span>
-                  </button>
+                  </label>
                 );
               })}
             </div>
@@ -286,7 +290,7 @@ export default function PlacesPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {currentPlaces.length === 0 ? (
               <div className="col-span-full rounded-2xl border border-dashed border-slate-300 bg-white/70 p-12 text-center text-slate-500">
-                No places match that search yet. Try another vibe, area, or category.
+                No places match your search yet. Try different keywords.
               </div>
             ) : (
               currentPlaces.map((place) => {
@@ -295,11 +299,22 @@ export default function PlacesPage() {
               const mapUrl = hasCoordinates
                 ? `https://www.google.com/maps?q=${place.lat},${place.lng}`
                 : null;
+              const placeDetailHref = `/places/${place.slug || nameToSlug(place.name || "unknown-place")}`;
 
               return (
                 <Card 
                   key={place.id} 
-                  className="group hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 bg-gray-200"
+                  className="group cursor-pointer hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 bg-gray-200"
+                  role="link"
+                  tabIndex={0}
+                  aria-label={`Open details for ${place.name}`}
+                  onClick={() => router.push(placeDetailHref)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      router.push(placeDetailHref);
+                    }
+                  }}
                 >
                   <CardContent className="p-0 flex flex-col h-full">
                       {/* Always show placeholder image */}
@@ -311,8 +326,8 @@ export default function PlacesPage() {
                     className="object-cover transition-transform duration-300 group-hover:scale-105"
                 />
                         <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors duration-300" />
-                        <div className="absolute bottom-4 left-4 right-4 text-white min-w-0">
-                          <h3 className="text-xl font-semibold break-words">{place.name}</h3>
+                        <div className="absolute bottom-4 left-4 text-white">
+                          <h3 className="text-xl font-semibold">{place.name}</h3>
                           {place.tags && place.tags.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-2">
                               {place.tags.slice(0, 2).map((tag, index) => (
@@ -326,41 +341,26 @@ export default function PlacesPage() {
                       </div>
                       
                       {/* Content */}
-                      <div className="px-6 py-5 flex flex-col flex-grow min-w-0">
-                        <p className="text-gray-600 mb-4 leading-relaxed flex-grow break-words line-clamp-4">
+                      <div className="px-6 py-5 flex flex-col flex-grow">
+                        <p className="text-gray-600 mb-4 leading-relaxed flex-grow">
                           {place.description}
                         </p>
-                        <p className="text-sm text-gray-500 mb-4 break-words">{place.address || "Location details coming soon"}</p>
-                        <span className="flex-shrink-0 whitespace-nowrap text-sm text-gray-700 mb-4" aria-label={`Price level: ${getPriceLabel(place.price)}`}>
-                          {getPriceLabel(place.price)}
-                        </span>
                         
                         {/* Action Buttons */}
                         <div className="flex flex-col sm:flex-row gap-3">
-                          <Button
-                            asChild
-                            className="flex-1 w-full bg-blue-700 hover:bg-blue-800 text-white"
-                          >
-                            <Link
-                              href={`/places/${place.slug}`}
-                              >
-                              View details
-                            </Link>
-</Button>
                           <Button 
                             type="button"
-                            variant="outline" 
-                            className="flex-1 border-gray-300 text-gray-700 hover:bg-gray-50 flex items-center justify-center gap-2"
+                            className="flex-1 w-full bg-blue-700 hover:bg-blue-900 text-white border-0"
                             disabled={!hasCoordinates}
-                            aria-label={hasCoordinates ? `Open ${place.name} on Google Maps` : `Map coordinates unavailable for ${place.name}`}
-                            onClick={() => {
+                            onClick={(event) => {
+                              event.stopPropagation();
                               if (mapUrl) {
                                 window.open(mapUrl, "_blank", "noopener,noreferrer");
                               }
                             }}
                           >
                             <MapPin className="w-4 h-4" />
-                            Open map
+                            View on Map
                           </Button>
                         </div>
                       </div>
