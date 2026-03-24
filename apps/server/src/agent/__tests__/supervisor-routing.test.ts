@@ -1,0 +1,143 @@
+import { describe, expect, test } from "bun:test";
+import {
+	classifySupervisorIntent,
+	isCriticRequested,
+} from "../intent-classification";
+import { normalizeSupervisorInvocationResult } from "../response-normalization";
+import { deriveSupervisorRoutingPolicy } from "../routing-policy";
+import type { TripDraft } from "../state";
+
+const draft: TripDraft = {
+	title: "Bangkok temple loop",
+	summary: "Three-stop temple day trip.",
+	constraints: {
+		durationMinutes: 360,
+		maxStops: 4,
+		budgetLevel: "medium",
+		groupType: "solo",
+		themes: ["culture"],
+	},
+	places: [],
+	stops: [
+		{
+			id: "1",
+			place_id: "wat-arun",
+			slug: "wat-arun",
+			name: "Wat Arun",
+			suggested_time_min: 60,
+			notes: "Start here",
+			distance_from_prev_km: 0,
+			travel_time_from_prev_min: 0,
+		},
+	],
+	total_distance_km: 0,
+	total_minutes: 60,
+	warnings: [],
+	validation: {
+		isValid: true,
+		score: 0.9,
+		warnings: [],
+		suggestions: [],
+	},
+};
+
+describe("supervisor intent classification", () => {
+	test("classifies place discovery as informational", () => {
+		expect(
+			classifySupervisorIntent({
+				messages: [{ role: "user", content: "What temples are in Bangkok?" }],
+			})
+		).toBe("informational");
+	});
+
+	test("classifies trip planning as itinerary", () => {
+		expect(
+			classifySupervisorIntent({
+				messages: [{ role: "user", content: "Plan a half-day temple tour" }],
+			})
+		).toBe("itinerary");
+	});
+
+	test("treats draft revision as itinerary", () => {
+		expect(
+			classifySupervisorIntent({
+				messages: [{ role: "user", content: "Please improve this itinerary" }],
+				currentTripDraft: draft,
+			})
+		).toBe("itinerary");
+	});
+});
+
+describe("supervisor routing policy", () => {
+	test("uses researcher only for informational requests", () => {
+		expect(
+			deriveSupervisorRoutingPolicy({
+				messages: [{ role: "user", content: "Find street food near Siam" }],
+			})
+		).toEqual({
+			intent: "informational",
+			requiresResearch: true,
+			requiresPlanning: false,
+			useCritic: false,
+			supervisorMode: "researcher_only",
+			responseFormat: "researcher_json",
+		});
+	});
+
+	test("uses researcher and planner for itinerary requests without critic escalation", () => {
+		expect(
+			deriveSupervisorRoutingPolicy({
+				messages: [{ role: "user", content: "Plan a day trip to 3 temples" }],
+			})
+		).toMatchObject({
+			supervisorMode: "researcher_planner",
+			useCritic: false,
+			intent: "itinerary",
+		});
+	});
+
+	test("escalates to critic for explicit validation requests", () => {
+		expect(
+			isCriticRequested({
+				messages: [{ role: "user", content: "Review this itinerary and improve it" }],
+				currentTripDraft: draft,
+			})
+		).toBe(true);
+
+		expect(
+			deriveSupervisorRoutingPolicy({
+				messages: [{ role: "user", content: "Review this itinerary and improve it" }],
+				currentTripDraft: draft,
+			})
+		).toMatchObject({
+			supervisorMode: "researcher_planner_critic",
+			useCritic: true,
+		});
+	});
+});
+
+describe("supervisor response normalization", () => {
+	test("normalizes non-string message content to strings", () => {
+		expect(
+			normalizeSupervisorInvocationResult({
+				messages: [{ role: "assistant", content: { ok: true } }],
+			})
+		).toEqual({
+			messages: [{ role: "assistant", content: JSON.stringify({ ok: true }), name: undefined }],
+		});
+	});
+
+	test("keeps structured assistant json payload string intact", () => {
+		const content = JSON.stringify({
+			intent: "place_recommendation",
+			summary: "Top picks",
+			places: [],
+		});
+
+		expect(
+			normalizeSupervisorInvocationResult({
+				messages: [{ role: "assistant", content }],
+			}).messages[0]?.content
+		).toBe(content);
+	});
+});

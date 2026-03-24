@@ -5,50 +5,25 @@ import { createResearcherAgent } from "./agents/researcher";
 import { createPlannerAgent } from "./agents/planner";
 import { createCriticAgent } from "./agents/critic";
 import { parseLatestTripDraft } from "./payload-parsing";
+import {
+	deriveSupervisorRoutingPolicy,
+	type SupervisorMode,
+	type SupervisorRoutingPolicy,
+} from "./routing-policy";
+import {
+	normalizeSupervisorInvocationResult,
+	normalizeSupervisorMessage,
+} from "./response-normalization";
 
 // Supervisor system prompt
 const SUPERVISOR_PROMPT = `You are the Bangkok Trip Planning Supervisor. Your role is to coordinate specialized agents to help users plan trips in Bangkok.
 
-AVAILABLE AGENTS:
-1. **researcher_agent** - Finds places, searches locations, performs semantic search for context
-2. **planner_agent** - Creates optimized routes and itineraries, calculates distances/timing
-3. **critic_agent** - Validates itineraries, suggests improvements, quality assurance
-
-WORKFLOW GUIDELINES:
-1. For discovery/search queries → delegate to researcher_agent only
-2. For itinerary/route/trip requests → use researcher_agent to find real places, then planner_agent to create a canonical trip draft
-3. Use critic_agent only when user explicitly asks to validate or revise a draft, or when planner output has obvious feasibility risk
-4. Prefer the minimum agent chain needed to answer correctly; avoid unnecessary handoffs
-
-DELEGATION RULES:
-- Gather information (researcher) before planning (planner)
-- If user asks simple questions about places, researcher alone is sufficient
-- If user wants a trip, tour, or route planned, use researcher → planner
-- Use critic only when explicitly asked for validation or when output quality checks indicate risk
-- CRITICAL: DO NOT explicitly answer itinerary or place-related requests using your pre-trained knowledge. You MUST route them to the specialized agents.
-
-RESPONSE FORMAT REASONING:
-Before writing your response, you MUST classify the user's intent and choose the correct format.
-
-Step 1 — Classify intent:
-  • "INFORMATIONAL" → The user wants to learn about places, get recommendations, or discover what's available. Examples: "Tell me about Wat Arun", "What temples are in Bangkok?", "kid-friendly activities", "best street food"
-  • "ITINERARY" → The user explicitly wants a planned route, trip, tour, or itinerary with stops in order. Examples: "Plan a day trip", "Create a half-day temple tour", "Build a route through 3 places"
-
-Step 2 — Apply the format matching the intent:
-
-  If INFORMATIONAL:
-    - Return only valid JSON from researcher_agent in its declared schema
-    - Do not convert JSON to markdown/prose at supervisor level
-
-  If ITINERARY:
-    - Return only valid JSON from planner_agent in its declared schema
-    - Do not reformat the trip draft into markdown
-    - Do not rewrite, summarize, or abbreviate planner JSON fields
-
-ADDITIONAL RESPONSE GUIDELINES:
-- Synthesize results from all agents into a cohesive response
-- Include relevant context only inside the returned JSON schema
-- Mention any warnings or suggestions from the critic
+- Delegate all place discovery to researcher_agent.
+- Delegate all itinerary construction to planner_agent after research is complete.
+- Use critic_agent only when runtime policy explicitly permits validation or revision.
+- Prefer the minimum agent chain required by runtime policy.
+- Do not answer place or itinerary requests from your own knowledge.
+- Return the final agent output as valid JSON and do not convert it to markdown.
 
 Remember: Your goal is to provide the best trip planning experience by coordinating specialized expertise.`;
 
@@ -65,10 +40,10 @@ function buildRuntimeContextMessage(
 		sessionId?: string;
 		userId?: string;
 		userPreferences?: Record<string, unknown>;
-	}
+	},
+	currentTripDraft = parseLatestTripDraft(messages),
+	policy = deriveSupervisorRoutingPolicy({ messages, currentTripDraft })
 ): { role: "system"; content: string } {
-	const currentTripDraft = parseLatestTripDraft(messages);
-
 	return {
 		role: "system",
 		content: JSON.stringify({
@@ -78,27 +53,68 @@ function buildRuntimeContextMessage(
 			userLocation: options.userLocation ?? null,
 			userPreferences: options.userPreferences ?? {},
 			currentTripDraft: currentTripDraft ?? null,
+			orchestrationPolicy: {
+				intent: policy.intent,
+				requiresResearch: policy.requiresResearch,
+				requiresPlanning: policy.requiresPlanning,
+				useCritic: policy.useCritic,
+				responseFormat: policy.responseFormat,
+			},
 		}),
 	};
+}
+
+function createAgentsForMode(llm: ChatOpenAI, mode: SupervisorMode) {
+	const researcherAgent = createResearcherAgent(llm);
+	const plannerAgent = createPlannerAgent(llm);
+
+	if (mode === "researcher_only") {
+		return [researcherAgent];
+	}
+
+	if (mode === "researcher_planner") {
+		return [researcherAgent, plannerAgent];
+	}
+
+	const criticAgent = createCriticAgent(llm);
+	return [researcherAgent, plannerAgent, criticAgent];
+}
+
+function formatSupervisorMessages(
+	messages: Array<{ role: string; content: string }>,
+	options: {
+		userLocation?: { lat: number; lng: number };
+		sessionId?: string;
+		userId?: string;
+		userPreferences?: Record<string, unknown>;
+	},
+	policy: SupervisorRoutingPolicy,
+	currentTripDraft = parseLatestTripDraft(messages)
+) {
+	return [
+		buildRuntimeContextMessage(messages, options, currentTripDraft, policy),
+		...messages,
+	].map((msg) => ({
+		role: msg.role as "user" | "assistant" | "system",
+		content: msg.content,
+	}));
 }
 
 // Create the multi-agent supervisor graph
 // Using explicit 'any' return type to avoid bun's cross-module type resolution issues
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function createTripPlannerSupervisor(config: SupervisorConfig = {}): any {
+export function createTripPlannerSupervisor(
+	config: SupervisorConfig = {},
+	mode: SupervisorMode = "researcher_planner_critic"
+): any {
 	const llm = config.model || new ChatOpenAI({
 		modelName: "gpt-4o-mini",
 		temperature: 0,
 	});
 
-	// Create agents with shared model for consistency
-	const researcherAgent = createResearcherAgent(llm);
-	const plannerAgent = createPlannerAgent(llm);
-	const criticAgent = createCriticAgent(llm);
-
 	// Create supervisor workflow
 	const supervisor = createSupervisor({
-		agents: [researcherAgent, plannerAgent, criticAgent],
+		agents: createAgentsForMode(llm, mode),
 		llm,
 		prompt: SUPERVISOR_PROMPT,
 	});
@@ -112,19 +128,23 @@ export function createTripPlannerSupervisor(config: SupervisorConfig = {}): any 
 // Pre-built supervisor instance (lazy initialization)
 // Using 'any' here to avoid cross-module type issues with bun's module resolution
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _supervisorInstance: any = null;
+const _supervisorInstances: Partial<Record<SupervisorMode, any>> = {};
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function getSupervisorInstance(): any {
-	if (!_supervisorInstance) {
-		_supervisorInstance = createTripPlannerSupervisor();
+export function getSupervisorInstance(
+	mode: SupervisorMode = "researcher_planner_critic"
+): any {
+	if (!_supervisorInstances[mode]) {
+		_supervisorInstances[mode] = createTripPlannerSupervisor({}, mode);
 	}
-	return _supervisorInstance;
+	return _supervisorInstances[mode];
 }
 
 // Reset supervisor (useful for testing or reconfiguration)
 export function resetSupervisor(): void {
-	_supervisorInstance = null;
+	delete _supervisorInstances.researcher_only;
+	delete _supervisorInstances.researcher_planner;
+	delete _supervisorInstances.researcher_planner_critic;
 }
 
 // Invoke the supervisor with messages
@@ -137,23 +157,22 @@ export async function invokeSupervisor(
 		userPreferences?: Record<string, unknown>;
 	} = {}
 ): Promise<{ messages: Array<{ role: string; content: string }> }> {
-	const supervisor = getSupervisorInstance();
-
-	// Format messages for LangGraph
-	const formattedMessages = [
-		buildRuntimeContextMessage(messages, options),
-		...messages,
-	].map((msg) => ({
-		role: msg.role as "user" | "assistant" | "system",
-		content: msg.content,
-	}));
+	const currentTripDraft = parseLatestTripDraft(messages);
+	const policy = deriveSupervisorRoutingPolicy({ messages, currentTripDraft });
+	const supervisor = getSupervisorInstance(policy.supervisorMode);
+	const formattedMessages = formatSupervisorMessages(
+		messages,
+		options,
+		policy,
+		currentTripDraft
+	);
 
 	// Invoke the supervisor
 	const result = await supervisor.invoke({
 		messages: formattedMessages,
 	});
 
-	return result;
+	return normalizeSupervisorInvocationResult(result);
 }
 
 // Stream the supervisor execution for SSE
@@ -169,16 +188,15 @@ export async function* streamSupervisor(
 	type: "agent" | "tool" | "message" | "done";
 	data: any;
 }> {
-	const supervisor = getSupervisorInstance();
-
-	// Format messages for LangGraph
-	const formattedMessages = [
-		buildRuntimeContextMessage(messages, options),
-		...messages,
-	].map((msg) => ({
-		role: msg.role as "user" | "assistant" | "system",
-		content: msg.content,
-	}));
+	const currentTripDraft = parseLatestTripDraft(messages);
+	const policy = deriveSupervisorRoutingPolicy({ messages, currentTripDraft });
+	const supervisor = getSupervisorInstance(policy.supervisorMode);
+	const formattedMessages = formatSupervisorMessages(
+		messages,
+		options,
+		policy,
+		currentTripDraft
+	);
 
 	// Stream events from the supervisor
 	const stream = await supervisor.stream(
@@ -222,11 +240,16 @@ export async function* streamSupervisor(
 				if (data.messages) {
 					for (const message of data.messages) {
 						if (message.content) {
+							const normalizedMessage = normalizeSupervisorMessage(message as {
+								role?: string;
+								content: unknown;
+								name?: string;
+							});
 							yield {
 								type: "message",
 								data: {
-									role: message.role || "assistant",
-									content: message.content,
+									role: normalizedMessage.role,
+									content: normalizedMessage.content,
 									agent: currentAgent,
 								},
 							};
