@@ -83,33 +83,33 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
+    <div className="min-h-screen bg-white text-slate-900">
       <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-12">
         <div className="flex flex-col gap-4">
-          <div className="flex items-center gap-3 text-sm text-slate-300">
-            <Sparkles className="h-4 w-4 text-amber-300" />
+          <div className="flex items-center gap-3 text-sm text-slate-600">
+            <Sparkles className="h-4 w-4 text-amber-500" />
             <span>Personalize your first Bangkok itinerary</span>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-semibold">Travel Preference Survey</h1>
-              <p className="text-slate-400">Step {step} of {totalSteps} · {stepLabel}</p>
+              <p className="text-slate-500">Step {step} of {totalSteps} · {stepLabel}</p>
             </div>
-            <Button variant="ghost" className="text-slate-200" onClick={() => submit(true)} disabled={submitting}>
+            <Button variant="ghost" className="text-slate-700" onClick={() => submit(true)} disabled={submitting}>
               Skip for now
             </Button>
           </div>
-          <div className="h-2 w-full rounded-full bg-slate-800">
-            <div className="h-2 rounded-full bg-gradient-to-r from-amber-300 to-purple-400" style={{ width: `${(step / totalSteps) * 100}%` }} />
+          <div className="h-2 w-full rounded-full bg-slate-200">
+            <div className="h-2 rounded-full bg-gradient-to-r from-amber-400 to-purple-500" style={{ width: `${(step / totalSteps) * 100}%` }} />
           </div>
         </div>
 
-        <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-8 shadow-2xl">
+        <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-8 shadow-xl">
           {step === 1 && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-xl font-semibold">Choose visual vibes you want to experience</h2>
-                <p className="text-slate-400">Pick 2-4 styles to guide mood, color, and neighborhoods.</p>
+                <p className="text-slate-500">Pick 2-4 styles to guide mood, color, and neighborhoods.</p>
               </div>
               <div className="grid gap-4 md:grid-cols-3">
                 {vibeCards.map((card) => {
@@ -118,16 +118,16 @@ export default function OnboardingPage() {
                     <button
                       key={card.id}
                       onClick={() => toggleArrayItem('vibes', card.id)}
-                      className={`group relative overflow-hidden rounded-2xl border ${selected ? 'border-amber-300' : 'border-slate-800'} bg-slate-950/60 text-left transition hover:-translate-y-1`}
+                      className={`group relative overflow-hidden rounded-2xl border ${selected ? 'border-amber-400' : 'border-slate-300'} bg-white text-left transition hover:-translate-y-1`}
                       type="button"
                     >
                       <Image src={card.img} alt={card.label} width={600} height={420} className="h-40 w-full object-cover opacity-80 transition group-hover:opacity-100" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-transparent" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-transparent" />
                       <div className="absolute bottom-4 left-4 right-4">
                         <div className="flex items-center justify-between">
                           <div>
-                            <p className="text-sm uppercase tracking-wider text-amber-200">{card.category}</p>
-                            <h3 className="text-lg font-semibold">{card.label}</h3>
+                            <p className="text-sm uppercase tracking-wider text-amber-100">{card.category}</p>
+                            <h3 className="text-lg font-semibold text-white">{card.label}</h3>
                           </div>
                           {selected && <Check className="h-5 w-5 text-amber-300" />}
                         </div>
@@ -143,7 +143,7 @@ export default function OnboardingPage() {
             <div className="space-y-6">
               <div>
                 <h2 className="text-xl font-semibold">Select your travel archetype</h2>
-                <p className="text-slate-400">We will tune recommendations to your decision style.</p>
+                <p className="text-slate-500">We will tune recommendations to your decision style.</p>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
                 {travelStyles.map((style) => {
@@ -152,11 +152,11 @@ export default function OnboardingPage() {
                     <button
                       key={style.id}
                       onClick={() => setSelections((prev) => ({ ...prev, travelStyle: style.id }))}
-                      className={`rounded-2xl border p-5 text-left transition ${active ? 'border-amber-300 bg-slate-800/60' : 'border-slate-800 bg-slate-950/40 hover:bg-slate-900/70'}`}
+                      className={`rounded-2xl border p-5 text-left transition ${active ? 'border-amber-400 bg-amber-50' : 'border-slate-300 bg-white hover:bg-slate-50'}`}
                       type="button"
                     >
                       <h3 className="text-lg font-semibold">{style.title}</h3>
-                      <p className="text-sm text-slate-400">{style.desc}</p>
+                      <p className="text-sm text-slate-600">{style.desc}</p>
                     </button>
                   )
                 })}
@@ -168,10 +168,10 @@ export default function OnboardingPage() {
             <div className="space-y-6">
               <div>
                 <h2 className="text-xl font-semibold">Set your pace</h2>
-                <p className="text-slate-400">Slow travel or packed itinerary? Drag the dial.</p>
+                <p className="text-slate-500">Slow travel or packed itinerary? Drag the dial.</p>
               </div>
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
-                <div className="flex items-center justify-between text-sm text-slate-400">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
+                <div className="flex items-center justify-between text-sm text-slate-600">
                   <span>Slow & flexible</span>
                   <span>Fast & packed</span>
                 </div>
@@ -184,8 +184,8 @@ export default function OnboardingPage() {
                   className="mt-4 w-full"
                 />
                 <div className="mt-3 flex items-center justify-between text-sm">
-                  <span className="text-slate-400">Current</span>
-                  <span className="font-semibold text-amber-200">{selections.pace}%</span>
+                  <span className="text-slate-600">Current</span>
+                  <span className="font-semibold text-amber-600">{selections.pace}%</span>
                 </div>
               </div>
               <div className="grid gap-4 md:grid-cols-3">
@@ -195,7 +195,7 @@ export default function OnboardingPage() {
                     <button
                       key={item}
                       onClick={() => toggleArrayItem('transit', item)}
-                      className={`rounded-xl border px-4 py-3 text-sm transition ${active ? 'border-amber-300 bg-amber-300/10' : 'border-slate-800 bg-slate-950/40 hover:bg-slate-900/70'}`}
+                      className={`rounded-xl border px-4 py-3 text-sm transition ${active ? 'border-amber-400 bg-amber-100' : 'border-slate-300 bg-white hover:bg-slate-50'}`}
                       type="button"
                     >
                       {item}
@@ -210,11 +210,11 @@ export default function OnboardingPage() {
             <div className="space-y-6">
               <div>
                 <h2 className="text-xl font-semibold">Set boundaries & food priorities</h2>
-                <p className="text-slate-400">Tell us what to avoid and what you crave.</p>
+                <p className="text-slate-500">Tell us what to avoid and what you crave.</p>
               </div>
               <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-4">
-                  <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Culinary targets</h3>
+                  <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-600">Culinary targets</h3>
                   <div className="flex flex-wrap gap-3">
                     {preferences.culinary.map((item) => {
                       const active = selections.culinary.includes(item)
@@ -222,7 +222,7 @@ export default function OnboardingPage() {
                         <button
                           key={item}
                           onClick={() => toggleArrayItem('culinary', item)}
-                          className={`rounded-full border px-4 py-2 text-sm transition ${active ? 'border-amber-300 bg-amber-300/10' : 'border-slate-800 bg-slate-950/40 hover:bg-slate-900/70'}`}
+                          className={`rounded-full border px-4 py-2 text-sm transition ${active ? 'border-amber-400 bg-amber-100' : 'border-slate-300 bg-white hover:bg-slate-50'}`}
                           type="button"
                         >
                           {item}
@@ -232,7 +232,7 @@ export default function OnboardingPage() {
                   </div>
                 </div>
                 <div className="space-y-4">
-                  <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Avoid</h3>
+                  <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-600">Avoid</h3>
                   <div className="flex flex-wrap gap-3">
                     {preferences.boundaries.map((item) => {
                       const active = selections.boundaries.includes(item)
@@ -240,7 +240,7 @@ export default function OnboardingPage() {
                         <button
                           key={item}
                           onClick={() => toggleArrayItem('boundaries', item)}
-                          className={`rounded-full border px-4 py-2 text-sm transition ${active ? 'border-rose-400 bg-rose-400/10' : 'border-slate-800 bg-slate-950/40 hover:bg-slate-900/70'}`}
+                          className={`rounded-full border px-4 py-2 text-sm transition ${active ? 'border-rose-400 bg-rose-100' : 'border-slate-300 bg-white hover:bg-slate-50'}`}
                           type="button"
                         >
                           {item}
@@ -257,7 +257,7 @@ export default function OnboardingPage() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <Button
             variant="ghost"
-            className="text-slate-300"
+            className="text-slate-700"
             disabled={step === 1}
             onClick={() => setStep((prev) => Math.max(1, prev - 1))}
           >
