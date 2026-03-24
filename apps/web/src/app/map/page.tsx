@@ -57,6 +57,12 @@ interface ChatSession {
   metadata: { title?: string };
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string | null | undefined): value is string {
+  return typeof value === "string" && UUID_PATTERN.test(value);
+}
+
 // Category definitions with icons (labels will use translations inside component)
 const DEFAULT_CATEGORIES = [
   { id: 'all', key: 'nav.all', icon: Globe },
@@ -526,7 +532,7 @@ export default function TripPlannerPage() {
                 total_minutes: trip.totalDurationMin,
                 total_distance_km: trip.totalDistanceKm,
                 stops: orderedStops.map(s => ({
-                  ...(s.placeId ? { place_id: s.placeId } : { slug: nameToSlug(s.name) }),
+                  ...(isUuid(s.placeId) ? { place_id: s.placeId } : { slug: nameToSlug(s.name) }),
                   suggested_time_min: s.suggestedDurationMin,
                   notes: s.notes ?? "",
                   distance_from_prev_km: s.distanceFromPrevKm,

@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase';
 import { slugToName } from '../lib/slug-utils';
 
 const itineraries = new Hono();
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const stopInput = z.union([
 	z.object({
@@ -33,6 +34,22 @@ const createSchema = z.object({
 
 type StopInput = z.infer<typeof stopInput>;
 
+function isUuid(value: string): boolean {
+	return UUID_PATTERN.test(value);
+}
+
+function getStopSlug(stop: StopInput): string | null {
+	if ('slug' in stop && typeof stop.slug === 'string' && stop.slug.length > 0) {
+		return stop.slug;
+	}
+
+	if ('place_id' in stop && stop.place_id && !isUuid(stop.place_id)) {
+		return stop.place_id;
+	}
+
+	return null;
+}
+
 async function resolveStop(
 	stop: StopInput,
 	position: number
@@ -44,20 +61,45 @@ async function resolveStop(
 	distance_from_prev_km?: number;
 }> {
 	if ('place_id' in stop && stop.place_id) {
-		return {
-			place_id: stop.place_id,
+		if (isUuid(stop.place_id)) {
+			return {
+				place_id: stop.place_id,
+				position,
+				suggested_time_min: stop.suggested_time_min,
+				notes: stop.notes,
+				distance_from_prev_km: stop.distance_from_prev_km,
+			};
+		}
+
+		const inferredSlug = getStopSlug(stop);
+		if (!inferredSlug) {
+			console.warn('[itineraries.resolveStop] Non-UUID place_id received; likely slug leaked into place_id', {
+				position,
+				place_id: stop.place_id,
+				slug: 'slug' in stop ? stop.slug : undefined,
+			});
+			throw new Error('Invalid place_id. Expected UUID or a resolvable stop slug.');
+		}
+
+		console.warn('[itineraries.resolveStop] Non-UUID place_id received; resolving via slug fallback', {
 			position,
-			suggested_time_min: stop.suggested_time_min,
-			notes: stop.notes,
-			distance_from_prev_km: stop.distance_from_prev_km,
-		};
+			place_id: stop.place_id,
+			slug: inferredSlug,
+		});
 	}
 
-	if (!('slug' in stop) || !stop.slug) {
+	const resolvedSlug = getStopSlug(stop);
+
+	if (!resolvedSlug) {
 		throw new Error('Stop slug is required when place_id is not provided');
 	}
 
-	const name = slugToName(stop.slug);
+	console.info('[itineraries.resolveStop] Resolving stop slug to UUID place id', {
+		position,
+		slug: resolvedSlug,
+	});
+
+	const name = slugToName(resolvedSlug);
 	let { data: place, error } = await supabase
 		.from('bangkok_unseen')
 		.select('id, name')
@@ -73,11 +115,11 @@ async function resolveStop(
 			.limit(1)
 			.single();
 		if (fallbackError || !fallbackPlace) {
-			throw new Error(`Place not found for slug: ${stop.slug}`);
+			throw new Error(`Place not found for slug: ${resolvedSlug}`);
 		}
 		place = fallbackPlace;
 	} else if (error || !place) {
-		throw new Error(`Place not found for slug: ${stop.slug}`);
+		throw new Error(`Place not found for slug: ${resolvedSlug}`);
 	}
 
 	return {

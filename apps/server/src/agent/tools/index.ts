@@ -33,23 +33,37 @@ import { buildRouteTool, planItineraryTool } from "./planning";
 import { validateItineraryTool } from "./validation";
 
 // All tools grouped by agent specialty
-export const RESEARCHER_TOOLS = [
+export const RESEARCHER_TOOLS: [
+	typeof searchPlacesTool,
+	typeof nearbyPlacesTool,
+	typeof vectorSearchTool,
+] = [
 	searchPlacesTool,
 	nearbyPlacesTool,
 	vectorSearchTool,
 ];
 
-export const PLANNER_TOOLS = [
+export const PLANNER_TOOLS: [
+	typeof buildRouteTool,
+	typeof planItineraryTool,
+] = [
 	buildRouteTool,
 	planItineraryTool,
 ];
 
-export const CRITIC_TOOLS = [
+export const CRITIC_TOOLS: [typeof validateItineraryTool] = [
 	validateItineraryTool,
 ];
 
 // All tools combined
-export const ALL_TOOLS = [
+export const ALL_TOOLS: Array<
+	| typeof searchPlacesTool
+	| typeof nearbyPlacesTool
+	| typeof vectorSearchTool
+	| typeof buildRouteTool
+	| typeof planItineraryTool
+	| typeof validateItineraryTool
+> = [
 	...RESEARCHER_TOOLS,
 	...PLANNER_TOOLS,
 	...CRITIC_TOOLS,

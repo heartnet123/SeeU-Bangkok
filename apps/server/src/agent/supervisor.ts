@@ -1,5 +1,4 @@
-// Supervisor - Dynamic orchestration of specialized agents
-import { createSupervisor } from "@langchain/langgraph-supervisor";
+// Supervisor - Explicit graph-style orchestration of specialized agents
 import { ChatOpenAI } from "@langchain/openai";
 import { createResearcherAgent } from "./agents/researcher";
 import { createPlannerAgent } from "./agents/planner";
@@ -14,6 +13,12 @@ import {
 	normalizeSupervisorInvocationResult,
 	normalizeSupervisorMessage,
 } from "./response-normalization";
+import type {
+	CandidatePlace,
+	PlanningConstraints,
+	TripDraft,
+	UiResponsePayload,
+} from "./state";
 
 // Supervisor system prompt
 const SUPERVISOR_PROMPT = `You are the Bangkok Trip Planning Supervisor. Your role is to coordinate specialized agents to help users plan trips in Bangkok.
@@ -31,6 +36,42 @@ Remember: Your goal is to provide the best trip planning experience by coordinat
 export interface SupervisorConfig {
 	model?: ChatOpenAI;
 	recursionLimit?: number;
+}
+
+interface GraphAgentMessage {
+	role: string;
+	content: string;
+	name?: string;
+}
+
+interface SupervisorGraphState {
+	messages: GraphAgentMessage[];
+	userLocation?: { lat: number; lng: number };
+	sessionId?: string;
+	userId?: string;
+	userPreferences: Record<string, unknown>;
+	currentTripDraft?: TripDraft;
+	planningConstraints?: PlanningConstraints;
+	policy: SupervisorRoutingPolicy;
+	finalPayload: UiResponsePayload | null;
+	finalResponse: string | null;
+	suggestedPlaces: CandidatePlace[];
+	validation:
+		| {
+				isValid: boolean;
+				score: number;
+				warnings: string[];
+				suggestions: string[];
+			}
+		| null;
+	revisionCount: number;
+	maxRevisions: number;
+}
+
+interface StreamCollector {
+	onAgent?: (agent: string) => Promise<void>;
+	onTool?: (tool: string, args: unknown) => Promise<void>;
+	onMessage?: (message: { role: string; content: string; agent: string | null }) => Promise<void>;
 }
 
 function buildRuntimeContextMessage(
@@ -80,6 +121,275 @@ function createAgentsForMode(llm: ChatOpenAI, mode: SupervisorMode) {
 	return [researcherAgent, plannerAgent, criticAgent];
 }
 
+function createInitialGraphState(
+	messages: Array<{ role: string; content: string }>,
+	options: {
+		userLocation?: { lat: number; lng: number };
+		sessionId?: string;
+		userId?: string;
+		userPreferences?: Record<string, unknown>;
+	},
+	policy: SupervisorRoutingPolicy,
+	currentTripDraft = parseLatestTripDraft(messages)
+): SupervisorGraphState {
+	return {
+		messages: formatSupervisorMessages(messages, options, policy, currentTripDraft),
+		userLocation: options.userLocation,
+		sessionId: options.sessionId,
+		userId: options.userId,
+		userPreferences: options.userPreferences ?? {},
+		currentTripDraft,
+		planningConstraints: undefined,
+		policy,
+		finalPayload: null,
+		finalResponse: null,
+		suggestedPlaces: [],
+		validation: null,
+		revisionCount: 0,
+		maxRevisions: 2,
+	};
+}
+
+function updateStateFromAssistantMessages(
+	state: SupervisorGraphState,
+	messages: GraphAgentMessage[]
+): void {
+	for (const message of messages) {
+		state.messages.push(message);
+	}
+
+	const latestAssistant = [...messages].reverse().find((message) => message.role === "assistant");
+	if (!latestAssistant?.content) {
+		return;
+	}
+
+	state.finalResponse = latestAssistant.content;
+
+	try {
+		const parsed = JSON.parse(latestAssistant.content) as Record<string, unknown>;
+
+		if (Array.isArray(parsed.places)) {
+			state.suggestedPlaces = parsed.places as CandidatePlace[];
+		}
+
+		if (parsed.planningConstraints && typeof parsed.planningConstraints === "object") {
+			state.planningConstraints = parsed.planningConstraints as PlanningConstraints;
+		}
+
+		if (parsed.tripDraft && typeof parsed.tripDraft === "object") {
+			state.currentTripDraft = parsed.tripDraft as TripDraft;
+		}
+
+		if (
+			typeof parsed.summary === "string" &&
+			"version" in parsed &&
+			"raw_text" in parsed
+		) {
+			state.finalPayload = parsed as unknown as UiResponsePayload;
+		}
+	} catch {
+		// Plain text assistant responses are allowed.
+	}
+}
+
+async function invokeGraphAgentNode(
+	agent: any,
+	agentName: string,
+	state: SupervisorGraphState,
+	collector?: StreamCollector
+): Promise<void> {
+	await collector?.onAgent?.(agentName);
+
+	const stream = await agent.stream(
+		{ messages: state.messages },
+		{ streamMode: "updates" }
+	);
+
+	const assistantMessages: GraphAgentMessage[] = [];
+
+	for await (const event of stream) {
+		for (const [nodeName, nodeData] of Object.entries(event)) {
+			if (nodeName !== "__end__" && nodeName !== agentName) {
+				await collector?.onAgent?.(nodeName);
+			}
+
+			if (!nodeData || typeof nodeData !== "object") {
+				continue;
+			}
+
+			const data = nodeData as Record<string, unknown>;
+			const toolCalls = Array.isArray(data.tool_calls)
+				? data.tool_calls
+				: Array.isArray(data.toolCalls)
+					? data.toolCalls
+					: [];
+
+			for (const toolCall of toolCalls as Array<Record<string, unknown>>) {
+				await collector?.onTool?.(
+					String(toolCall.name || toolCall.tool || "unknown_tool"),
+					toolCall.args || toolCall.input || null
+				);
+			}
+
+			if (!Array.isArray(data.messages)) {
+				continue;
+			}
+
+			for (const message of data.messages as Array<{
+				role?: string;
+				content: unknown;
+				name?: string;
+			}>) {
+				const normalizedMessage = normalizeSupervisorMessage(message);
+				if (normalizedMessage.role === "assistant") {
+					assistantMessages.push(normalizedMessage);
+				}
+
+				await collector?.onMessage?.({
+					role: normalizedMessage.role,
+					content: normalizedMessage.content,
+					agent: agentName,
+				});
+			}
+		}
+	}
+
+	updateStateFromAssistantMessages(state, assistantMessages);
+}
+
+function shouldPlan(state: SupervisorGraphState): boolean {
+	return state.policy.requiresPlanning;
+}
+
+function shouldValidate(state: SupervisorGraphState): boolean {
+	return state.policy.useCritic && Boolean(state.currentTripDraft);
+}
+
+function shouldRevise(state: SupervisorGraphState): boolean {
+	if (!state.validation || !state.currentTripDraft) {
+		return false;
+	}
+
+	if (state.revisionCount >= state.maxRevisions) {
+		return false;
+	}
+
+	return !state.validation.isValid || state.validation.score < 80;
+}
+
+async function hydrateContextNode(state: SupervisorGraphState): Promise<void> {
+	state.messages = [
+		buildRuntimeContextMessage(
+			state.messages.filter((message) => message.role !== "system"),
+			{
+				userLocation: state.userLocation,
+				sessionId: state.sessionId,
+				userId: state.userId,
+				userPreferences: state.userPreferences,
+			},
+			state.currentTripDraft,
+			state.policy
+		),
+		...state.messages.filter((message) => message.role !== "system"),
+	];
+}
+
+async function researchNode(
+	state: SupervisorGraphState,
+	llm: ChatOpenAI,
+	collector?: StreamCollector
+): Promise<void> {
+	await invokeGraphAgentNode(createResearcherAgent(llm), "researcher_agent", state, collector);
+}
+
+async function planNode(
+	state: SupervisorGraphState,
+	llm: ChatOpenAI,
+	collector?: StreamCollector
+): Promise<void> {
+	await invokeGraphAgentNode(createPlannerAgent(llm), "planner_agent", state, collector);
+}
+
+async function validateNode(
+	state: SupervisorGraphState,
+	llm: ChatOpenAI,
+	collector?: StreamCollector
+): Promise<void> {
+	await invokeGraphAgentNode(createCriticAgent(llm), "critic_agent", state, collector);
+
+	if (!state.currentTripDraft) {
+		return;
+	}
+
+	state.validation = state.currentTripDraft.validation;
+	if (shouldRevise(state)) {
+		state.revisionCount += 1;
+		state.messages.push({
+			role: "system",
+			content: JSON.stringify({
+				type: "revision_request",
+				revisionCount: state.revisionCount,
+				validation: state.validation,
+				instruction:
+					"Revise the itinerary to address validation warnings and improve the quality score.",
+			}),
+		});
+	}
+}
+
+async function finalizeNode(state: SupervisorGraphState): Promise<void> {
+	if (state.finalPayload) {
+		state.finalResponse = JSON.stringify(state.finalPayload);
+		return;
+	}
+
+	if (!state.finalResponse) {
+		state.finalResponse = JSON.stringify({
+			intent: state.policy.requiresPlanning ? "itinerary" : "place_recommendation",
+			summary: "",
+			places: state.suggestedPlaces,
+			tripDraft: state.currentTripDraft ?? null,
+		});
+	}
+}
+
+async function runSupervisorGraph(
+	messages: Array<{ role: string; content: string }>,
+	options: {
+		userLocation?: { lat: number; lng: number };
+		sessionId?: string;
+		userId?: string;
+		userPreferences?: Record<string, unknown>;
+	} = {},
+	collector?: StreamCollector
+): Promise<SupervisorGraphState> {
+	const currentTripDraft = parseLatestTripDraft(messages);
+	const policy = deriveSupervisorRoutingPolicy({ messages, currentTripDraft });
+	const llm = new ChatOpenAI({
+		modelName: "gpt-4o-mini",
+		temperature: 0,
+	});
+	const state = createInitialGraphState(messages, options, policy, currentTripDraft);
+
+	await hydrateContextNode(state);
+	await researchNode(state, llm, collector);
+
+	if (shouldPlan(state)) {
+		await planNode(state, llm, collector);
+	}
+
+	if (shouldValidate(state)) {
+		await validateNode(state, llm, collector);
+		while (shouldRevise(state)) {
+			await planNode(state, llm, collector);
+			await validateNode(state, llm, collector);
+		}
+	}
+
+	await finalizeNode(state);
+	return state;
+}
+
 function formatSupervisorMessages(
 	messages: Array<{ role: string; content: string }>,
 	options: {
@@ -112,17 +422,51 @@ export function createTripPlannerSupervisor(
 		temperature: 0,
 	});
 
-	// Create supervisor workflow
-	const supervisor = createSupervisor({
-		agents: createAgentsForMode(llm, mode),
-		llm,
+	const agents = createAgentsForMode(llm, mode);
+
+	return {
+		mode,
 		prompt: SUPERVISOR_PROMPT,
-	});
+		agents,
+		async invoke(input: { messages: Array<{ role: string; content: string }> }) {
+			const state = await runSupervisorGraph(input.messages);
+			return {
+				messages: state.messages,
+			};
+		},
+		async stream(
+			input: { messages: Array<{ role: string; content: string }> },
+			_options?: { streamMode?: string }
+		) {
+			async function* generate() {
+				const events: Array<Record<string, unknown>> = [];
+				await runSupervisorGraph(input.messages, {}, {
+					onAgent: async (agent) => {
+						events.push({ [agent]: { messages: [] } });
+					},
+					onTool: async (tool, args) => {
+						events.push({ tool_event: { tool_calls: [{ name: tool, args }] } });
+					},
+					onMessage: async (message) => {
+						events.push({
+							[message.agent || "assistant"]: {
+								messages: [
+									{ role: message.role, content: message.content },
+								],
+							},
+						});
+					},
+				});
 
-	// Compile the graph
-	const compiledGraph = supervisor.compile();
+				for (const event of events) {
+					yield event;
+				}
+				yield { __end__: { success: true } };
+			}
 
-	return compiledGraph;
+			return generate();
+		},
+	};
 }
 
 // Pre-built supervisor instance (lazy initialization)
@@ -157,22 +501,8 @@ export async function invokeSupervisor(
 		userPreferences?: Record<string, unknown>;
 	} = {}
 ): Promise<{ messages: Array<{ role: string; content: string }> }> {
-	const currentTripDraft = parseLatestTripDraft(messages);
-	const policy = deriveSupervisorRoutingPolicy({ messages, currentTripDraft });
-	const supervisor = getSupervisorInstance(policy.supervisorMode);
-	const formattedMessages = formatSupervisorMessages(
-		messages,
-		options,
-		policy,
-		currentTripDraft
-	);
-
-	// Invoke the supervisor
-	const result = await supervisor.invoke({
-		messages: formattedMessages,
-	});
-
-	return normalizeSupervisorInvocationResult(result);
+	const state = await runSupervisorGraph(messages, options);
+	return normalizeSupervisorInvocationResult({ messages: state.messages });
 }
 
 // Stream the supervisor execution for SSE
@@ -188,76 +518,34 @@ export async function* streamSupervisor(
 	type: "agent" | "tool" | "message" | "done";
 	data: any;
 }> {
-	const currentTripDraft = parseLatestTripDraft(messages);
-	const policy = deriveSupervisorRoutingPolicy({ messages, currentTripDraft });
-	const supervisor = getSupervisorInstance(policy.supervisorMode);
-	const formattedMessages = formatSupervisorMessages(
-		messages,
-		options,
-		policy,
-		currentTripDraft
-	);
+	const bufferedEvents: Array<{
+		type: "agent" | "tool" | "message";
+		data: any;
+	}> = [];
 
-	// Stream events from the supervisor
-	const stream = await supervisor.stream(
-		{ messages: formattedMessages },
-		{ streamMode: "updates" }
-	);
+	await runSupervisorGraph(messages, options, {
+		onAgent: async (agent) => {
+			bufferedEvents.push({
+				type: "agent",
+				data: { agent },
+			});
+		},
+		onTool: async (tool, args) => {
+			bufferedEvents.push({
+				type: "tool",
+				data: { tool, args },
+			});
+		},
+		onMessage: async (message) => {
+			bufferedEvents.push({
+				type: "message",
+				data: message,
+			});
+		},
+	});
 
-	let currentAgent: string | null = null;
-
-	for await (const event of stream) {
-		// Extract node name and data from the event
-		for (const [nodeName, nodeData] of Object.entries(event)) {
-			// Track which agent is currently active
-			if (nodeName !== "__end__" && nodeName !== currentAgent) {
-				currentAgent = nodeName;
-				yield {
-					type: "agent",
-					data: { agent: nodeName },
-				};
-			}
-
-			// Handle different types of updates
-			if (nodeData && typeof nodeData === "object") {
-				const data = nodeData as Record<string, any>;
-
-				// Check for tool calls
-				if (data.tool_calls || data.toolCalls) {
-					const toolCalls = data.tool_calls || data.toolCalls;
-					for (const toolCall of toolCalls) {
-						yield {
-							type: "tool",
-							data: {
-								tool: toolCall.name || toolCall.tool,
-								args: toolCall.args || toolCall.input,
-							},
-						};
-					}
-				}
-
-				// Check for messages
-				if (data.messages) {
-					for (const message of data.messages) {
-						if (message.content) {
-							const normalizedMessage = normalizeSupervisorMessage(message as {
-								role?: string;
-								content: unknown;
-								name?: string;
-							});
-							yield {
-								type: "message",
-								data: {
-									role: normalizedMessage.role,
-									content: normalizedMessage.content,
-									agent: currentAgent,
-								},
-							};
-						}
-					}
-				}
-			}
-		}
+	for (const event of bufferedEvents) {
+		yield event;
 	}
 
 	yield {

@@ -6,7 +6,9 @@ import { X } from "lucide-react";
 import { toast } from "sonner";
 
 interface EditStop {
+  place_id?: string;
   slug: string;
+  label: string;
   suggested_time_min: number;
   notes: string;
 }
@@ -16,8 +18,12 @@ interface Trip {
   title: string;
   stops: Array<{
     id: string;
-    place?: { name: string };
+    place_id?: string;
+    place?: { id?: string; name: string };
+    name?: string;
+    slug?: string;
     suggested_time_min?: number;
+    suggestedDurationMin?: number;
     notes?: string;
   }>;
 }
@@ -49,9 +55,9 @@ export function EditTripDialog({
       setEditTitle(trip.title);
       setEditStops(
         trip.stops.map((s: any) => ({
-          // Support both saved-trips shape (s.place.name) and map/trip shape (s.name)
-          slug: s?.place?.name ?? s?.name ?? s?.slug ?? "",
-          // Support both naming conventions for suggested time
+          place_id: s?.place_id ?? s?.placeId ?? s?.place?.id,
+          slug: s?.slug ?? "",
+          label: s?.place?.name ?? s?.name ?? s?.slug ?? "",
           suggested_time_min: s?.suggested_time_min ?? s?.suggestedDurationMin ?? 60,
           notes: s?.notes ?? "",
         }))
@@ -72,7 +78,11 @@ export function EditTripDialog({
         },
         body: JSON.stringify({
           title: editTitle,
-          stops: editStops,
+          stops: editStops.map((stop) => ({
+            ...(stop.place_id ? { place_id: stop.place_id } : { slug: stop.slug }),
+            suggested_time_min: stop.suggested_time_min,
+            notes: stop.notes,
+          })),
         }),
       });
 
@@ -173,7 +183,7 @@ export function EditTripDialog({
                     {index + 1}
                   </div>
                   <div className="flex-1 space-y-2">
-                    <div className="font-medium text-black">{stop.slug}</div>
+                    <div className="font-medium text-black">{stop.label}</div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="text-xs text-gray-600">

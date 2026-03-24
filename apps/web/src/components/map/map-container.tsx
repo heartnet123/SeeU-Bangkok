@@ -1130,18 +1130,23 @@ const MapContainer: React.FC<MapContainerProps> = ({
     }
     lastPreviewRouteKeyRef.current = previewRouteKey;
 
-    const geojson = {
-      type: 'Feature',
-      properties: {},
-      geometry: {
-        type: 'LineString',
-        coordinates,
-      },
-    };
+    const drawRoute = (routeCoordinates: [number, number][]) => {
+      if (!map.current) return;
 
-    if (map.current.getSource(sourceId)) {
-      (map.current.getSource(sourceId) as mapboxgl.GeoJSONSource).setData(geojson as any);
-    } else {
+      const geojson = {
+        type: 'Feature',
+        properties: {},
+        geometry: {
+          type: 'LineString',
+          coordinates: routeCoordinates,
+        },
+      };
+
+      if (map.current.getSource(sourceId)) {
+        (map.current.getSource(sourceId) as mapboxgl.GeoJSONSource).setData(geojson as any);
+        return;
+      }
+
       map.current.addSource(sourceId, {
         type: 'geojson',
         data: geojson as any,
@@ -1156,36 +1161,53 @@ const MapContainer: React.FC<MapContainerProps> = ({
           'line-cap': 'round',
         },
         paint: {
-          'line-color': '#2563eb', // blue-600
+          'line-color': '#2563eb',
           'line-width': 4,
-          // 'line-dasharray': [2, 2], // Temporary dash array, changes to solid line when routing is fetched
+          'line-opacity': 0.85,
         },
       });
-    }
+    };
 
-    // Fetch realistic road route from Mapbox Directions API
+    const drawStraightRoute = () => {
+      drawRoute(coordinates as [number, number][]);
+    };
+
+    // Fetch realistic walking route from Mapbox Directions API first
     const fetchDirections = async () => {
       try {
         const coordsString = coordinates.map((c: number[]) => c.join(',')).join(';');
         const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
-        const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordsString}?geometries=geojson&access_token=${token}`;
+
+        if (!token) {
+          console.error('Mapbox access token not found for preview itinerary');
+          drawStraightRoute();
+          return;
+        }
+
+        const waypointIndices = Array.from({ length: coordinates.length }, (_, i) => i).join(';');
+        const url = `https://api.mapbox.com/directions/v5/mapbox/walking/${coordsString}?waypoints=${waypointIndices}&overview=full&geometries=geojson&access_token=${token}`;
 
         const res = await fetch(url);
+
+        if (!res.ok) {
+          console.error('Failed to fetch directions for preview itinerary', res.status, res.statusText);
+          drawStraightRoute();
+          return;
+        }
+
         const data = await res.json();
         if (data.routes && data.routes.length > 0) {
-          const routeGeojson = data.routes[0].geometry;
-          if (map.current?.getSource(sourceId)) {
-            (map.current.getSource(sourceId) as mapboxgl.GeoJSONSource).setData({
-              type: 'Feature',
-              properties: {},
-              geometry: routeGeojson,
-            } as any);
-
-            // Re-render layer property with solid line implicitly initialized via layout
+          const routeCoordinates = data.routes[0].geometry?.coordinates;
+          if (Array.isArray(routeCoordinates) && routeCoordinates.length > 1) {
+            drawRoute(routeCoordinates as [number, number][]);
+            return;
           }
         }
+
+        drawStraightRoute();
       } catch (err) {
         console.error('Failed to fetch directions for preview itinerary', err);
+        drawStraightRoute();
       }
     };
 

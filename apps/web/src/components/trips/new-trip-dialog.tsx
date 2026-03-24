@@ -130,6 +130,7 @@ export function NewTripDialog({
     setIsSubmitting(true);
     try {
       const stops = selectedPlaces.map((place, index) => ({
+        place_id: place.id,
         slug: place.slug || place.id,
         suggested_time_min: 60,
         notes: "",
