@@ -117,6 +117,7 @@ export default function TripPlannerPage() {
   const [chatSessionMessages, setChatSessionMessages] = useState<
     Array<{ role: string; content: string }> | null
   >(null);
+  const hasActiveSearch = searchQuery.trim() || selectedCategory !== 'all';
 
   const selectedTrip = trips.find((t) => t.id === selectedTripId) || null;
   const draftToTrip = useCallback((tripDraft: TripDraft): Trip => ({
@@ -713,7 +714,6 @@ export default function TripPlannerPage() {
       return transformTripStopsForMap(selectedTrip);
     }
 
-    const hasActiveSearch = searchQuery.trim() || selectedCategory !== 'all';
     const placesToShow = hasActiveSearch ? searchResults : initialPlaces;
 
     return [
@@ -836,15 +836,15 @@ export default function TripPlannerPage() {
 
         {/* Search Results Dropdown */}
         <AnimatePresence>
-          {searchResults.length > 0 && (searchQuery || selectedCategory !== 'all') && (
+          {searchResults.length > 0 && hasActiveSearch && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="absolute top-24 left-0 right-0 mt-2 bg-white/95 backdrop-blur-md rounded-2xl shadow-xl max-h-[420px] overflow-y-auto"
+              className="absolute top-[calc(100%+0.75rem)] left-0 right-0 mt-0 overflow-hidden rounded-2xl bg-white/95 shadow-xl backdrop-blur-md max-h-[min(48vh,420px)] overflow-y-auto md:max-h-[420px]"
             >
-              <div className="p-3">
-                <div className="px-2 py-2 text-sm text-gray-500 flex items-center justify-between">
+              <div className="p-3 sm:p-4">
+                <div className="px-1 py-2 text-sm text-gray-500 flex items-center justify-between gap-3">
                   <span>Found {searchResults.length} places</span>
                   <Button
                     variant="ghost"
@@ -856,8 +856,8 @@ export default function TripPlannerPage() {
                   </Button>
                 </div>
 
-                {/* Rich Place Cards Grid */}
-                <div className="grid grid-cols-2 gap-3 mt-2">
+                {/* Search results adapt from single column on mobile to grid on desktop */}
+                <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {searchResults.slice(0, 6).map((place, index) => (
                     <motion.div
                       key={place.id}
@@ -887,10 +887,12 @@ export default function TripPlannerPage() {
                           e.stopPropagation();
                           handleAddPlaceToTrip(place);
                         }}
-                        className="absolute top-2 right-2 h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 hover:bg-white shadow-md"
+                        className="absolute top-2 right-2 h-9 min-w-9 px-2 sm:h-7 sm:w-7 sm:min-w-7 sm:p-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity bg-white/95 hover:bg-white shadow-md"
                         title="Add to Trip"
+                        aria-label={`Add ${place.name} to trip`}
                       >
                         <Plus className="h-4 w-4 text-blue-600" />
+                        <span className="sr-only sm:not-sr-only sm:hidden">Add</span>
                       </Button>
                     </motion.div>
                   ))}

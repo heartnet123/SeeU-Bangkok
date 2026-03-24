@@ -30,6 +30,7 @@ export function BottomSheet({
   const [dragStartY, setDragStartY] = useState(0);
   const sheetRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const collapsedOffset = `calc(100% - ${peekHeight}px)`;
 
   const handleDragStart = (e: React.TouchEvent) => {
     setIsDragging(true);
@@ -92,14 +93,13 @@ export function BottomSheet({
         ref={sheetRef}
         className={cn(
           "fixed bottom-0 left-0 right-0 z-40 md:hidden transition-transform duration-300 ease-out",
-          isOpen ? "translate-y-0" : `translate-y-[calc(100%-${peekHeight}px)]`,
           isDragging && "transition-none",
           className
         )}
         style={{
           transform: isDragging
-            ? `translateY(calc(${isOpen ? "0px" : `calc(100% - ${peekHeight}px)`} + ${dragOffset}px))`
-            : undefined,
+            ? `translateY(calc(${isOpen ? "0px" : collapsedOffset} + ${dragOffset}px))`
+            : `translateY(${isOpen ? "0px" : collapsedOffset})`,
         }}
         onTouchMove={handleDragMove}
         onTouchEnd={handleDragEnd}
@@ -107,11 +107,40 @@ export function BottomSheet({
         <div className="bg-white rounded-t-2xl shadow-2xl max-h-[80vh] flex flex-col">
           {/* Drag Handle & Peek Header */}
           <div
-            className="flex justify-center items-center pt-3 pb-2 cursor-grab active:cursor-grabbing select-none touch-none"
+            className="flex flex-col items-center justify-center gap-2 px-4 pt-3 pb-3 cursor-grab active:cursor-grabbing select-none touch-none border-b border-slate-200/80"
             onTouchStart={handleDragStart}
             onClick={handlePeekClick}
+            role="button"
+            tabIndex={0}
+            aria-expanded={isOpen}
+            aria-label={isOpen ? "Collapse trip panel" : "Expand trip panel"}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onOpenChange?.(!isOpen);
+                if (isOpen) {
+                  onClose();
+                }
+              }
+            }}
           >
             <div className="w-12 h-1 bg-slate-300 rounded-full" />
+            <div className="flex items-center justify-between w-full text-sm">
+              <div className="min-w-0">
+                <p className="font-semibold text-slate-900 truncate">
+                  {title || "Trip details"}
+                </p>
+                <p className="text-slate-500 text-xs">
+                  {isOpen ? "Swipe down or tap to collapse" : "Tap to reopen your trip and itinerary"}
+                </p>
+              </div>
+              <ChevronUp
+                className={cn(
+                  "h-5 w-5 text-slate-500 transition-transform duration-200",
+                  !isOpen && "rotate-180"
+                )}
+              />
+            </div>
           </div>
 
           {/* Header - Show only when expanded */}
