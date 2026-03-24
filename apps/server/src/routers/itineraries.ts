@@ -153,7 +153,7 @@ itineraries.get('/', authMiddleware, async (c) => {
 
 		const placeIds = Array.from(new Set((stops || []).map((stop) => stop.place_id).filter(Boolean)));
 		const { data: places, error: placeErr } = placeIds.length
-			? await supabase.from('bangkok_unseen').select('id, name, lat, lng, tags').in('id', placeIds)
+			? await supabase.from('bangkok_unseen').select('id, name, lat, lng, tags, image_url').in('id', placeIds)
 			: { data: [], error: null as any };
 		if (placeErr) throw placeErr;
 
@@ -176,6 +176,7 @@ itineraries.get('/', authMiddleware, async (c) => {
 					lat: place.lat,
 					lng: place.lng,
 					tags: Array.isArray(place.tags) ? place.tags : [],
+					image_url: place.image_url || '',
 				},
 			});
 		}
@@ -219,7 +220,7 @@ itineraries.get('/:id', authMiddleware, async (c) => {
 
 		const placeIds = Array.from(new Set((stops || []).map((stop) => stop.place_id).filter(Boolean)));
 		const { data: places, error: placeErr } = placeIds.length
-			? await supabase.from('bangkok_unseen').select('id, name, lat, lng, tags').in('id', placeIds)
+			? await supabase.from('bangkok_unseen').select('id, name, lat, lng, tags, image_url').in('id', placeIds)
 			: { data: [], error: null as any };
 		if (placeErr) throw placeErr;
 
@@ -239,6 +240,7 @@ itineraries.get('/:id', authMiddleware, async (c) => {
 					lat: place.lat,
 					lng: place.lng,
 					tags: Array.isArray(place.tags) ? place.tags : [],
+					image_url: place.image_url || '',
 				},
 			};
 		});
