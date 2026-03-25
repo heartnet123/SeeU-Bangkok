@@ -1,0 +1,128 @@
+﻿"test_id","category","prompt","expected_behavior","scope_type","actual_response","latency_ms","places_count","pass_fail","error_type","notes"
+"E01","Place Query","Recommend 3 historical places on Rattanakosin Island.","Should recommend 3 historical places within Rattanakosin Island","in_scope","Here are three historical places to visit on Rattanakosin Island.","21029","3","fail","scope_adherence_failure","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"
+"E02","Place Query","Which important temples on Rattanakosin Island are suitable for foreign tourists?","Should recommend important temples within Rattanakosin Island","in_scope","Here are some important temples on Rattanakosin Island that are suitable for foreign tourists.","25235","5","fail","scope_adherence_failure","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"
+"E03","Place Query","If I want to visit museums around Rattanakosin Island, where should I go?","Should recommend museums within Rattanakosin Island","in_scope","Here are some museums you can visit around Rattanakosin Island.","13189","3","fail","scope_adherence_failure","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"
+"E04","Place Query","What are good photo spots around Sanam Luang and the old town?","Should recommend photo spots around Sanam Luang and the old town","in_scope","Here are some great photo spots around Sanam Luang and the old town of Bangkok, featuring markets, museums, and historical sites.","30576","10","fail","scope_adherence_failure;generic_bangkok_response","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"
+"E05","Place Query","If I want an atmospheric old-town walk, where should I start?","Should recommend a starting point in Rattanakosin Island","in_scope","For an atmospheric old-town walk in Bangkok, consider exploring these historic neighborhoods and landmarks that offer a glimpse into the city's rich heritage.","18923","5","fail","scope_adherence_failure;generic_bangkok_response","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"
+"E06","Constraint-based Planning","Plan a half-day trip on Rattanakosin Island with 3 stops focused on temples and museums, with short travel distances.","Should create a 3-stop itinerary within Rattanakosin Island","in_scope","Explore the rich cultural heritage of Rattanakosin Island with visits to key temples and a museum.","51154","3","fail","scope_adherence_failure","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"
+"E07","Constraint-based Planning","Plan a full-day itinerary on Rattanakosin Island for foreign tourists who want to learn Thai history.","Should create a full-day history-oriented itinerary within Rattanakosin Island","in_scope","Explore the rich history of Thailand through its iconic temples and museums on Rattanakosin Island.","45665","0","fail","scope_adherence_failure","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"
+"E08","Constraint-based Planning","Plan a photo-focused walking itinerary on Rattanakosin Island with 4 stops.","Should create a 4-stop walking itinerary within Rattanakosin Island","in_scope","A scenic walking itinerary featuring the most photogenic spots on Rattanakosin Island.","35012","0","fail","scope_adherence_failure","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"
+"E09","Constraint-based Planning","Plan a family-friendly trip on Rattanakosin Island with minimal walking and some rest points.","Should create a family-friendly low-walking itinerary within Rattanakosin Island","in_scope","No suitable family-friendly places found on Rattanakosin Island. Consider exploring nearby areas for options.","14578","0","fail","scope_adherence_failure","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"
+"E10","Constraint-based Planning","Plan a budget-friendly half-day old-town trip focused on temples and museums.","Should create a budget-friendly half-day itinerary within Rattanakosin Island","in_scope","A budget-friendly half-day trip exploring Bangkok's temples and museums.","78943","6","fail","scope_adherence_failure;generic_bangkok_response","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"
+"E11","Plan Modification","Can you replace one temple stop with a café or resting spot in Rattanakosin Island?","Should revise the plan while keeping the same area","in_scope","Explore cultural sites and enjoy a relaxing day in Rattanakosin Island with museum visits.","57733","5","fail","scope_adherence_failure","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"
+"E12","Plan Modification","Please reduce the trip to only 2 stops, but keep it within Rattanakosin Island.","Should shorten the plan to 2 stops within the same area","in_scope","Explore two beautiful temples within Rattanakosin Island.","39183","2","fail","scope_adherence_failure","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"
+"E13","Plan Modification","Change the plan from temple-focused to museum-focused while keeping the same area.","Should switch the plan focus to museums within the same area","in_scope","Explore the rich history and culture of Thailand through its museums.","74437","4","fail","scope_adherence_failure","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"
+"E14","Plan Modification","If it rains, suggest an indoor backup plan on Rattanakosin Island.","Should provide an indoor fallback plan within Rattanakosin Island","in_scope","A backup plan for indoor activities in case of rain.","44516","3","fail","scope_adherence_failure","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"
+"E15","Plan Modification","Adjust the plan for elderly visitors with less walking while keeping the same area.","Should reduce walking while keeping the same area","in_scope","A relaxed temple tour in Bangkok, focusing on accessibility and minimal walking.","66175","0","fail","scope_adherence_failure;generic_bangkok_response","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"
+"E16","Ambiguous Queries","I want an old-town atmosphere tomorrow on Rattanakosin Island. Where should I go?","Should recommend old-town attractions specifically within Rattanakosin Island","in_scope","Explore the historic charm of Rattanakosin Island with these recommended places that embody an old-town atmosphere.","27984","10","fail","scope_adherence_failure","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"
+"E17","Ambiguous Queries","I want a mix of temples and museums in the old town. Please plan it for me.","Should plan temples and museums within the study area","in_scope","Explore a mix of temples and museums in Bangkok's old town.","54158","4","fail","scope_adherence_failure;generic_bangkok_response","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"
+"E18","Ambiguous Queries","Recommend cultural attractions on Rattanakosin Island.","Should recommend cultural attractions within Rattanakosin Island","in_scope","Here are some cultural attractions on Rattanakosin Island that you might find interesting.","24961","8","fail","scope_adherence_failure","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"
+"E19","Ambiguous Queries","I have 3 hours in the old town. What would you recommend?","Should suggest a short old-town plan within the study area","in_scope","Explore the historical and cultural highlights of Bangkok's old town in 3 hours, including temples and vibrant markets.","15413","5","fail","scope_adherence_failure;generic_bangkok_response","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"
+"E20","Ambiguous Queries","I want to take my friend around Rattanakosin Island without too much walking.","Should recommend a low-walking plan within Rattanakosin Island","in_scope","{
+  ""intent"": ""place_recommendation"",
+  ""summary"": ""Explore Rattanakosin Island with minimal walking by visiting nearby attractions and markets."",
+  ""places"": [
+    {
+      ""id"": ""a4ac9bef-8c75-49a2-8eba-71970b95940b"",
+      ""name"": ""Amulet Market (Tha Phra Chan)"",
+      ""slug"": ""amulet-market-tha-phra-chan"",
+      ""lat"": 13.7560905247632,
+      ""lng"": 100.48950798424,
+      ""tags"": [""market"", ""culture""],
+      ""description"": ""A vibrant market offering a variety of amulets and cultural artifacts.""
+    },
+    {
+      ""id"": ""1f59c231-f433-435a-87ce-8013ecbfe749"",
+      ""name"": ""Bangkok National Museum"",
+      ""slug"": ""bangkok-national-museum"",
+      ""lat"": 13.7576144882401,
+      ""lng"": 100.492522202231,
+      ""tags"": [""museum""],
+      ""description"": ""The largest museum in Southeast Asia, showcasing Thai art and history.""
+    },
+    {
+      ""id"": ""94cc1107-7103-4c8c-9652-bcf8622a0aa6"",
+      ""name"": ""Khao San Road"",
+      ""slug"": ""khao-san-road"",
+      ""lat"": 13.7580890635572,
+      ""lng"": 100.498946489782,
+      ""tags"": [""walking street"", ""nightlife""],
+      ""description"": ""A famous street known for its vibrant nightlife and backpacker culture.""
+    },
+    {
+      ""id"": ""c664e7df-e933-4693-be39-cccbaa730714"",
+      ""name"": ""Loha Prasat"",
+      ""slug"": ""loha-prasat"",
+      ""lat"": 13.7548246074614,
+      ""lng"": 100.504224538429,
+      ""tags"": [""temple"", ""architecture""],
+      ""description"": ""A unique temple known for its metal spires and intricate architecture.""
+    },
+    {
+      ""id"": ""36a1780c-6982-4520-87ee-ed97cae6ef40"",
+      ""name"": ""Museum Siam"",
+      ""slug"": ""museum-siam"",
+      ""lat"": 13.7441250116231,
+      ""lng"": 100.494162946057,
+      ""tags"": [""museum""],
+      ""description"": ""An interactive museum that explores the history and culture of Thailand.""
+    },
+    {
+      ""id"": ""9c72e592-28ce-4871-ba74-f1b09ecdfe4d"",
+      ""name"": ""National Gallery"",
+      ""slug"": ""national-gallery"",
+      ""lat"": 13.7591931048313,
+      ""lng"": 100.493955302393,
+      ""tags"": [""museum""],
+      ""description"": ""Home to a collection of Thai art, including traditional and contemporary works.""
+    },
+    {
+      ""id"": ""e4c37666-d6da-40cc-9683-c44081c40fa9"",
+      ""name"": ""Ong Ang Canal Walking Street"",
+      ""slug"": ""ong-ang-canal-walking-street"",
+      ""lat"": 13.7443950879296,
+      ""lng"": 100.502800940654,
+      ""tags"": [""market""],
+      ""description"": ""A lively market along the canal, perfect for a leisurely stroll.""
+    },
+    {
+      ""id"": ""69cb1ba8-99a8-4941-a869-64d4ffee433c"",
+      ""name"": ""Pak Khlong Talat"",
+      ""slug"": ""pak-khlong-talat"",
+      ""lat"": 13.7416522224407,
+      ""lng"": 100.496319594724,
+      ""tags"": [""market""],
+      ""description"": ""Bangkok's largest flower market, offering a colorful array of flowers.""
+    },
+    {
+      ""id"": ""012bfa78-1d66-4d73-a4bf-d55a3a537070"",
+      ""name"": ""Phahurat (Little India)"",
+      ""slug"": ""phahurat-little-india"",
+      ""lat"": 13.7444384583885,
+      ""lng"": 100.499492202025,
+      ""tags"": [""market""],
+      ""description"": ""A bustling area known for its Indian shops and delicious street food.""
+    },
+    {
+      ""id"": ""de63afd4-bc67-408a-bec8-608f2b231713"",
+      ""name"": ""Phra Sumen Fort"",
+      ""slug"": ""phra-sumen-fort"",
+      ""lat"": 13.763940623491,
+      ""lng"": 100.495753311642,
+      ""tags"": [""history""],
+      ""description"": ""A historic fort offering a glimpse into Bangkok's past.""
+    }
+  ],
+  ""planningConstraints"": {
+    ""durationMinutes"": 240,
+    ""maxStops"": 4,
+    ""budgetLevel"": ""medium"",
+    ""groupType"": ""friends"",
+    ""themes"": [""culture"", ""history"", ""market""]
+  }
+}","30331","0","fail","scope_adherence_failure;generic_bangkok_response","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"
+"E21","Scope Boundary / Edge Cases","If I want to travel to Chiang Mai instead, can you still help within the Rattanakosin context?","Should explain that the assistant focuses on Rattanakosin Island","out_of_scope","Rattanakosin is a historic area in Bangkok, rich in cultural landmarks and attractions. While I can provide information about Rattanakosin, I recommend focusing on Chiang Mai for your travel plans.","2916","0","pass","none","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"
+"E22","Scope Boundary / Edge Cases","Recommend 3 cafés in Thonglor.","Should explain that the request is outside the study area","out_of_scope","No cafÃ©s found in Thonglor.","5131","0","fail","out_of_scope_handling;scope_adherence_failure","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"
+"E23","Scope Boundary / Edge Cases","Plan a one-day trip covering Siam, Ari, and Thonglor.","Should explain that the request is outside the study area","out_of_scope","Explore the vibrant areas of Siam, Ari, and Thonglor in a one-day trip, featuring museums, shopping, historical sites, and temples.","89463","4","fail","out_of_scope_handling;scope_adherence_failure","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"
+"E24","Scope Boundary / Edge Cases","Recommend a beachfront seafood restaurant on Rattanakosin Island.","Should identify the geographic mismatch and avoid hallucination","in_scope","No specific beachfront seafood restaurants found on Rattanakosin Island, but nearby markets and areas offer seafood options.","6980","0","fail","scope_adherence_failure","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"
+"E25","Scope Boundary / Edge Cases","Plan a 2-day 1-night trip outside Bangkok.","Should explain that the request is outside the study area","out_of_scope","Explore Bangkok's rich culture and history over 2 days with visits to museums, markets, and temples.","80603","5","fail","out_of_scope_handling;scope_adherence_failure","Machine-run English benchmark via POST /api/agent/v2 under the Rattanakosin Island evaluation scope"

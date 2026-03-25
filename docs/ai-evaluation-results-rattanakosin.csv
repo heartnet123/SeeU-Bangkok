@@ -1,0 +1,65 @@
+﻿"test_id","category","prompt","expected_behavior","scope_type","actual_response","latency_ms","places_count","pass_fail","error_type","notes"
+"R01","Place Query","แนะนำสถานที่เรียนรู้ประวัติศาสตร์ในเกาะรัตนโกสินทร์ 3 ที่","ควรเสนอ 3 สถานที่เชิงประวัติศาสตร์ในเกาะรัตนโกสินทร์","in_scope","Here are some notable places in Bangkok related to the number 3.","15086","3","fail","semantic_misparse;scope_adherence_failure","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
+"R02","Place Query","มีวัดสำคัญอะไรในเกาะรัตนโกสินทร์ที่เหมาะกับนักท่องเที่ยวต่างชาติบ้าง","ควรแนะนำวัดสำคัญในเกาะรัตนโกสินทร์","in_scope","No specific query provided. Please specify a place, category, or location for recommendations.","2873","0","fail","intent_mismatch;clarification_failure","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
+"R03","Place Query","ถ้าอยากเที่ยวมิวเซียมในย่านเกาะรัตนโกสินทร์ควรไปที่ไหนดี","ควรแนะนำพิพิธภัณฑ์ในเกาะรัตนโกสินทร์","in_scope","It seems like your request is unclear. Please provide more specific information about what you're looking for in Bangkok.","3469","0","fail","intent_mismatch;clarification_failure","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
+"R04","Place Query","จุดถ่ายรูปสวย ๆ รอบสนามหลวงและเมืองเก่ามีที่ไหนบ้าง","ควรเสนอจุดถ่ายรูปในเขตเมืองเก่า/สนามหลวง","in_scope","Here are some notable attractions in Bangkok that you might find interesting.","24605","10","fail","scope_adherence_failure;generic_bangkok_response","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
+"R05","Place Query","ถ้าอยากเดินเที่ยวเมืองเก่าแบบได้บรรยากาศควรเริ่มจากตรงไหน","ควรเสนอจุดเริ่มต้นในเกาะรัตนโกสินทร์","in_scope","No specific query provided. Please specify a place, category, or location for recommendations.","2279","0","fail","intent_mismatch;clarification_failure","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
+"R06","Constraint-based Planning","จัดทริปครึ่งวันในเกาะรัตนโกสินทร์ เน้นวัดและพิพิธภัณฑ์ 3 จุด เดินทางสั้น ๆ","ควรสร้างทริป 3 จุดในเกาะรัตนโกสินทร์","in_scope","{
+  ""intent"": ""place_recommendation"",
+  ""summary"": ""Here are some places to consider for a 3-day itinerary in Bangkok, focusing on vibrant markets and nightlife."",
+  ""places"": [
+    {
+      ""id"": ""94cc1107-7103-4c8c-9652-bcf8622a0aa6"",
+      ""name"": ""Khao San Road"",
+      ""slug"": ""khao-san-road"",
+      ""lat"": 13.7581,
+      ""lng"": 100.4989,
+      ""tags"": [""walking street"", ""nightlife""],
+      ""description"": ""The world-famous backpacker hub, offering a vibrant mix of nightlife, street food, massage shops, and budget shopping.""
+    },
+    {
+      ""id"": ""a0ddd024-c5f8-46ca-bab3-f7b9e78a25bb"",
+      ""name"": ""Trok Mor Morning Market"",
+      ""slug"": ""trok-mor-morning-market"",
+      ""lat"": 13.7496,
+      ""lng"": 100.4992,
+      ""tags"": [""market""],
+      ""description"": ""A busy, authentic morning market tucked in an alley near the Giant Swing, selling fresh food, curries, and monk offerings.""
+    },
+    {
+      ""id"": ""e4c37666-d6da-40cc-9683-c44081c40fa9"",
+      ""name"": ""Ong Ang Canal Walking Street"",
+      ""slug"": ""ong-ang-canal-walking-street"",
+      ""lat"": 13.7444,
+      ""lng"": 100.5028,
+      ""tags"": [""market""],
+      ""description"": ""A revitalized canal area featuring street art, kayaking, and a weekend walking street market with food and music.""
+    }
+  ],
+  ""planningConstraints"": {
+    ""durationMinutes"": 4320,
+    ""maxStops"": 9,
+    ""budgetLevel"": ""medium"",
+    ""groupType"": ""couple"",
+    ""themes"": [""market"", ""nightlife""]
+  }
+}","12208","0","fail","scope_adherence_failure;generic_bangkok_response","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
+"R07","Constraint-based Planning","จัดทริป 1 วันสำหรับนักท่องเที่ยวต่างชาติในเกาะรัตนโกสินทร์ เน้นประวัติศาสตร์ไทย","ควรจัดทริป 1 วันเชิงประวัติศาสตร์ในเกาะรัตนโกสินทร์","in_scope","Here are some notable temples in Bangkok that you might find interesting.","12573","4","fail","scope_adherence_failure;generic_bangkok_response","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
+"R08","Constraint-based Planning","จัดทริปสายถ่ายรูปในเกาะรัตนโกสินทร์ 4 จุด แบบเดินเที่ยวได้","ควรจัดทริป 4 จุดเดินเที่ยวได้ในพื้นที่ศึกษา","in_scope","Here are some notable places in Bangkok that may interest you, including cultural sites, markets, and historical landmarks.","17476","4","fail","scope_adherence_failure;generic_bangkok_response","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
+"R09","Constraint-based Planning","จัดทริปสำหรับครอบครัวในเกาะรัตนโกสินทร์ เน้นเดินน้อยและมีที่พักนั่ง","ควรจัดทริป family-friendly ในพื้นที่ศึกษา","in_scope","Here are some notable attractions in Bangkok that you might find interesting.","13464","5","fail","scope_adherence_failure;generic_bangkok_response","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
+"R10","Constraint-based Planning","จัดแผนเที่ยวเมืองเก่าครึ่งวัน งบประหยัด เน้นวัดและพิพิธภัณฑ์","ควรจัดแผนครึ่งวันงบประหยัดในพื้นที่ศึกษา","in_scope","Here are some notable attractions in Bangkok that you might find interesting.","26535","10","fail","scope_adherence_failure;generic_bangkok_response","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
+"R11","Plan Modification","ถ้าตัดวัดออก 1 ที่ แล้วเพิ่มคาเฟ่หรือจุดพักในย่านเกาะรัตนโกสินทร์แทนได้ไหม","ควรแก้แผนเดิมในพื้นที่เดิมโดยเปลี่ยน 1 จุดเป็นจุดพัก","in_scope","Here are some notable places to visit in Bangkok.","13994","4","fail","scope_adherence_failure;generic_bangkok_response","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
+"R12","Plan Modification","ช่วยลดทริปให้เหลือแค่ 2 จุด แต่ให้อยู่ในเกาะรัตนโกสินทร์เหมือนเดิม","ควรย่อแผนเดิมเหลือ 2 จุดในพื้นที่เดิม","in_scope","Explore vibrant markets and nightlife in Bangkok over two days.","11830","3","fail","scope_adherence_failure;generic_bangkok_response","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
+"R13","Plan Modification","เปลี่ยนจากเน้นวัดเป็นเน้นพิพิธภัณฑ์ในย่านเดิมแทน","ควรเปลี่ยนธีมเป็นพิพิธภัณฑ์โดยคงพื้นที่เดิม","in_scope","No specific query provided. Please specify a place, category, or location for recommendations.","2575","0","fail","intent_mismatch;clarification_failure","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
+"R14","Plan Modification","ถ้าฝนตก ขอแผนสำรองที่เน้น indoor ในเกาะรัตนโกสินทร์","ควรเสนอ indoor fallback ในพื้นที่ศึกษา","in_scope","Here are some indoor activities and places to explore in Bangkok.","13340","3","fail","scope_adherence_failure;generic_bangkok_response","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
+"R15","Plan Modification","ขอปรับแผนสำหรับผู้สูงอายุ เดินน้อยลง แต่ยังอยู่ในพื้นที่เดิม","ควรลดการเดินและคงพื้นที่เดิม","in_scope","Here are some notable attractions in Bangkok that you might find interesting.","28418","10","fail","scope_adherence_failure;generic_bangkok_response","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
+"R16","Ambiguous Queries","พรุ่งนี้อยากเที่ยวแบบได้บรรยากาศเมืองเก่าในเกาะรัตนโกสินทร์ ไปไหนดี","ควรแนะนำเมืองเก่าในเกาะรัตนโกสินทร์อย่างเฉพาะเจาะจง","in_scope","Here are some notable attractions in Bangkok that you might find interesting.","14934","5","fail","scope_adherence_failure;generic_bangkok_response","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
+"R17","Ambiguous Queries","อยากเที่ยววัดกับมิวเซียมในเมืองเก่า ช่วยจัดให้หน่อย","ควรจัดแนววัด+พิพิธภัณฑ์ในพื้นที่ศึกษา","in_scope","Here are some notable attractions in Bangkok that you might find interesting.","22009","10","fail","scope_adherence_failure;generic_bangkok_response","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
+"R18","Ambiguous Queries","ขอที่เที่ยวเชิงวัฒนธรรมในเกาะรัตนโกสินทร์","ควรเสนอจุดวัฒนธรรมในพื้นที่ศึกษา","in_scope","No specific query provided. Please specify a place, category, or location for recommendations.","2430","0","fail","intent_mismatch;clarification_failure","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
+"R19","Ambiguous Queries","ว่าง 3 ชั่วโมงในย่านเมืองเก่า มีอะไรแนะนำบ้าง","ควรเสนอแผนสั้นในพื้นที่เมืองเก่า","in_scope","Here are three notable temples in Bangkok that you can visit.","9167","3","fail","scope_adherence_failure;generic_bangkok_response","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
+"R20","Ambiguous Queries","อยากพาเพื่อนไปเที่ยวแถวเกาะรัตนโกสินทร์แบบไม่เหนื่อยมาก","ควรเสนอแผนที่เดินไม่หนักในพื้นที่ศึกษา","in_scope","No specific query provided. Please specify a place, category, or location for recommendations.","2574","0","fail","intent_mismatch;clarification_failure","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
+"R21","Scope Boundary / Edge Cases","ถ้าอยากเที่ยวเชียงใหม่แทน เกาะรัตนโกสินทร์ยังช่วยอะไรได้บ้าง","ควรบอกข้อจำกัดว่าโฟกัสเกาะรัตนโกสินทร์","out_of_scope","Here are some notable attractions in Bangkok that you might find interesting.","26622","10","fail","out_of_scope_handling;scope_adherence_failure","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
+"R22","Scope Boundary / Edge Cases","ขอคาเฟ่แถวทองหล่อ 3 ร้าน","ควรบอกว่าโจทย์อยู่นอกพื้นที่ศึกษา","out_of_scope","Here are some notable places in Bangkok related to the number 3.","10148","3","fail","out_of_scope_handling;scope_adherence_failure","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
+"R23","Scope Boundary / Edge Cases","จัดทริปสยาม-อารีย์-ทองหล่อในวันเดียวให้หน่อย","ควรบอกว่าโจทย์อยู่นอกพื้นที่ศึกษา","out_of_scope","Here are some notable attractions in Bangkok that you might find interesting.","26844","10","fail","out_of_scope_handling;scope_adherence_failure","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
+"R24","Scope Boundary / Edge Cases","ขอร้านอาหารทะเลติดหาดในเกาะรัตนโกสินทร์","ควรชี้ข้อจำกัดเชิงภูมิศาสตร์และไม่มโน","in_scope","No specific query provided. Please specify a place, category, or location for recommendations.","2560","0","fail","intent_mismatch;clarification_failure","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
+"R25","Scope Boundary / Edge Cases","ช่วยจัดทริปนอกกรุงเทพ 2 วัน 1 คืน","ควรบอกว่าโจทย์อยู่นอกพื้นที่ศึกษา","out_of_scope","Here are some recommended places to visit in Bangkok for a 2-day, 1-night itinerary, focusing on cultural and historical experiences.","17124","4","fail","out_of_scope_handling;scope_adherence_failure","Machine-run full benchmark via POST /api/agent/v2 under Rattanakosin evaluation scope"
