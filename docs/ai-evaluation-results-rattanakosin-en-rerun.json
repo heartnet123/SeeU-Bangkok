@@ -1,0 +1,302 @@
+﻿[
+    {
+        "test_id":  "E01",
+        "prompt":  "Recommend 3 historical places on Rattanakosin Island.",
+        "latency_ms":  13058,
+        "success":  true,
+        "response":  "Here are three historical places on Rattanakosin Island that you can explore.",
+        "tools_used":  [
+
+                       ],
+        "places_count":  2,
+        "has_tripDraft":  false
+    },
+    {
+        "test_id":  "E02",
+        "prompt":  "Which important temples on Rattanakosin Island are suitable for foreign tourists?",
+        "latency_ms":  15618,
+        "success":  true,
+        "response":  "Here are some important temples on Rattanakosin Island that are suitable for foreign tourists.",
+        "tools_used":  [
+
+                       ],
+        "places_count":  4,
+        "has_tripDraft":  false
+    },
+    {
+        "test_id":  "E03",
+        "prompt":  "If I want to visit museums around Rattanakosin Island, where should I go?",
+        "latency_ms":  15428,
+        "success":  true,
+        "response":  "Here are some museums you can visit around Rattanakosin Island.",
+        "tools_used":  [
+
+                       ],
+        "places_count":  4,
+        "has_tripDraft":  false
+    },
+    {
+        "test_id":  "E04",
+        "prompt":  "What are good photo spots around Sanam Luang and the old town?",
+        "latency_ms":  27630,
+        "success":  true,
+        "response":  "{\n  \"intent\": \"place_recommendation\",\n  \"summary\": \"Here are some great photo spots around Sanam Luang and the old town of Bangkok.\",\n  \"places\": [\n    {\n      \"id\": \"a4ac9bef-8c75-49a2-8eba-71970b95940b\",\n      \"name\": \"Amulet Market (Tha Phra Chan)\",\n      \"slug\": \"amulet-market-tha-phra-chan\",\n      \"lat\": 13.7560905247632,\n      \"lng\": 100.48950798424,\n      \"tags\": [\"market\", \"culture\"],\n      \"description\": \"A vibrant market known for its variety of amulets and cultural artifacts.\"\n    },\n    {\n      \"id\": \"1f59c231-f433-435a-87ce-8013ecbfe749\",\n      \"name\": \"Bangkok National Museum\",\n      \"slug\": \"bangkok-national-museum\",\n      \"lat\": 13.7576144882401,\n      \"lng\": 100.492522202231,\n      \"tags\": [\"museum\"],\n      \"description\": \"The largest museum in Southeast Asia, showcasing Thai art and history.\"\n    },\n    {\n      \"id\": \"94cc1107-7103-4c8c-9652-bcf8622a0aa6\",\n      \"name\": \"Khao San Road\",\n      \"slug\": \"khao-san-road\",\n      \"lat\": 13.7580890635572,\n      \"lng\": 100.498946489782,\n      \"tags\": [\"walking street\", \"nightlife\"],\n      \"description\": \"A famous street known for its vibrant atmosphere and nightlife.\"\n    },\n    {\n      \"id\": \"9c72e592-28ce-4871-ba74-f1b09ecdfe4d\",\n      \"name\": \"National Gallery\",\n      \"slug\": \"national-gallery\",\n      \"lat\": 13.7591931048313,\n      \"lng\": 100.493955302393,\n      \"tags\": [\"museum\"],\n      \"description\": \"Home to a collection of Thai art, perfect for photography.\"\n    },\n    {\n      \"id\": \"be7f74cb-d8cd-4683-9944-36e6d17cd1c7\",\n      \"name\": \"Phraeng Phuthon Neighborhood\",\n      \"slug\": \"phraeng-phuthon-neighborhood\",\n      \"lat\": 13.7519126134361,\n      \"lng\": 100.497595353757,\n      \"tags\": [\"community\", \"food\"],\n      \"description\": \"A charming neighborhood with traditional architecture and local eateries.\"\n    },\n    {\n      \"id\": \"345e22ca-7377-49ac-baab-31a6c0fe22a5\",\n      \"name\": \"Sala Chalermkrung Royal Theatre\",\n      \"slug\": \"sala-chalermkrung-royal-theatre\",\n      \"lat\": 13.7468094650771,\n      \"lng\": 100.500079443956,\n      \"tags\": [\"performance\", \"heritage\"],\n      \"description\": \"A historic theater known for traditional Thai performances.\"\n    },\n    {\n      \"id\": \"12759628-ea06-4225-b75b-20d02b0e3211\",\n      \"name\": \"Saranrom Park\",\n      \"slug\": \"saranrom-park\",\n      \"lat\": 13.7483909388869,\n      \"lng\": 100.49534234463,\n      \"tags\": [\"park\"],\n      \"description\": \"A peaceful park ideal for relaxation and photography.\"\n    },\n    {\n      \"id\": \"199f0112-dfa8-4fba-a63a-5b66044369e8\",\n      \"name\": \"Tha Tian Market\",\n      \"slug\": \"tha-tian-market\",\n      \"lat\": 13.7460255303074,\n      \"lng\": 100.490939225995,\n      \"tags\": [\"market\"],\n      \"description\": \"A bustling market near Wat Pho, great for capturing local life.\"\n    },\n    {\n      \"id\": \"79c5b3e7-f879-4c23-9691-ccd7acba5ded\",\n      \"name\": \"The City Pillar Shrine\",\n      \"slug\": \"the-city-pillar-shrine\",\n      \"lat\": 13.7525459291996,\n      \"lng\": 100.494030579187,\n      \"tags\": [\"culture\"],\n      \"description\": \"A significant cultural site with beautiful architecture.\"\n    },\n    {\n      \"id\": \"e32e0f33-9bc0-43e9-9260-8b09a4805ef6\",\n      \"name\": \"The Grand Palace\",\n      \"slug\": \"the-grand-palace\",\n      \"lat\": 13.7497283595589,\n      \"lng\": 100.491772098778,\n      \"tags\": [\"history\", \"architecture\"],\n      \"description\": \"A stunning architectural masterpiece and a must-visit for photos.\"\n    }\n  ],\n  \"planningConstraints\": {\n    \"durationMinutes\": 240,\n    \"maxStops\": 10,\n    \"budgetLevel\": \"medium\",\n    \"groupType\": \"couple\",\n    \"themes\": [\"photography\"]\n  }\n}",
+        "tools_used":  [
+
+                       ],
+        "places_count":  0,
+        "has_tripDraft":  false
+    },
+    {
+        "test_id":  "E05",
+        "prompt":  "If I want an atmospheric old-town walk, where should I start?",
+        "latency_ms":  13400,
+        "success":  true,
+        "response":  "For an atmospheric old-town walk in Rattanakosin, starting at the Grand Palace is highly recommended. You can then explore nearby attractions like Wat Phra Kaew and Wat Pho, which are rich in history and culture.",
+        "tools_used":  [
+
+                       ],
+        "places_count":  3,
+        "has_tripDraft":  false
+    },
+    {
+        "test_id":  "E06",
+        "prompt":  "Plan a half-day trip on Rattanakosin Island with 3 stops focused on temples and museums, with short travel distances.",
+        "latency_ms":  58707,
+        "success":  true,
+        "response":  "Explore the rich cultural heritage of Rattanakosin Island with visits to iconic temples and museums.",
+        "tools_used":  [
+
+                       ],
+        "places_count":  3,
+        "has_tripDraft":  true
+    },
+    {
+        "test_id":  "E07",
+        "prompt":  "Plan a full-day itinerary on Rattanakosin Island for foreign tourists who want to learn Thai history.",
+        "latency_ms":  41304,
+        "success":  true,
+        "response":  "Explore the rich history of Thailand through its iconic landmarks and cultural sites.",
+        "tools_used":  [
+
+                       ],
+        "places_count":  0,
+        "has_tripDraft":  true
+    },
+    {
+        "test_id":  "E08",
+        "prompt":  "Plan a photo-focused walking itinerary on Rattanakosin Island with 4 stops.",
+        "latency_ms":  24818,
+        "success":  true,
+        "response":  "Explore Rattanakosin Island with a photo-focused walking itinerary featuring key cultural sites.",
+        "tools_used":  [
+
+                       ],
+        "places_count":  1,
+        "has_tripDraft":  true
+    },
+    {
+        "test_id":  "E09",
+        "prompt":  "Plan a family-friendly trip on Rattanakosin Island with minimal walking and some rest points.",
+        "latency_ms":  10976,
+        "success":  true,
+        "response":  "Family-friendly trip on Rattanakosin Island with minimal walking and rest points.",
+        "tools_used":  [
+
+                       ],
+        "places_count":  0,
+        "has_tripDraft":  true
+    },
+    {
+        "test_id":  "E10",
+        "prompt":  "Plan a budget-friendly half-day old-town trip focused on temples and museums.",
+        "latency_ms":  89966,
+        "success":  true,
+        "response":  "Explore the rich cultural heritage of Rattanakosin with visits to key temples and museums.",
+        "tools_used":  [
+
+                       ],
+        "places_count":  6,
+        "has_tripDraft":  true
+    },
+    {
+        "test_id":  "E11",
+        "prompt":  "Can you replace one temple stop with a café or resting spot in Rattanakosin Island?",
+        "latency_ms":  24541,
+        "success":  true,
+        "response":  "Enjoy a relaxing day with cafÃ© stops in Rattanakosin.",
+        "tools_used":  [
+
+                       ],
+        "places_count":  2,
+        "has_tripDraft":  true
+    },
+    {
+        "test_id":  "E12",
+        "prompt":  "Please reduce the trip to only 2 stops, but keep it within Rattanakosin Island.",
+        "latency_ms":  21905,
+        "success":  true,
+        "response":  "A serene visit to two of Bangkok\u0027s most iconic temples.",
+        "tools_used":  [
+
+                       ],
+        "places_count":  0,
+        "has_tripDraft":  true
+    },
+    {
+        "test_id":  "E13",
+        "prompt":  "Change the plan from temple-focused to museum-focused while keeping the same area.",
+        "latency_ms":  70211,
+        "success":  true,
+        "response":  "Explore the rich history and culture of Thailand through its museums.",
+        "tools_used":  [
+
+                       ],
+        "places_count":  4,
+        "has_tripDraft":  true
+    },
+    {
+        "test_id":  "E14",
+        "prompt":  "If it rains, suggest an indoor backup plan on Rattanakosin Island.",
+        "latency_ms":  7658,
+        "success":  true,
+        "response":  "I couldn\u0027t find specific indoor places for your backup plan in Rattanakosin.",
+        "tools_used":  [
+
+                       ],
+        "places_count":  0,
+        "has_tripDraft":  true
+    },
+    {
+        "test_id":  "E15",
+        "prompt":  "Adjust the plan for elderly visitors with less walking while keeping the same area.",
+        "latency_ms":  53724,
+        "success":  true,
+        "response":  "A relaxed tour of Rattanakosin\u0027s highlights, perfect for elderly visitors with minimal walking.",
+        "tools_used":  [
+
+                       ],
+        "places_count":  0,
+        "has_tripDraft":  true
+    },
+    {
+        "test_id":  "E16",
+        "prompt":  "I want an old-town atmosphere tomorrow on Rattanakosin Island. Where should I go?",
+        "latency_ms":  4262,
+        "success":  true,
+        "response":  "I couldn\u0027t find specific places labeled as \u0027old town\u0027 in Rattanakosin, but the area itself is rich in historical sites and cultural experiences. You can explore the Grand Palace, Wat Phra Kaew, and nearby attractions for an authentic old-town atmosphere.",
+        "tools_used":  [
+
+                       ],
+        "places_count":  0,
+        "has_tripDraft":  false
+    },
+    {
+        "test_id":  "E17",
+        "prompt":  "I want a mix of temples and museums in the old town. Please plan it for me.",
+        "latency_ms":  136691,
+        "success":  true,
+        "response":  "Explore the rich cultural heritage of Bangkok\u0027s Old Town with a mix of temples and museums.",
+        "tools_used":  [
+
+                       ],
+        "places_count":  6,
+        "has_tripDraft":  true
+    },
+    {
+        "test_id":  "E18",
+        "prompt":  "Recommend cultural attractions on Rattanakosin Island.",
+        "latency_ms":  4306,
+        "success":  true,
+        "response":  "I couldn\u0027t find specific cultural attractions listed under that query in Rattanakosin. However, this area is rich in cultural heritage, including temples and historical sites.",
+        "tools_used":  [
+
+                       ],
+        "places_count":  0,
+        "has_tripDraft":  false
+    },
+    {
+        "test_id":  "E19",
+        "prompt":  "I have 3 hours in the old town. What would you recommend?",
+        "latency_ms":  10962,
+        "success":  true,
+        "response":  "Here are some must-visit places in Rattanakosin for a 3-hour exploration.",
+        "tools_used":  [
+
+                       ],
+        "places_count":  4,
+        "has_tripDraft":  false
+    },
+    {
+        "test_id":  "E20",
+        "prompt":  "I want to take my friend around Rattanakosin Island without too much walking.",
+        "latency_ms":  3608,
+        "success":  true,
+        "response":  "{\n  \"intent\": \"place_recommendation\",\n  \"summary\": \"I can help you find places to visit in Rattanakosin Island that require minimal walking.\",\n  \"places\": [],\n  \"planningConstraints\": {\n    \"durationMinutes\": 240,\n    \"maxStops\": 4,\n    \"budgetLevel\": \"medium\",\n    \"groupType\": \"friends\",\n    \"themes\": [\"sightseeing\"]\n  }\n}",
+        "tools_used":  [
+
+                       ],
+        "places_count":  0,
+        "has_tripDraft":  false
+    },
+    {
+        "test_id":  "E21",
+        "prompt":  "If I want to travel to Chiang Mai instead, can you still help within the Rattanakosin context?",
+        "latency_ms":  1004,
+        "success":  true,
+        "response":  "",
+        "tools_used":  [
+
+                       ],
+        "places_count":  0,
+        "has_tripDraft":  false
+    },
+    {
+        "test_id":  "E22",
+        "prompt":  "Recommend 3 cafés in Thonglor.",
+        "latency_ms":  892,
+        "success":  true,
+        "response":  "",
+        "tools_used":  [
+
+                       ],
+        "places_count":  0,
+        "has_tripDraft":  false
+    },
+    {
+        "test_id":  "E23",
+        "prompt":  "Plan a one-day trip covering Siam, Ari, and Thonglor.",
+        "latency_ms":  859,
+        "success":  true,
+        "response":  "",
+        "tools_used":  [
+
+                       ],
+        "places_count":  0,
+        "has_tripDraft":  false
+    },
+    {
+        "test_id":  "E24",
+        "prompt":  "Recommend a beachfront seafood restaurant on Rattanakosin Island.",
+        "latency_ms":  871,
+        "success":  true,
+        "response":  "",
+        "tools_used":  [
+
+                       ],
+        "places_count":  0,
+        "has_tripDraft":  false
+    },
+    {
+        "test_id":  "E25",
+        "prompt":  "Plan a 2-day 1-night trip outside Bangkok.",
+        "latency_ms":  863,
+        "success":  true,
+        "response":  "",
+        "tools_used":  [
+
+                       ],
+        "places_count":  0,
+        "has_tripDraft":  false
+    }
+]

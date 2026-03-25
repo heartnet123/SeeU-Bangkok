@@ -4,6 +4,13 @@ import { traceable } from 'langsmith/traceable'
 
 export type LatLng = { lat: number; lng: number }
 
+const RATTANAKOSIN_BOUNDS = {
+  minLat: 13.739,
+  maxLat: 13.765,
+  minLng: 100.489,
+  maxLng: 100.510,
+} as const
+
 export interface PlaceRow {
   id: string
   name: string
@@ -35,10 +42,34 @@ export interface SearchPlacesParams {
   limit?: number
 }
 
+function isWithinRattanakosin(location: LatLng): boolean {
+  return (
+    location.lat >= RATTANAKOSIN_BOUNDS.minLat &&
+    location.lat <= RATTANAKOSIN_BOUNDS.maxLat &&
+    location.lng >= RATTANAKOSIN_BOUNDS.minLng &&
+    location.lng <= RATTANAKOSIN_BOUNDS.maxLng
+  )
+}
+
+export { RATTANAKOSIN_BOUNDS, isWithinRattanakosin }
+
+function applyRattanakosinBounds<T extends {
+  gte: (column: string, value: number) => T
+  lte: (column: string, value: number) => T
+}>(query: T): T {
+  return query
+    .gte('lat', RATTANAKOSIN_BOUNDS.minLat)
+    .lte('lat', RATTANAKOSIN_BOUNDS.maxLat)
+    .gte('lng', RATTANAKOSIN_BOUNDS.minLng)
+    .lte('lng', RATTANAKOSIN_BOUNDS.maxLng)
+}
+
 export async function search_places(params: SearchPlacesParams): Promise<PlaceItem[]> {
   const { query, categories, limit = 10 } = params
 
-  let q = supabase.from('bangkok_unseen').select('*').order('name').limit(limit)
+  let q = applyRattanakosinBounds(
+    supabase.from('bangkok_unseen').select('*').order('name').limit(limit)
+  )
 
   if (query && query.trim()) {
     const kw = query.trim()
@@ -66,17 +97,26 @@ export interface NearbyPlacesParams {
 
 export async function nearby_places(params: NearbyPlacesParams): Promise<PlaceItem[]> {
   const { location, limit = 10 } = params
+  if (!isWithinRattanakosin(location)) {
+    return []
+  }
+
   const radius_km = params.radius_km ?? 5
   const latRange = radius_km / 111 // ~km per degree
   const lngRange = radius_km / (111 * Math.cos((location.lat * Math.PI) / 180) || 1)
 
+  const minLat = Math.max(location.lat - latRange, RATTANAKOSIN_BOUNDS.minLat)
+  const maxLat = Math.min(location.lat + latRange, RATTANAKOSIN_BOUNDS.maxLat)
+  const minLng = Math.max(location.lng - lngRange, RATTANAKOSIN_BOUNDS.minLng)
+  const maxLng = Math.min(location.lng + lngRange, RATTANAKOSIN_BOUNDS.maxLng)
+
   const { data, error } = await supabase
     .from('bangkok_unseen')
     .select('*')
-    .gte('lat', location.lat - latRange)
-    .lte('lat', location.lat + latRange)
-    .gte('lng', location.lng - lngRange)
-    .lte('lng', location.lng + lngRange)
+    .gte('lat', minLat)
+    .lte('lat', maxLat)
+    .gte('lng', minLng)
+    .lte('lng', maxLng)
     .order('name')
     .limit(limit)
 
@@ -363,7 +403,17 @@ export const plan_itinerary = traceable(
 
     if (error || !places) throw new Error("Failed to fetch places")
 
-    const placesForRoute = places
+    const scopedPlaces = places.filter((place) =>
+      isFiniteNum(place.lat) &&
+      isFiniteNum(place.lng) &&
+      isWithinRattanakosin({ lat: place.lat, lng: place.lng })
+    )
+
+    if (scopedPlaces.length === 0) {
+      throw new Error('No places available within the Rattanakosin scope')
+    }
+
+    const placesForRoute = scopedPlaces
       .map(p => ({
         id: p.id,
         name: p.name,
@@ -379,7 +429,7 @@ export const plan_itinerary = traceable(
     const route = await build_route({ places: placesForRoute })
 
     const coordsBySlug = new Map(placesForRoute.map(p => [p.slug, { lat: p.lat!, lng: p.lng! }]))
-    const placeBySlug = new Map(places.map(p => [nameToSlug(p.name), p]))
+    const placeBySlug = new Map(scopedPlaces.map(p => [nameToSlug(p.name), p]))
 
     // Enrich stops
     const stops = route.order.map((slug) => {

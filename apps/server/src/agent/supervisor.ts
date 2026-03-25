@@ -13,6 +13,7 @@ import {
 	normalizeSupervisorInvocationResult,
 	normalizeSupervisorMessage,
 } from "./response-normalization";
+import { buildScopeRefusalPayload, classifyScope } from "./scope-policy";
 import type {
 	CandidatePlace,
 	PlanningConstraints,
@@ -21,7 +22,14 @@ import type {
 } from "./state";
 
 // Supervisor system prompt
-const SUPERVISOR_PROMPT = `You are the Bangkok Trip Planning Supervisor. Your role is to coordinate specialized agents to help users plan trips in Bangkok.
+const SUPERVISOR_PROMPT = `You are the Rattanakosin Trip Planning Supervisor. Your role is to coordinate specialized agents to help users plan trips only within the Rattanakosin area of Bangkok.
+
+SUPPORTED AREA EXAMPLES:
+- Rattanakosin / Bangkok Old Town / Phra Nakhon
+- Sanam Luang, Grand Palace, Wat Phra Kaew, Wat Pho, Khao San Road, Museum Siam
+
+OUT OF SCOPE EXAMPLES:
+- Siam, Ari, Thonglor, Sukhumvit, Chiang Mai, Pattaya, Phuket
 
 - Delegate all place discovery to researcher_agent.
 - Delegate all itinerary construction to planner_agent after research is complete.
@@ -29,6 +37,9 @@ const SUPERVISOR_PROMPT = `You are the Bangkok Trip Planning Supervisor. Your ro
 - Prefer the minimum agent chain required by runtime policy.
 - Do not answer place or itinerary requests from your own knowledge.
 - Return the final agent output as valid JSON and do not convert it to markdown.
+- Refuse requests that are outside tourism in the Rattanakosin scope.
+- If the user asks about places outside Rattanakosin or unrelated topics, return a concise refusal and redirect them to Rattanakosin travel planning.
+- If the user asks for impossible geography within Rattanakosin, such as beach, beachfront, sea, mountain, or snow, state truthfully that it does not exist in this area.
 
 Remember: Your goal is to provide the best trip planning experience by coordinating specialized expertise.`;
 
@@ -81,6 +92,7 @@ function buildRuntimeContextMessage(
 		sessionId?: string;
 		userId?: string;
 		userPreferences?: Record<string, unknown>;
+		defaultArea?: string;
 	},
 	currentTripDraft = parseLatestTripDraft(messages),
 	policy = deriveSupervisorRoutingPolicy({ messages, currentTripDraft })
@@ -93,6 +105,12 @@ function buildRuntimeContextMessage(
 			userId: options.userId,
 			userLocation: options.userLocation ?? null,
 			userPreferences: options.userPreferences ?? {},
+			defaultArea: options.defaultArea ?? null,
+			instructions: options.defaultArea
+				? [
+					`If the user does not specify an area, assume they mean ${options.defaultArea} and continue helping within that area.`,
+				]
+				: [],
 			currentTripDraft: currentTripDraft ?? null,
 			orchestrationPolicy: {
 				intent: policy.intent,
@@ -128,6 +146,7 @@ function createInitialGraphState(
 		sessionId?: string;
 		userId?: string;
 		userPreferences?: Record<string, unknown>;
+		defaultArea?: string;
 	},
 	policy: SupervisorRoutingPolicy,
 	currentTripDraft = parseLatestTripDraft(messages)
@@ -286,6 +305,7 @@ async function hydrateContextNode(state: SupervisorGraphState): Promise<void> {
 				sessionId: state.sessionId,
 				userId: state.userId,
 				userPreferences: state.userPreferences,
+				defaultArea: "Rattanakosin",
 			},
 			state.currentTripDraft,
 			state.policy
@@ -353,6 +373,28 @@ async function finalizeNode(state: SupervisorGraphState): Promise<void> {
 	}
 }
 
+function finalizeScopeRefusalState(
+	state: SupervisorGraphState,
+	classification: Exclude<
+		ReturnType<typeof classifyScope>["classification"],
+		"in_scope" | "implicit_in_scope"
+	>,
+	sessionId?: string,
+	matchedTerms?: string[]
+): void {
+	const payload = buildScopeRefusalPayload({
+		classification,
+		sessionId,
+		matchedTerms,
+	});
+	state.finalPayload = payload;
+	state.finalResponse = JSON.stringify(payload);
+	state.messages.push({
+		role: "assistant",
+		content: JSON.stringify(payload),
+	});
+}
+
 async function runSupervisorGraph(
 	messages: Array<{ role: string; content: string }>,
 	options: {
@@ -365,11 +407,25 @@ async function runSupervisorGraph(
 ): Promise<SupervisorGraphState> {
 	const currentTripDraft = parseLatestTripDraft(messages);
 	const policy = deriveSupervisorRoutingPolicy({ messages, currentTripDraft });
+	const scope = classifyScope({ messages });
 	const llm = new ChatOpenAI({
 		modelName: "gpt-4o-mini",
 		temperature: 0,
 	});
 	const state = createInitialGraphState(messages, options, policy, currentTripDraft);
+
+	if (
+		scope.classification !== "in_scope" &&
+		scope.classification !== "implicit_in_scope"
+	) {
+		finalizeScopeRefusalState(
+			state,
+			scope.classification,
+			options.sessionId,
+			scope.matchedTerms
+		);
+		return state;
+	}
 
 	await hydrateContextNode(state);
 	await researchNode(state, llm, collector);
@@ -397,6 +453,7 @@ function formatSupervisorMessages(
 		sessionId?: string;
 		userId?: string;
 		userPreferences?: Record<string, unknown>;
+		defaultArea?: string;
 	},
 	policy: SupervisorRoutingPolicy,
 	currentTripDraft = parseLatestTripDraft(messages)

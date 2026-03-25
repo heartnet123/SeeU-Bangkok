@@ -4,6 +4,7 @@ import { z } from "zod";
 import { traceable } from "langsmith/traceable";
 import { supabase } from "@/lib/supabase";
 import { openaiEmbed } from "@/lib/openai";
+import { isWithinRattanakosin } from "@/lib/tools";
 import type { RetrievedDoc } from "../state";
 
 // Retrieve documents using vector search
@@ -50,7 +51,11 @@ export const retrieveDocuments = traceable(
 
 			// Client-side filtering to ensure quality
 			const filtered = data.filter(
-				(item: any) => item.similarity >= minSimilarity
+				(item: any) =>
+					item.similarity >= minSimilarity &&
+					typeof item.lat === "number" &&
+					typeof item.lng === "number" &&
+					isWithinRattanakosin({ lat: item.lat, lng: item.lng })
 			);
 
 			console.log(
@@ -86,7 +91,7 @@ export const vectorSearchTool = tool(
 	{
 		name: "vector_search",
 		description:
-			"Perform semantic vector search using embeddings to find relevant places. Best for understanding user intent and finding contextually relevant results.",
+			"Perform semantic vector search for Rattanakosin-only travel places. Use only for tourism requests inside the supported old-town area and never for outside-area requests.",
 		schema: z.object({
 			query: z.string().describe("Query text to embed and search"),
 			top_k: z

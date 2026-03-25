@@ -5,6 +5,7 @@ import {
 } from "../intent-classification";
 import { normalizeSupervisorInvocationResult } from "../response-normalization";
 import { deriveSupervisorRoutingPolicy } from "../routing-policy";
+import { buildScopeRefusalPayload, classifyScope } from "../scope-policy";
 import type { TripDraft } from "../state";
 
 const draft: TripDraft = {
@@ -112,6 +113,67 @@ describe("supervisor routing policy", () => {
 		).toMatchObject({
 			supervisorMode: "researcher_planner_critic",
 			useCritic: true,
+		});
+	});
+});
+
+describe("scope policy", () => {
+	test("accepts old town aliases as in scope", () => {
+		expect(
+			classifyScope({
+				messages: [{ role: "user", content: "Plan an old town walk near Sanam Luang" }],
+			})
+		).toMatchObject({
+			classification: "in_scope",
+		});
+	});
+
+	test("treats underspecified tourism requests as implicitly in scope", () => {
+		expect(
+			classifyScope({
+				messages: [{ role: "user", content: "Recommend 3 historical places" }],
+			})
+		).toMatchObject({
+			classification: "implicit_in_scope",
+		});
+	});
+
+	test("rejects out-of-scope area requests", () => {
+		expect(
+			classifyScope({
+				messages: [{ role: "user", content: "Recommend 3 cafés in Thonglor" }],
+			})
+		).toMatchObject({
+			classification: "out_of_scope_place",
+			reasonCode: "OUT_OF_SCOPE",
+		});
+	});
+
+	test("rejects impossible geography inside scope", () => {
+		expect(
+			classifyScope({
+				messages: [{ role: "user", content: "Recommend a beachfront seafood restaurant on Rattanakosin Island" }],
+			})
+		).toMatchObject({
+			classification: "impossible_geography",
+			reasonCode: "IMPOSSIBLE_GEOGRAPHY",
+		});
+	});
+
+	test("builds refusal payload in canonical ui format", () => {
+		const payload = buildScopeRefusalPayload({
+			classification: "out_of_scope_trip",
+			sessionId: "session-1",
+			matchedTerms: ["siam"],
+		});
+
+		expect(payload).toMatchObject({
+			version: "1.0",
+			intent: "refusal",
+			sessionId: "session-1",
+			places: [],
+			tripDraft: null,
+			warnings: ["OUT_OF_SCOPE"],
 		});
 	});
 });

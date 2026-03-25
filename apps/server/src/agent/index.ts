@@ -12,6 +12,12 @@ export {
 	type SupervisorConfig,
 } from "./supervisor";
 
+export {
+	classifyScope,
+	buildScopeRefusalPayload,
+	type ScopeClassification,
+} from "./scope-policy";
+
 // Agents
 export {
 	researcherAgent,

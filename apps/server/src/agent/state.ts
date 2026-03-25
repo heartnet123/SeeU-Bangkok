@@ -116,7 +116,7 @@ export const UiActionSchema = z.object({
 
 export const UiResponsePayloadSchema = z.object({
 	version: z.literal("1.0"),
-	intent: z.enum(["chat", "place_recommendation", "itinerary"]),
+	intent: z.enum(["chat", "place_recommendation", "itinerary", "refusal"]),
 	sessionId: z.string().optional(),
 	summary: z.string(),
 	places: z.array(CandidatePlaceSchema),

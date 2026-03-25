@@ -19,7 +19,7 @@ export const searchPlacesTool = tool(
 	{
 		name: "search_places",
 		description:
-			"Search for places in Bangkok by name, description, or categories. Returns up to 10 places with details like name, location, tags, and images.",
+			"Search for places only within the Rattanakosin area by name, description, or categories. Returns empty results for out-of-scope areas.",
 		schema: z.object({
 			query: z.string().describe("Search query text"),
 			categories: z
@@ -48,7 +48,7 @@ export const nearbyPlacesTool = tool(
 	{
 		name: "nearby_places",
 		description:
-			"Find places near a specific location within a given radius. Useful when user asks for places 'near me' or around a specific area.",
+			"Find places near a specific location only within the Rattanakosin area. Useful for 'near me' requests when the location is inside the supported area.",
 		schema: z.object({
 			location: z
 				.object({
