@@ -14,6 +14,7 @@ export {
 
 export {
 	classifyScope,
+	classifyScopeWithResolution,
 	buildScopeRefusalPayload,
 	type ScopeClassification,
 } from "./scope-policy";

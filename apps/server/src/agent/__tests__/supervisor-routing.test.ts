@@ -5,7 +5,11 @@ import {
 } from "../intent-classification";
 import { normalizeSupervisorInvocationResult } from "../response-normalization";
 import { deriveSupervisorRoutingPolicy } from "../routing-policy";
-import { buildScopeRefusalPayload, classifyScope } from "../scope-policy";
+import {
+	buildScopeRefusalPayload,
+	classifyScope,
+	classifyScopeWithResolution,
+} from "../scope-policy";
 import type { TripDraft } from "../state";
 
 const draft: TripDraft = {
@@ -146,6 +150,43 @@ describe("scope policy", () => {
 		).toMatchObject({
 			classification: "out_of_scope_place",
 			reasonCode: "OUT_OF_SCOPE",
+		});
+	});
+
+	test("rejects resolved out-of-scope areas without hardcoded blacklist terms", async () => {
+		await expect(
+			classifyScopeWithResolution(
+				{
+					messages: [{ role: "user", content: "Recommend 3 cafés in Ekkamai" }],
+				},
+				{
+					extractAreas: async () => ["Ekkamai"],
+					resolveArea: async () => ({
+						label: "Ekkamai, Bangkok",
+						lat: 13.7306,
+						lng: 100.5854,
+					}),
+				}
+			)
+		).resolves.toMatchObject({
+			classification: "out_of_scope_place",
+			reasonCode: "OUT_OF_SCOPE",
+			matchedTerms: ["Ekkamai"],
+		});
+	});
+
+	test("keeps generic tourism requests implicitly in scope when no area is extracted", async () => {
+		await expect(
+			classifyScopeWithResolution(
+				{
+					messages: [{ role: "user", content: "Recommend 3 historical places" }],
+				},
+				{
+					extractAreas: async () => [],
+				}
+			)
+		).resolves.toMatchObject({
+			classification: "implicit_in_scope",
 		});
 	});
 

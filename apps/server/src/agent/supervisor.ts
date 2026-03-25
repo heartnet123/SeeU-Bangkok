@@ -13,7 +13,11 @@ import {
 	normalizeSupervisorInvocationResult,
 	normalizeSupervisorMessage,
 } from "./response-normalization";
-import { buildScopeRefusalPayload, classifyScope } from "./scope-policy";
+import {
+	buildScopeRefusalPayload,
+	classifyScope,
+	classifyScopeWithResolution,
+} from "./scope-policy";
 import type {
 	CandidatePlace,
 	PlanningConstraints,
@@ -407,7 +411,7 @@ async function runSupervisorGraph(
 ): Promise<SupervisorGraphState> {
 	const currentTripDraft = parseLatestTripDraft(messages);
 	const policy = deriveSupervisorRoutingPolicy({ messages, currentTripDraft });
-	const scope = classifyScope({ messages });
+	const scope = await classifyScopeWithResolution({ messages });
 	const llm = new ChatOpenAI({
 		modelName: "gpt-4o-mini",
 		temperature: 0,
