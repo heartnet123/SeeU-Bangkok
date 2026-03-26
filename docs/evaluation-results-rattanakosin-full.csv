@@ -1,0 +1,110 @@
+case_id,category,prompt,classification,pass_status,failure_group,scope_adherence,constraint_satisfaction,routing_feasibility,system_correctness,out_of_scope_handling_quality,latency,response,place_count,stop_count,notes
+"1","place_query","Recommend 3 historical places on Rattanakosin Island.","in_scope","partial_pass","in_scope_failure","pass","not_applicable","pass","partial_pass","not_applicable","not_measured","Here are three historical places on Rattanakosin Island that you can explore.","2","0","Returned fewer places than requested. Returned 2 places."
+"2","place_query","Which important temples on Rattanakosin Island are suitable for foreign tourists?","in_scope","pass","none","pass","not_applicable","pass","pass","not_applicable","not_measured","Here are some important temples on Rattanakosin Island that are suitable for foreign tourists.","4","0","Returned 4 places."
+"3","place_query","If I want to visit museums around Rattanakosin Island, where should I go?","in_scope","pass","none","pass","not_applicable","pass","pass","not_applicable","not_measured","Here are some museums you can visit around Rattanakosin Island.","4","0","Returned 4 places."
+"4","place_query","What are good photo spots around Sanam Luang and the old town?","in_scope","pass","none","pass","not_applicable","pass","pass","not_applicable","not_measured","I couldn't find specific photo spots around Sanam Luang and the old town. However, these areas are known for their beautiful architecture and historical significance, making them great for photography.","0","0",""
+"5","place_query","If I want an atmospheric old-town walk, where should I start?","in_scope","pass","none","pass","not_applicable","pass","pass","not_applicable","not_measured","For an atmospheric old-town walk in Rattanakosin, I recommend starting at the Grand Palace, then exploring nearby temples and historical sites.","4","0","Returned 4 places."
+"6","constraint_planning","Plan a half-day trip on Rattanakosin Island with 3 stops focused on temples and museums, with short travel distances.","in_scope","pass","none","pass","pass","pass","pass","not_applicable","not_measured","Explore the rich history and culture of Rattanakosin Island with visits to iconic temples and museums.","3","3","Generated itinerary with 3 stops. Returned 3 places."
+"7","constraint_planning","Plan a full-day itinerary on Rattanakosin Island for foreign tourists who want to learn Thai history.","in_scope","pass","none","pass","pass","pass","pass","not_applicable","not_measured","Explore the rich history and culture of Thailand in Rattanakosin Island.","0","1","Generated itinerary with 1 stops."
+"8","constraint_planning","Plan a photo-focused walking itinerary on Rattanakosin Island with 4 stops.","in_scope","pass","none","pass","pass","pass","pass","not_applicable","not_measured","Explore the stunning sights of Rattanakosin Island with this photo-focused walking itinerary.","3","3","Generated itinerary with 3 stops. Returned 3 places."
+"9","constraint_planning","Plan a family-friendly trip on Rattanakosin Island with minimal walking and some rest points.","in_scope","pass","none","pass","pass","pass","pass","not_applicable","not_measured","A relaxed family-friendly itinerary exploring the highlights of Rattanakosin Island with minimal walking and rest points.","0","4","Generated itinerary with 4 stops."
+"10","constraint_planning","Plan a budget-friendly half-day old-town trip focused on temples and museums.","in_scope","pass","none","pass","pass","pass","pass","not_applicable","not_measured","Explore the rich cultural heritage of Rattanakosin with visits to stunning temples and informative museums.","6","5","Generated itinerary with 5 stops. Returned 6 places."
+"11","plan_modification","Can you replace one temple stop with a café or resting spot in Rattanakosin Island?","in_scope","pass","none","pass","pass","pass","pass","not_applicable","not_measured","A relaxing day exploring the temples of Rattanakosin.","0","4","Generated itinerary with 4 stops."
+"12","plan_modification","Please reduce the trip to only 2 stops, but keep it within Rattanakosin Island.","in_scope","pass","none","pass","pass","pass","pass","not_applicable","not_measured","A short visit to two iconic sites in Rattanakosin Island.","0","2","Generated itinerary with 2 stops."
+"13","plan_modification","Change the plan from temple-focused to museum-focused while keeping the same area.","in_scope","pass","none","pass","pass","pass","pass","not_applicable","not_measured","Explore the rich history and culture of Thailand through its museums.","4","4","Generated itinerary with 4 stops. Returned 4 places."
+"14","plan_modification","If it rains, suggest an indoor backup plan on Rattanakosin Island.","in_scope","pass","none","pass","pass","pass","pass","not_applicable","not_measured","Indoor backup plan for Rattanakosin in case of rain.","0","2","Generated itinerary with 2 stops."
+"15","plan_modification","Adjust the plan for elderly visitors with less walking while keeping the same area.","in_scope","pass","none","pass","pass","pass","pass","not_applicable","not_measured","A relaxed tour of Rattanakosin's cultural highlights with minimal walking.","0","4","Generated itinerary with 4 stops."
+"16","ambiguous_query","I want an old-town atmosphere tomorrow on Rattanakosin Island. Where should I go?","in_scope","pass","none","pass","not_applicable","pass","pass","not_applicable","not_measured","For an old-town atmosphere on Rattanakosin Island, consider visiting the Rattanakosin Exhibition Hall, which showcases the history and culture of the area.","1","0","Returned 1 places."
+"17","ambiguous_query","I want a mix of temples and museums in the old town. Please plan it for me.","in_scope","pass","none","pass","pass","pass","pass","not_applicable","not_measured","Explore a mix of temples and museums in Bangkok's Old Town.","4","4","Generated itinerary with 4 stops. Returned 4 places."
+"18","ambiguous_query","Recommend cultural attractions on Rattanakosin Island.","in_scope","pass","none","pass","not_applicable","pass","pass","not_applicable","not_measured","I found no specific cultural attractions listed under that query in Rattanakosin Island. However, this area is known for its rich cultural heritage, including temples and historical sites.","0","0",""
+"19","ambiguous_query","I have 3 hours in the old town. What would you recommend?","in_scope","pass","none","pass","not_applicable","pass","pass","not_applicable","not_measured","Here are some great places to visit in Rattanakosin during your 3-hour stay in the old town. You can explore temples, museums, and markets.","6","0","Returned 6 places."
+"20","ambiguous_query","I want to take my friend around Rattanakosin Island without too much walking.","in_scope","pass","none","pass","not_applicable","pass","pass","not_applicable","not_measured","{
+  ""intent"": ""place_recommendation"",
+  ""summary"": ""Here are some great places to visit around Rattanakosin Island with minimal walking required."",
+  ""places"": [
+    {
+      ""id"": ""16fd79d1-49da-4324-accb-afe9e1a3bd5c"",
+      ""name"": ""Wat Bowonniwet Vihara"",
+      ""slug"": ""wat-bowonniwet-vihara"",
+      ""lat"": 13.760237138064,
+      ""lng"": 100.499840385827,
+      ""tags"": [""temple""],
+      ""description"": ""A beautiful temple known for its serene atmosphere and historical significance.""
+    },
+    {
+      ""id"": ""e293e13d-7516-4e0b-b19c-431c6bd8a71b"",
+      ""name"": ""Wat Phra Kaew"",
+      ""slug"": ""wat-phra-kaew"",
+      ""lat"": 13.7515758617165,
+      ""lng"": 100.492716751662,
+      ""tags"": [""temple""],
+      ""description"": ""The Temple of the Emerald Buddha, a must-visit for its stunning architecture and cultural importance.""
+    },
+    {
+      ""id"": ""f82e38fb-2e95-43f3-b6f8-e040487c07fe"",
+      ""name"": ""Wat Ratchabophit"",
+      ""slug"": ""wat-ratchabophit"",
+      ""lat"": 13.7490521104137,
+      ""lng"": 100.497172467639,
+      ""tags"": [""temple""],
+      ""description"": ""A unique temple featuring a blend of Thai and Western architectural styles.""
+    },
+    {
+      ""id"": ""bc9c54df-129e-48d7-b50d-c51665ab0270"",
+      ""name"": ""Wat Suthat"",
+      ""slug"": ""wat-suthat"",
+      ""lat"": 13.7501516287693,
+      ""lng"": 100.500920256702,
+      ""tags"": [""temple""],
+      ""description"": ""Famous for its giant swing and beautiful murals, this temple is a cultural gem.""
+    },
+    {
+      ""id"": ""1f59c231-f433-435a-87ce-8013ecbfe749"",
+      ""name"": ""Bangkok National Museum"",
+      ""slug"": ""bangkok-national-museum"",
+      ""lat"": 13.7576144882401,
+      ""lng"": 100.492522202231,
+      ""tags"": [""museum""],
+      ""description"": ""The largest museum in Southeast Asia, showcasing Thai art and history.""
+    },
+    {
+      ""id"": ""36a1780c-6982-4520-87ee-ed97cae6ef40"",
+      ""name"": ""Museum Siam"",
+      ""slug"": ""museum-siam"",
+      ""lat"": 13.7441250116231,
+      ""lng"": 100.494162946057,
+      ""tags"": [""museum""],
+      ""description"": ""An interactive museum that explores the history and culture of Thailand.""
+    },
+    {
+      ""id"": ""2e51a8df-cd87-4d88-b106-6440fe6c3f69"",
+      ""name"": ""Pipit Banglamphu Museum"",
+      ""slug"": ""pipit-banglamphu-museum"",
+      ""lat"": 13.7637330875704,
+      ""lng"": 100.496388628989,
+      ""tags"": [""museum""],
+      ""description"": ""A small museum focusing on the history of the Banglamphu area.""
+    },
+    {
+      ""id"": ""4b156947-b204-4bc2-8004-b32f37ec972b"",
+      ""name"": ""Rattanakosin Exhibition Hall"",
+      ""slug"": ""rattanakosin-exhibition-hall"",
+      ""lat"": 13.7558592981018,
+      ""lng"": 100.50380064017,
+      ""tags"": [""museum""],
+      ""description"": ""An exhibition hall dedicated to the history and culture of the Rattanakosin era.""
+    }
+  ],
+  ""planningConstraints"": {
+    ""durationMinutes"": 240,
+    ""maxStops"": 4,
+    ""budgetLevel"": ""medium"",
+    ""groupType"": ""friends"",
+    ""themes"": [""temple"", ""museum""]
+  }
+}","0","0",""
+"21","scope_boundary","If I want to travel to Chiang Mai instead, can you still help within the Rattanakosin context?","out_of_scope","pass","none","pass","not_applicable","pass","pass","pass","not_measured","I do not have data for chiang mai yet. Right now I only have travel data for the Rattanakosin area.","0","0","Correctly communicated Rattanakosin-only scope."
+"22","scope_boundary","Recommend 3 cafés in Thonglor.","out_of_scope","pass","none","pass","not_applicable","pass","pass","pass","not_measured","I do not have data for thonglor yet. Right now I only have travel data for the Rattanakosin area.","0","0","Correctly communicated Rattanakosin-only scope."
+"23","scope_boundary","Plan a one-day trip covering Siam, Ari, and Thonglor.","out_of_scope","pass","none","pass","not_applicable","pass","pass","pass","not_measured","I do not have data for siam yet. Right now I only have travel data for the Rattanakosin area.","0","0","Correctly communicated Rattanakosin-only scope."
+"24","scope_boundary","Recommend a beachfront seafood restaurant on Rattanakosin Island.","impossible_geography","pass","none","pass","not_applicable","pass","pass","pass","not_measured","I only have travel data for Rattanakosin, and there is no real beach setting in this area.","0","0","Correctly communicated Rattanakosin-only scope."
+"25","scope_boundary","Plan a 2-day 1-night trip outside Bangkok.","out_of_scope","pass","none","pass","not_applicable","pass","pass","pass","not_measured","I do not have data for outside bangkok yet. Right now I only have travel data for the Rattanakosin area.","0","0","Correctly communicated Rattanakosin-only scope."

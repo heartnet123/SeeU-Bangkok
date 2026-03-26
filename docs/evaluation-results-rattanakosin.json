@@ -1,0 +1,154 @@
+{
+  "evaluation_source": "docs/ai-evaluation-plan-rattanakosin.en.md",
+  "execution_scope": {
+    "mode": "sample_benchmark_subset",
+    "sampled_cases": [1, 6, 12, 22, 24],
+    "total_cases_in_plan": 25,
+    "total_cases_executed": 5,
+    "notes": "This report summarizes the benchmark prompts that were actually executed during validation, not the full 25-case benchmark suite."
+  },
+  "metrics_summary": {
+    "rattanakosin_scope_adherence": {
+      "pass": 5,
+      "partial_pass": 0,
+      "fail": 0
+    },
+    "constraint_satisfaction": {
+      "pass": 2,
+      "partial_pass": 0,
+      "fail": 0,
+      "not_applicable": 3
+    },
+    "routing_and_feasibility": {
+      "pass": 5,
+      "partial_pass": 0,
+      "fail": 0
+    },
+    "system_correctness": {
+      "pass": 4,
+      "partial_pass": 1,
+      "fail": 0
+    },
+    "out_of_scope_handling_quality": {
+      "pass": 2,
+      "partial_pass": 0,
+      "fail": 0,
+      "not_applicable": 3
+    },
+    "latency": {
+      "status": "not_measured",
+      "notes": "No structured latency capture was recorded during this validation run."
+    }
+  },
+  "cases": [
+    {
+      "case_id": 1,
+      "category": "place_query",
+      "prompt": "Recommend 3 historical places on Rattanakosin Island.",
+      "classification": "in_scope",
+      "pass_status": "partial_pass",
+      "failure_group": "in_scope_failure",
+      "evaluation": {
+        "scope_adherence": "pass",
+        "constraint_satisfaction": "not_applicable",
+        "routing_feasibility": "pass",
+        "system_correctness": "partial_pass",
+        "out_of_scope_handling_quality": "not_applicable",
+        "latency": "not_measured"
+      },
+      "observations": [
+        "The answer stayed within Rattanakosin Island.",
+        "The response returned only 2 places instead of the requested 3."
+      ]
+    },
+    {
+      "case_id": 6,
+      "category": "constraint_planning",
+      "prompt": "Plan a half-day trip on Rattanakosin Island with 3 stops focused on temples and museums, with short travel distances.",
+      "classification": "in_scope",
+      "pass_status": "pass",
+      "failure_group": "none",
+      "evaluation": {
+        "scope_adherence": "pass",
+        "constraint_satisfaction": "pass",
+        "routing_feasibility": "pass",
+        "system_correctness": "pass",
+        "out_of_scope_handling_quality": "not_applicable",
+        "latency": "not_measured"
+      },
+      "observations": [
+        "Produced a coherent 3-stop itinerary.",
+        "Stops remained within Rattanakosin and travel distances were short."
+      ]
+    },
+    {
+      "case_id": 12,
+      "category": "plan_modification",
+      "prompt": "Please reduce the trip to only 2 stops, but keep it within Rattanakosin Island.",
+      "classification": "in_scope",
+      "pass_status": "pass",
+      "failure_group": "none",
+      "evaluation": {
+        "scope_adherence": "pass",
+        "constraint_satisfaction": "pass",
+        "routing_feasibility": "pass",
+        "system_correctness": "pass",
+        "out_of_scope_handling_quality": "not_applicable",
+        "latency": "not_measured"
+      },
+      "observations": [
+        "The itinerary was reduced to 2 stops.",
+        "The revised plan remained within Rattanakosin Island."
+      ]
+    },
+    {
+      "case_id": 22,
+      "category": "scope_boundary",
+      "prompt": "Recommend 3 cafés in Thonglor.",
+      "classification": "out_of_scope",
+      "pass_status": "pass",
+      "failure_group": "none",
+      "evaluation": {
+        "scope_adherence": "pass",
+        "constraint_satisfaction": "not_applicable",
+        "routing_feasibility": "pass",
+        "system_correctness": "pass",
+        "out_of_scope_handling_quality": "pass",
+        "latency": "not_measured"
+      },
+      "observations": [
+        "The system refused the request correctly.",
+        "The response clearly stated that current data is limited to Rattanakosin."
+      ]
+    },
+    {
+      "case_id": 24,
+      "category": "scope_boundary",
+      "prompt": "Recommend a beachfront seafood restaurant on Rattanakosin Island.",
+      "classification": "impossible_geography",
+      "pass_status": "pass",
+      "failure_group": "none",
+      "evaluation": {
+        "scope_adherence": "pass",
+        "constraint_satisfaction": "not_applicable",
+        "routing_feasibility": "pass",
+        "system_correctness": "pass",
+        "out_of_scope_handling_quality": "pass",
+        "latency": "not_measured"
+      },
+      "observations": [
+        "The system correctly identified the request as impossible geography for the study area.",
+        "The response clearly communicated the Rattanakosin-only data boundary."
+      ]
+    }
+  ],
+  "overall_assessment": {
+    "status": "sample_suite_mostly_pass",
+    "summary": "The refactored pipeline performs well on the sampled benchmark cases, especially for scope adherence, constrained itinerary generation, revision retention, and out-of-scope refusal handling. The main remaining issue observed in the sampled run is incomplete fulfillment on one in-scope place query that returned fewer items than requested.",
+    "highest_priority_follow_up": [
+      "Run the full 25-case benchmark suite from docs/ai-evaluation-plan-rattanakosin.en.md.",
+      "Add automated assertions for exact requested item count in in-scope place recommendation tasks.",
+      "Capture structured latency metrics in the streaming or telemetry layer for future evaluation reports."
+    ]
+  }
+}

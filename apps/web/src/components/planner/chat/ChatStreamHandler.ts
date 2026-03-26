@@ -8,6 +8,40 @@ export interface SseEventBlock {
 
 type UpdateLocal = (updater: (prev: PendingTurn) => PendingTurn) => void;
 
+function humanizeStage(stage: string): string {
+	switch (stage) {
+		case "research_started":
+			return "Searching places";
+		case "research_completed":
+			return "Place research completed";
+		case "planning_started":
+			return "Building itinerary";
+		case "planning_completed":
+			return "Itinerary draft completed";
+		case "validation_started":
+			return "Running deterministic checks";
+		case "critique_started":
+			return "Reviewing plan";
+		case "critique_completed":
+			return "Review completed";
+		case "revision_started":
+			return "Revising itinerary";
+		case "finalizing":
+			return "Finalizing trip";
+		default:
+			return stage.replace(/_/g, " ");
+	}
+}
+
+function stageStepType(stage: string): PendingTurn["workflowSteps"][number]["type"] {
+	if (stage.startsWith("research")) return "retrieve";
+	if (stage.startsWith("planning")) return "route";
+	if (stage.startsWith("validation") || stage.startsWith("critique")) return "planner";
+	if (stage.startsWith("revision")) return "planner";
+	if (stage === "finalizing") return "planner";
+	return "planner";
+}
+
 function parseJson<T>(input: string, fallback: T): T {
 	try {
 		return JSON.parse(input) as T;
@@ -48,8 +82,8 @@ export function handleStreamEvent(
 	updateLocal: UpdateLocal,
 	commitCurrent: () => void,
 ) {
-	switch (event) {
-		case "start":
+		switch (event) {
+			case "start":
 			updateLocal((prev) => ({
 				...prev,
 				workflowSteps: [
@@ -60,7 +94,24 @@ export function handleStreamEvent(
 					},
 				],
 			}));
-			break;
+				break;
+
+			case "stage": {
+				const parsed = parseJson<{ stage?: string }>(joined, { stage: "processing" });
+				const stage = parsed.stage || "processing";
+				updateLocal((prev) => ({
+					...prev,
+					workflowSteps: [
+						...prev.workflowSteps.map((s) => ({ ...s, status: "complete" as const })),
+						{
+							type: stageStepType(stage),
+							label: humanizeStage(stage),
+							status: stage.endsWith("completed") ? "complete" as const : "loading" as const,
+						},
+					],
+				}));
+				break;
+			}
 
 		case "agent": {
 			const parsed = parseJson<{ agent: string }>(joined, { agent: "agent" });

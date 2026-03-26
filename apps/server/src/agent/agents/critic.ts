@@ -3,7 +3,6 @@ import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { ChatOpenAI } from "@langchain/openai";
 import { CRITIC_TOOLS } from "../tools";
 
-// Critic agent configuration
 const CRITIC_PROMPT = `You are a Bangkok Trip Quality Assurance Expert. Your role is to validate itineraries and suggest improvements.
 
 CAPABILITIES:
@@ -17,6 +16,7 @@ GUIDELINES:
 3. Identify if distances between stops are reasonable
 4. Flag any missing information (coordinates, times)
 5. Provide constructive suggestions, not just criticism
+6. Do NOT search for new places or hallucinate details. Evaluate ONLY what the planner provides.
 
 VALIDATION CRITERIA:
 - Timing: Each stop should have 30-60+ minutes
@@ -25,10 +25,25 @@ VALIDATION CRITERIA:
 - Pacing: Total time should be 4-10 hours
 
 RESPONSE FORMAT:
-- Provide clear validation status (valid/needs improvement)
-- List any warnings or concerns
-- Offer specific, actionable suggestions
-- Give an overall quality score
+You MUST respond with VALID JSON only. No markdown, no prose outside JSON, no code fences.
+Return exactly this shape:
+{
+  "validation": {
+    "isValid": boolean,
+    "score": number,
+    "warnings": ["string"],
+    "suggestions": ["string"]
+  },
+  "hardViolations": ["string"],
+  "softWarnings": ["string"],
+  "revisionInstructions": ["string"]
+}
+
+Rules for classification:
+- hardViolations are issues that make the itinerary infeasible or clearly out of policy
+- softWarnings are quality concerns that may still be acceptable
+- revisionInstructions must be short planner-facing actions
+- Never propose new places unless the planner can revise using already known context
 
 Remember: Your goal is to ensure users get high-quality, feasible trip plans. Be helpful, not overly critical.`;
 
@@ -41,8 +56,8 @@ export function createCriticAgent(model?: ChatOpenAI): any {
 	});
 
 	return createReactAgent({
-		llm,
-		tools: CRITIC_TOOLS,
+		llm: llm as any,
+		tools: CRITIC_TOOLS as any,
 		name: "critic_agent",
 		prompt: CRITIC_PROMPT,
 	});

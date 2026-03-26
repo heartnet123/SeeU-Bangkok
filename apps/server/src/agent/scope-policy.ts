@@ -399,12 +399,12 @@ export function buildScopeRefusalPayload(input: {
 			version: "1.0",
 			intent: "refusal",
 			sessionId: input.sessionId,
-			summary: `There is no ${requestedFeature} setting within Rattanakosin. I can only recommend real places inside the old-town area.`,
+			summary: `I only have travel data for Rattanakosin, and there is no real ${requestedFeature} setting in this area.`,
 			places: [],
 			tripDraft: null,
 			actions: [],
 			warnings: ["IMPOSSIBLE_GEOGRAPHY"],
-			raw_text: `Sorry, I can only help with real travel options inside Rattanakosin. There is no ${requestedFeature} setting in this area. If you want, I can suggest riverside, temple, café, or museum options within Rattanakosin instead.`,
+			raw_text: `I currently only have travel data for Rattanakosin, and there is no real ${requestedFeature} setting in this area. If you want, I can suggest realistic options inside Rattanakosin such as temples, museums, cafés, or old-town walking spots.`,
 		};
 	}
 
@@ -413,12 +413,12 @@ export function buildScopeRefusalPayload(input: {
 			version: "1.0",
 			intent: "refusal",
 			sessionId: input.sessionId,
-			summary: "I can only help with tourism-related requests within Rattanakosin.",
+			summary: "I currently only support tourism-related requests within Rattanakosin.",
 			places: [],
 			tripDraft: null,
 			actions: [],
 			warnings: ["NON_TOURISM"],
-			raw_text: `Sorry, I specialize only in tourism within Rattanakosin. I can help with place recommendations, walking routes, cafés, museums, temples, and short itineraries in that area.`,
+			raw_text: `I currently only support tourism-related requests within Rattanakosin. I can help with attractions, temples, museums, cafés, walking routes, and short trip planning in this area.`,
 		};
 	}
 
@@ -427,11 +427,11 @@ export function buildScopeRefusalPayload(input: {
 		version: "1.0",
 		intent: "refusal",
 		sessionId: input.sessionId,
-		summary: `I can only help with travel inside Rattanakosin, so I can’t plan for ${locationLabel}.`,
+		summary: `I do not have data for ${locationLabel} yet. Right now I only have travel data for the Rattanakosin area.`,
 		places: [],
 		tripDraft: null,
 		actions: [],
 		warnings: ["OUT_OF_SCOPE"],
-		raw_text: `Sorry, I specialize only in ${focusArea}. I can’t recommend or plan trips for ${locationLabel}. If you want to visit places around Sanam Luang, Wat Phra Kaew, Wat Pho, or Khao San, I can help right away.`,
+		raw_text: `I currently only have data for ${focusArea}, so I cannot recommend or plan trips for ${locationLabel} yet. If you want to travel within Rattanakosin, such as Sanam Luang, Wat Phra Kaew, Wat Pho, or Khao San, I can help right away.`,
 	};
 }

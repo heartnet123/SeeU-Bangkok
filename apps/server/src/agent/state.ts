@@ -141,14 +141,137 @@ export const PlannerAgentOutputSchema = z.object({
 	tripDraft: TripDraftSchema,
 }).strict();
 
+export const CritiqueAgentOutputSchema = z.object({
+	validation: TripValidationSchema,
+	hardViolations: z.array(z.string()).default([]),
+	softWarnings: z.array(z.string()).default([]),
+	revisionInstructions: z.array(z.string()).default([]),
+}).strict();
+
+export const ResearchStageOutputSchema = z.object({
+	summary: z.string(),
+	querySummary: z.string().optional(),
+	places: z.array(CandidatePlaceSchema).default([]),
+	planningConstraints: PlanningConstraintsSchema.optional(),
+	evidence: z.array(RetrievedDocSchema).default([]),
+	coverageGaps: z.array(z.string()).default([]),
+}).strict();
+
+export const PlanningStageOutputSchema = z.object({
+	summary: z.string(),
+	tripDraft: TripDraftSchema,
+	assumptions: z.array(z.string()).default([]),
+	droppedPlaces: z.array(CandidatePlaceSchema).default([]),
+}).strict();
+
+export const CritiqueStageOutputSchema = z.object({
+	validation: TripValidationSchema,
+	hardViolations: z.array(z.string()).default([]),
+	softWarnings: z.array(z.string()).default([]),
+	revisionInstructions: z.array(z.string()).default([]),
+	summary: z.string().optional(),
+}).strict();
+
 export type ResearcherAgentOutput = z.infer<typeof ResearcherAgentOutputSchema>;
 export type PlannerAgentOutput = z.infer<typeof PlannerAgentOutputSchema>;
+export type CritiqueAgentOutput = z.infer<typeof CritiqueAgentOutputSchema>;
+export type ResearchStageOutput = z.infer<typeof ResearchStageOutputSchema>;
+export type PlanningStageOutput = z.infer<typeof PlanningStageOutputSchema>;
+export type CritiqueStageOutput = z.infer<typeof CritiqueStageOutputSchema>;
+
+export const WorkflowStateSchema = z.object({
+	stage: z.enum(["intake", "research", "planning", "critique", "revision", "finalize", "done", "error"]).default("intake"),
+	status: z.enum(["idle", "running", "waiting_revision", "completed", "error"]).default("idle"),
+	iteration: z.number().default(0),
+	maxIterations: z.number().default(3),
+});
+export type WorkflowState = z.infer<typeof WorkflowStateSchema>;
+
+export const ResearchStateSchema = z.object({
+	querySummary: z.string().optional(),
+	candidatePlaces: z.array(CandidatePlaceSchema).default([]),
+	evidence: z.array(RetrievedDocSchema).default([]),
+	coverageGaps: z.array(z.string()).default([]),
+});
+export type ResearchState = z.infer<typeof ResearchStateSchema>;
+
+export const PlanningStateSchema = z.object({
+	constraints: PlanningConstraintsSchema.optional(),
+	draft: TripDraftSchema.optional(),
+	assumptions: z.array(z.string()).default([]),
+	droppedPlaces: z.array(CandidatePlaceSchema).default([]),
+});
+export type PlanningState = z.infer<typeof PlanningStateSchema>;
+
+export const CritiqueStateSchema = z.object({
+	result: TripValidationSchema.optional(),
+	isValid: z.boolean().optional(),
+	score: z.number().optional(),
+	hardViolations: z.array(z.string()).default([]),
+	softWarnings: z.array(z.string()).default([]),
+	revisionInstructions: z.array(z.string()).default([]),
+	history: z.array(CritiqueStageOutputSchema).default([]),
+});
+export type CritiqueState = z.infer<typeof CritiqueStateSchema>;
+
+export const UiStateSchema = z.object({
+	statusLabel: z.string().optional(),
+	progressStep: z.number().optional(),
+	latestSummary: z.string().optional(),
+	previewPlaces: z.array(CandidatePlaceSchema).default([]),
+	previewTripDraft: TripDraftSchema.optional(),
+});
+export type UiState = z.infer<typeof UiStateSchema>;
+
+export const TelemetryStateSchema = z.object({
+	toolCalls: z.array(ToolCallSchema).default([]),
+	agentHistory: z.array(z.string()).default([]),
+	timings: z.record(z.string(), z.number()).default({}),
+});
+export type TelemetryState = z.infer<typeof TelemetryStateSchema>;
 
 export const AgentStateSchema = z.object({
+	// Graph core inputs
 	messages: z.array(MessageSchema),
 	userLocation: LocationSchema.optional(),
 	sessionId: z.string().optional(),
 	userId: z.string().optional(),
+	userPreferences: z.record(z.string(), z.unknown()).default({}),
+
+	// Structured workflow sections
+	workflow: WorkflowStateSchema.default({
+		stage: "intake",
+		status: "idle",
+		iteration: 0,
+		maxIterations: 3,
+	}),
+	research: ResearchStateSchema.default({
+		querySummary: undefined,
+		candidatePlaces: [],
+		evidence: [],
+		coverageGaps: [],
+	}),
+	planning: PlanningStateSchema.default({
+		assumptions: [],
+		droppedPlaces: [],
+	}),
+	critique: CritiqueStateSchema.default({
+		result: undefined,
+		hardViolations: [],
+		softWarnings: [],
+		revisionInstructions: [],
+		history: [],
+	}),
+	ui: UiStateSchema.default({
+		previewPlaces: [],
+	}),
+	telemetry: TelemetryStateSchema.default({
+		toolCalls: [],
+		agentHistory: [],
+		timings: {},
+	}),
+
+	// Backwards compatibility alias fields
 	currentAgent: z.string().optional(),
 	agentHistory: z.array(z.string()).default([]),
 	toolCalls: z.array(ToolCallSchema).default([]),
@@ -158,7 +281,6 @@ export const AgentStateSchema = z.object({
 	planningConstraints: PlanningConstraintsSchema.optional(),
 	finalResponse: z.string().optional(),
 	error: z.string().optional(),
-	userPreferences: z.record(z.string(), z.unknown()).default({}),
 });
 
 export type AgentState = z.infer<typeof AgentStateSchema>;
@@ -179,6 +301,40 @@ export function createInitialState(
 		userLocation: options.userLocation,
 		sessionId: options.sessionId,
 		userId: options.userId,
+		userPreferences: options.userPreferences || {},
+		workflow: {
+			stage: "intake",
+			status: "idle",
+			iteration: 0,
+			maxIterations: 2,
+		},
+		research: {
+			querySummary: undefined,
+			candidatePlaces: [],
+			evidence: [],
+			coverageGaps: [],
+		},
+		planning: {
+			constraints: options.planningConstraints,
+			draft: options.currentTripDraft,
+			assumptions: [],
+			droppedPlaces: [],
+		},
+		critique: {
+			result: undefined,
+			hardViolations: [],
+			softWarnings: [],
+			revisionInstructions: [],
+			history: [],
+		},
+		ui: {
+			previewPlaces: [],
+		},
+		telemetry: {
+			toolCalls: [],
+			agentHistory: [],
+			timings: {},
+		},
 		currentAgent: undefined,
 		agentHistory: [],
 		toolCalls: [],
@@ -188,6 +344,5 @@ export function createInitialState(
 		planningConstraints: options.planningConstraints,
 		finalResponse: undefined,
 		error: undefined,
-		userPreferences: options.userPreferences || {},
 	};
 }

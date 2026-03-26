@@ -1,4 +1,4 @@
-// Supervisor - Explicit graph-style orchestration of specialized agents
+import { StateGraph, START, END, Annotation } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
 import { createResearcherAgent } from "./agents/researcher";
 import { createPlannerAgent } from "./agents/planner";
@@ -15,78 +15,179 @@ import {
 } from "./response-normalization";
 import {
 	buildScopeRefusalPayload,
-	classifyScope,
 	classifyScopeWithResolution,
 } from "./scope-policy";
+import { validateItineraryImpl } from "./tools/validation";
 import type {
 	CandidatePlace,
+	CritiqueStageOutput,
+	PlanningStageOutput,
 	PlanningConstraints,
+	ResearchStageOutput,
 	TripDraft,
+	TripValidation,
 	UiResponsePayload,
+	WorkflowState,
+	ResearchState,
+	PlanningState,
+	CritiqueState,
+	UiState,
+	TelemetryState
+} from "./state";
+import {
+	CritiqueStageOutputSchema,
+	PlanningStageOutputSchema,
+	ResearchStageOutputSchema,
 } from "./state";
 
-// Supervisor system prompt
-const SUPERVISOR_PROMPT = `You are the Rattanakosin Trip Planning Supervisor. Your role is to coordinate specialized agents to help users plan trips only within the Rattanakosin area of Bangkok.
+const SUPERVISOR_PROMPT = `You are the Rattanakosin Trip Planning Supervisor...`;
 
-SUPPORTED AREA EXAMPLES:
-- Rattanakosin / Bangkok Old Town / Phra Nakhon
-- Sanam Luang, Grand Palace, Wat Phra Kaew, Wat Pho, Khao San Road, Museum Siam
-
-OUT OF SCOPE EXAMPLES:
-- Siam, Ari, Thonglor, Sukhumvit, Chiang Mai, Pattaya, Phuket
-
-- Delegate all place discovery to researcher_agent.
-- Delegate all itinerary construction to planner_agent after research is complete.
-- Use critic_agent only when runtime policy explicitly permits validation or revision.
-- Prefer the minimum agent chain required by runtime policy.
-- Do not answer place or itinerary requests from your own knowledge.
-- Return the final agent output as valid JSON and do not convert it to markdown.
-- Refuse requests that are outside tourism in the Rattanakosin scope.
-- If the user asks about places outside Rattanakosin or unrelated topics, return a concise refusal and redirect them to Rattanakosin travel planning.
-- If the user asks for impossible geography within Rattanakosin, such as beach, beachfront, sea, mountain, or snow, state truthfully that it does not exist in this area.
-
-Remember: Your goal is to provide the best trip planning experience by coordinating specialized expertise.`;
-
-// Configuration for the supervisor
 export interface SupervisorConfig {
 	model?: ChatOpenAI;
 	recursionLimit?: number;
 }
 
-interface GraphAgentMessage {
-	role: string;
-	content: string;
-	name?: string;
+export const WorkflowStateAnnotation = Annotation.Root({
+	messages: Annotation<any[]>({
+		reducer: (x, y) => x.concat(y),
+		default: () => [],
+	}),
+	userLocation: Annotation<any>({ reducer: (x, y) => y ?? x }),
+	sessionId: Annotation<string | undefined>({ reducer: (x, y) => y ?? x }),
+	userId: Annotation<string | undefined>({ reducer: (x, y) => y ?? x }),
+	userPreferences: Annotation<any>({ reducer: (x, y) => y ?? x, default: () => ({}) }),
+	workflow: Annotation<WorkflowState, Partial<WorkflowState>>({
+		reducer: (x, y) => ({ ...x, ...y }),
+		default: () => ({ stage: "intake", status: "idle", iteration: 0, maxIterations: 3 }),
+	}),
+	research: Annotation<ResearchState, Partial<ResearchState>>({
+		reducer: (x, y) => ({ ...x, ...y }),
+		default: () => ({ querySummary: undefined, candidatePlaces: [], evidence: [], coverageGaps: [] }),
+	}),
+	planning: Annotation<PlanningState, Partial<PlanningState>>({
+		reducer: (x, y) => ({ ...x, ...y }),
+		default: () => ({ constraints: undefined, draft: undefined, assumptions: [], droppedPlaces: [] }),
+	}),
+	critique: Annotation<CritiqueState, Partial<CritiqueState>>({
+		reducer: (x, y) => ({ ...x, ...y }),
+		default: () => ({ hardViolations: [], softWarnings: [], revisionInstructions: [], history: [] }),
+	}),
+	ui: Annotation<UiState, Partial<UiState>>({
+		reducer: (x, y) => ({ ...x, ...y }),
+		default: () => ({ previewPlaces: [], statusLabel: "", progressStep: undefined, latestSummary: undefined, previewTripDraft: undefined }),
+	}),
+	telemetry: Annotation<TelemetryState, Partial<TelemetryState>>({
+		reducer: (x, y) => ({ ...x, ...y, timings: { ...(x?.timings ?? {}), ...(y?.timings ?? {}) } }),
+		default: () => ({ toolCalls: [], agentHistory: [], timings: {} }),
+	}),
+	policy: Annotation<SupervisorRoutingPolicy>({ reducer: (x, y) => y ?? x }),
+	finalPayload: Annotation<UiResponsePayload | null>({ reducer: (x, y) => y ?? x, default: () => null }),
+	finalResponse: Annotation<string | null>({ reducer: (x, y) => y ?? x, default: () => null }),
+	collector: Annotation<any>({ reducer: (x, y) => y ?? x }),
+	llm: Annotation<any>({ reducer: (x, y) => y ?? x })
+});
+
+function parseResearchStageOutput(text: string): ResearchStageOutput | null {
+	try {
+		const parsed = JSON.parse(text) as Record<string, unknown>;
+		return ResearchStageOutputSchema.parse({
+			summary: typeof parsed.summary === "string" ? parsed.summary : "",
+			querySummary: typeof parsed.summary === "string" ? parsed.summary : undefined,
+			places: Array.isArray(parsed.places) ? parsed.places : [],
+			planningConstraints: parsed.planningConstraints,
+			evidence: [],
+			coverageGaps: [],
+		});
+	} catch {
+		return null;
+	}
 }
 
-interface SupervisorGraphState {
-	messages: GraphAgentMessage[];
-	userLocation?: { lat: number; lng: number };
-	sessionId?: string;
-	userId?: string;
-	userPreferences: Record<string, unknown>;
-	currentTripDraft?: TripDraft;
-	planningConstraints?: PlanningConstraints;
-	policy: SupervisorRoutingPolicy;
-	finalPayload: UiResponsePayload | null;
-	finalResponse: string | null;
-	suggestedPlaces: CandidatePlace[];
-	validation:
-		| {
-				isValid: boolean;
-				score: number;
-				warnings: string[];
-				suggestions: string[];
-			}
-		| null;
-	revisionCount: number;
-	maxRevisions: number;
+function parsePlanningStageOutput(text: string): PlanningStageOutput | null {
+	try {
+		const parsed = JSON.parse(text) as Record<string, unknown>;
+		if (!(parsed.tripDraft && typeof parsed.tripDraft === "object")) {
+			return null;
+		}
+		return PlanningStageOutputSchema.parse({
+			summary: typeof parsed.summary === "string" ? parsed.summary : "",
+			tripDraft: parsed.tripDraft,
+			assumptions: Array.isArray(parsed.assumptions) ? parsed.assumptions : [],
+			droppedPlaces: Array.isArray(parsed.droppedPlaces) ? parsed.droppedPlaces : [],
+		});
+	} catch {
+		return null;
+	}
 }
 
-interface StreamCollector {
-	onAgent?: (agent: string) => Promise<void>;
-	onTool?: (tool: string, args: unknown) => Promise<void>;
-	onMessage?: (message: { role: string; content: string; agent: string | null }) => Promise<void>;
+function deriveHardViolations(validation: Awaited<ReturnType<typeof validateItineraryImpl>>): string[] {
+	const hardViolations: string[] = [];
+	if (validation.details.totalStops < 2) hardViolations.push("Need at least 2 stops for a valid itinerary.");
+	if (validation.details.totalStops > 8) hardViolations.push("Too many stops for one trip.");
+	if (validation.details.totalTime > 600) hardViolations.push("Total trip duration is too long.");
+	if (validation.details.totalDistance > 50) hardViolations.push("Total travel distance is too long for this trip.");
+	return hardViolations;
+}
+
+function parseCritiqueStageOutput(
+	text: string,
+	fallbackValidation?: TripValidation | null,
+	fallbackHardViolations: string[] = []
+): CritiqueStageOutput | null {
+	try {
+		const parsed = JSON.parse(text) as Record<string, unknown>;
+		return CritiqueStageOutputSchema.parse({
+			validation: parsed.validation ?? fallbackValidation,
+			hardViolations: Array.isArray(parsed.hardViolations) ? parsed.hardViolations : fallbackHardViolations,
+			softWarnings: Array.isArray(parsed.softWarnings) ? parsed.softWarnings : [],
+			revisionInstructions: Array.isArray(parsed.revisionInstructions) ? parsed.revisionInstructions : [],
+			summary: typeof parsed.summary === "string" ? parsed.summary : undefined,
+		});
+	} catch {
+		if (!fallbackValidation) {
+			return null;
+		}
+		return {
+			validation: fallbackValidation,
+			hardViolations: fallbackHardViolations,
+			softWarnings: fallbackValidation.warnings,
+			revisionInstructions: fallbackValidation.suggestions,
+			summary: undefined,
+		};
+	}
+}
+
+function createFinalPayload(state: typeof WorkflowStateAnnotation.State): UiResponsePayload {
+	return {
+		version: "1.0",
+		intent: state.policy.requiresPlanning ? "itinerary" : "place_recommendation",
+		sessionId: state.sessionId,
+		summary: state.ui?.latestSummary || state.finalResponse || "",
+		places: state.research?.candidatePlaces || [],
+		tripDraft: state.planning?.draft ?? null,
+		actions: state.planning?.draft
+			? [
+				{ type: "preview_itinerary", label: "Preview itinerary" },
+				{ type: "save_trip_draft", label: "Save trip draft" },
+			]
+			: state.research?.candidatePlaces?.length
+				? [{ type: "add_all_to_trip", label: "Add all to trip" }]
+				: [],
+		warnings: [
+			...(state.planning?.draft?.warnings ?? []),
+			...(state.critique?.softWarnings ?? []),
+		],
+		raw_text: state.finalResponse || state.ui?.latestSummary || "",
+	};
+}
+
+function hasMaterialDraftChange(previousDraft?: TripDraft, nextDraft?: TripDraft): boolean {
+	if (!previousDraft || !nextDraft) {
+		return true;
+	}
+	return JSON.stringify(previousDraft.stops) !== JSON.stringify(nextDraft.stops)
+		|| previousDraft.total_minutes !== nextDraft.total_minutes
+		|| previousDraft.total_distance_km !== nextDraft.total_distance_km;
 }
 
 function buildRuntimeContextMessage(
@@ -111,9 +212,7 @@ function buildRuntimeContextMessage(
 			userPreferences: options.userPreferences ?? {},
 			defaultArea: options.defaultArea ?? null,
 			instructions: options.defaultArea
-				? [
-					`If the user does not specify an area, assume they mean ${options.defaultArea} and continue helping within that area.`,
-				]
+				? [`If the user does not specify an area, assume they mean ${options.defaultArea} and continue helping within that area.`]
 				: [],
 			currentTripDraft: currentTripDraft ?? null,
 			orchestrationPolicy: {
@@ -127,100 +226,12 @@ function buildRuntimeContextMessage(
 	};
 }
 
-function createAgentsForMode(llm: ChatOpenAI, mode: SupervisorMode) {
-	const researcherAgent = createResearcherAgent(llm);
-	const plannerAgent = createPlannerAgent(llm);
-
-	if (mode === "researcher_only") {
-		return [researcherAgent];
-	}
-
-	if (mode === "researcher_planner") {
-		return [researcherAgent, plannerAgent];
-	}
-
-	const criticAgent = createCriticAgent(llm);
-	return [researcherAgent, plannerAgent, criticAgent];
-}
-
-function createInitialGraphState(
-	messages: Array<{ role: string; content: string }>,
-	options: {
-		userLocation?: { lat: number; lng: number };
-		sessionId?: string;
-		userId?: string;
-		userPreferences?: Record<string, unknown>;
-		defaultArea?: string;
-	},
-	policy: SupervisorRoutingPolicy,
-	currentTripDraft = parseLatestTripDraft(messages)
-): SupervisorGraphState {
-	return {
-		messages: formatSupervisorMessages(messages, options, policy, currentTripDraft),
-		userLocation: options.userLocation,
-		sessionId: options.sessionId,
-		userId: options.userId,
-		userPreferences: options.userPreferences ?? {},
-		currentTripDraft,
-		planningConstraints: undefined,
-		policy,
-		finalPayload: null,
-		finalResponse: null,
-		suggestedPlaces: [],
-		validation: null,
-		revisionCount: 0,
-		maxRevisions: 2,
-	};
-}
-
-function updateStateFromAssistantMessages(
-	state: SupervisorGraphState,
-	messages: GraphAgentMessage[]
-): void {
-	for (const message of messages) {
-		state.messages.push(message);
-	}
-
-	const latestAssistant = [...messages].reverse().find((message) => message.role === "assistant");
-	if (!latestAssistant?.content) {
-		return;
-	}
-
-	state.finalResponse = latestAssistant.content;
-
-	try {
-		const parsed = JSON.parse(latestAssistant.content) as Record<string, unknown>;
-
-		if (Array.isArray(parsed.places)) {
-			state.suggestedPlaces = parsed.places as CandidatePlace[];
-		}
-
-		if (parsed.planningConstraints && typeof parsed.planningConstraints === "object") {
-			state.planningConstraints = parsed.planningConstraints as PlanningConstraints;
-		}
-
-		if (parsed.tripDraft && typeof parsed.tripDraft === "object") {
-			state.currentTripDraft = parsed.tripDraft as TripDraft;
-		}
-
-		if (
-			typeof parsed.summary === "string" &&
-			"version" in parsed &&
-			"raw_text" in parsed
-		) {
-			state.finalPayload = parsed as unknown as UiResponsePayload;
-		}
-	} catch {
-		// Plain text assistant responses are allowed.
-	}
-}
-
 async function invokeGraphAgentNode(
 	agent: any,
 	agentName: string,
-	state: SupervisorGraphState,
-	collector?: StreamCollector
-): Promise<void> {
+	state: typeof WorkflowStateAnnotation.State,
+): Promise<{ assistantMessages: any[], latestAssistantText: string | null }> {
+	const collector = state.collector;
 	await collector?.onAgent?.(agentName);
 
 	const stream = await agent.stream(
@@ -228,7 +239,8 @@ async function invokeGraphAgentNode(
 		{ streamMode: "updates" }
 	);
 
-	const assistantMessages: GraphAgentMessage[] = [];
+	const assistantMessages: any[] = [];
+	let latestAssistantText: string | null = null;
 
 	for await (const event of stream) {
 		for (const [nodeName, nodeData] of Object.entries(event)) {
@@ -258,14 +270,13 @@ async function invokeGraphAgentNode(
 				continue;
 			}
 
-			for (const message of data.messages as Array<{
-				role?: string;
-				content: unknown;
-				name?: string;
-			}>) {
+			for (const message of data.messages as Array<{ role?: string; content: unknown; name?: string; }>) {
 				const normalizedMessage = normalizeSupervisorMessage(message);
 				if (normalizedMessage.role === "assistant") {
 					assistantMessages.push(normalizedMessage);
+					if (typeof normalizedMessage.content === "string") {
+						latestAssistantText = normalizedMessage.content;
+					}
 				}
 
 				await collector?.onMessage?.({
@@ -277,33 +288,32 @@ async function invokeGraphAgentNode(
 		}
 	}
 
-	updateStateFromAssistantMessages(state, assistantMessages);
+	return { assistantMessages, latestAssistantText };
 }
 
-function shouldPlan(state: SupervisorGraphState): boolean {
-	return state.policy.requiresPlanning;
-}
-
-function shouldValidate(state: SupervisorGraphState): boolean {
-	return state.policy.useCritic && Boolean(state.currentTripDraft);
-}
-
-function shouldRevise(state: SupervisorGraphState): boolean {
-	if (!state.validation || !state.currentTripDraft) {
-		return false;
+// Nodes
+async function scopeCheckNode(state: typeof WorkflowStateAnnotation.State) {
+	const scope = await classifyScopeWithResolution({ messages: state.messages });
+	if (scope.classification !== "in_scope" && scope.classification !== "implicit_in_scope") {
+		const payload = buildScopeRefusalPayload({
+			classification: scope.classification,
+			sessionId: state.sessionId,
+			matchedTerms: scope.matchedTerms,
+		});
+		return {
+			finalPayload: payload,
+			finalResponse: JSON.stringify(payload),
+			messages: [{ role: "assistant", content: JSON.stringify(payload) }],
+			workflow: { stage: "done", status: "completed" }
+		};
 	}
-
-	if (state.revisionCount >= state.maxRevisions) {
-		return false;
-	}
-
-	return !state.validation.isValid || state.validation.score < 80;
+	return { workflow: { stage: "intake" } };
 }
 
-async function hydrateContextNode(state: SupervisorGraphState): Promise<void> {
-	state.messages = [
+async function hydrateContextNode(state: typeof WorkflowStateAnnotation.State) {
+	const mapped = [
 		buildRuntimeContextMessage(
-			state.messages.filter((message) => message.role !== "system"),
+			state.messages.filter((m) => m.role !== "system"),
 			{
 				userLocation: state.userLocation,
 				sessionId: state.sessionId,
@@ -311,306 +321,353 @@ async function hydrateContextNode(state: SupervisorGraphState): Promise<void> {
 				userPreferences: state.userPreferences,
 				defaultArea: "Rattanakosin",
 			},
-			state.currentTripDraft,
+			state.planning?.draft || parseLatestTripDraft(state.messages),
 			state.policy
 		),
-		...state.messages.filter((message) => message.role !== "system"),
-	];
-}
-
-async function researchNode(
-	state: SupervisorGraphState,
-	llm: ChatOpenAI,
-	collector?: StreamCollector
-): Promise<void> {
-	await invokeGraphAgentNode(createResearcherAgent(llm), "researcher_agent", state, collector);
-}
-
-async function planNode(
-	state: SupervisorGraphState,
-	llm: ChatOpenAI,
-	collector?: StreamCollector
-): Promise<void> {
-	await invokeGraphAgentNode(createPlannerAgent(llm), "planner_agent", state, collector);
-}
-
-async function validateNode(
-	state: SupervisorGraphState,
-	llm: ChatOpenAI,
-	collector?: StreamCollector
-): Promise<void> {
-	await invokeGraphAgentNode(createCriticAgent(llm), "critic_agent", state, collector);
-
-	if (!state.currentTripDraft) {
-		return;
-	}
-
-	state.validation = state.currentTripDraft.validation;
-	if (shouldRevise(state)) {
-		state.revisionCount += 1;
-		state.messages.push({
-			role: "system",
-			content: JSON.stringify({
-				type: "revision_request",
-				revisionCount: state.revisionCount,
-				validation: state.validation,
-				instruction:
-					"Revise the itinerary to address validation warnings and improve the quality score.",
-			}),
-		});
-	}
-}
-
-async function finalizeNode(state: SupervisorGraphState): Promise<void> {
-	if (state.finalPayload) {
-		state.finalResponse = JSON.stringify(state.finalPayload);
-		return;
-	}
-
-	if (!state.finalResponse) {
-		state.finalResponse = JSON.stringify({
-			intent: state.policy.requiresPlanning ? "itinerary" : "place_recommendation",
-			summary: "",
-			places: state.suggestedPlaces,
-			tripDraft: state.currentTripDraft ?? null,
-		});
-	}
-}
-
-function finalizeScopeRefusalState(
-	state: SupervisorGraphState,
-	classification: Exclude<
-		ReturnType<typeof classifyScope>["classification"],
-		"in_scope" | "implicit_in_scope"
-	>,
-	sessionId?: string,
-	matchedTerms?: string[]
-): void {
-	const payload = buildScopeRefusalPayload({
-		classification,
-		sessionId,
-		matchedTerms,
-	});
-	state.finalPayload = payload;
-	state.finalResponse = JSON.stringify(payload);
-	state.messages.push({
-		role: "assistant",
-		content: JSON.stringify(payload),
-	});
-}
-
-async function runSupervisorGraph(
-	messages: Array<{ role: string; content: string }>,
-	options: {
-		userLocation?: { lat: number; lng: number };
-		sessionId?: string;
-		userId?: string;
-		userPreferences?: Record<string, unknown>;
-	} = {},
-	collector?: StreamCollector
-): Promise<SupervisorGraphState> {
-	const currentTripDraft = parseLatestTripDraft(messages);
-	const policy = deriveSupervisorRoutingPolicy({ messages, currentTripDraft });
-	const scope = await classifyScopeWithResolution({ messages });
-	const llm = new ChatOpenAI({
-		modelName: "gpt-4o-mini",
-		temperature: 0,
-	});
-	const state = createInitialGraphState(messages, options, policy, currentTripDraft);
-
-	if (
-		scope.classification !== "in_scope" &&
-		scope.classification !== "implicit_in_scope"
-	) {
-		finalizeScopeRefusalState(
-			state,
-			scope.classification,
-			options.sessionId,
-			scope.matchedTerms
-		);
-		return state;
-	}
-
-	await hydrateContextNode(state);
-	await researchNode(state, llm, collector);
-
-	if (shouldPlan(state)) {
-		await planNode(state, llm, collector);
-	}
-
-	if (shouldValidate(state)) {
-		await validateNode(state, llm, collector);
-		while (shouldRevise(state)) {
-			await planNode(state, llm, collector);
-			await validateNode(state, llm, collector);
-		}
-	}
-
-	await finalizeNode(state);
-	return state;
-}
-
-function formatSupervisorMessages(
-	messages: Array<{ role: string; content: string }>,
-	options: {
-		userLocation?: { lat: number; lng: number };
-		sessionId?: string;
-		userId?: string;
-		userPreferences?: Record<string, unknown>;
-		defaultArea?: string;
-	},
-	policy: SupervisorRoutingPolicy,
-	currentTripDraft = parseLatestTripDraft(messages)
-) {
-	return [
-		buildRuntimeContextMessage(messages, options, currentTripDraft, policy),
-		...messages,
+		...state.messages.filter((m) => m.role !== "system"),
 	].map((msg) => ({
 		role: msg.role as "user" | "assistant" | "system",
 		content: msg.content,
 	}));
+
+	return { messages: mapped };
 }
 
-// Create the multi-agent supervisor graph
-// Using explicit 'any' return type to avoid bun's cross-module type resolution issues
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function createTripPlannerSupervisor(
-	config: SupervisorConfig = {},
-	mode: SupervisorMode = "researcher_planner_critic"
-): any {
-	const llm = config.model || new ChatOpenAI({
-		modelName: "gpt-4o-mini",
-		temperature: 0,
-	});
+async function researchNode(state: typeof WorkflowStateAnnotation.State) {
+	state.collector?.onStage?.("research_started");
+	const startedAt = Date.now();
+	const agent = createResearcherAgent(state.llm);
+	const { assistantMessages, latestAssistantText } = await invokeGraphAgentNode(agent, "researcher_agent", state);
+	
+	const updates: Partial<typeof WorkflowStateAnnotation.State> = {
+		messages: assistantMessages,
+		finalResponse: latestAssistantText,
+		workflow: { ...state.workflow, stage: "research" },
+		telemetry: {
+			toolCalls: state.telemetry?.toolCalls ?? [],
+			agentHistory: [...(state.telemetry?.agentHistory ?? []), "researcher_agent"],
+			timings: { researchMs: Date.now() - startedAt },
+		}
+	};
 
-	const agents = createAgentsForMode(llm, mode);
-
-	return {
-		mode,
-		prompt: SUPERVISOR_PROMPT,
-		agents,
-		async invoke(input: { messages: Array<{ role: string; content: string }> }) {
-			const state = await runSupervisorGraph(input.messages);
-			return {
-				messages: state.messages,
+	if (latestAssistantText) {
+		const parsed = parseResearchStageOutput(latestAssistantText);
+		if (parsed) {
+			updates.research = {
+				querySummary: parsed.querySummary,
+				candidatePlaces: parsed.places,
+				evidence: parsed.evidence,
+				coverageGaps: parsed.coverageGaps,
 			};
-		},
-		async stream(
-			input: { messages: Array<{ role: string; content: string }> },
-			_options?: { streamMode?: string }
-		) {
-			async function* generate() {
-				const events: Array<Record<string, unknown>> = [];
-				await runSupervisorGraph(input.messages, {}, {
-					onAgent: async (agent) => {
-						events.push({ [agent]: { messages: [] } });
-					},
-					onTool: async (tool, args) => {
-						events.push({ tool_event: { tool_calls: [{ name: tool, args }] } });
-					},
-					onMessage: async (message) => {
-						events.push({
-							[message.agent || "assistant"]: {
-								messages: [
-									{ role: message.role, content: message.content },
-								],
-							},
-						});
-					},
-				});
-
-				for (const event of events) {
-					yield event;
-				}
-				yield { __end__: { success: true } };
+			updates.ui = {
+				previewPlaces: parsed.places,
+				statusLabel: "Research completed",
+				progressStep: 1,
+				latestSummary: parsed.summary,
+				previewTripDraft: state.ui?.previewTripDraft,
+			};
+			if (parsed.planningConstraints) {
+				updates.planning = { ...state.planning, constraints: parsed.planningConstraints };
 			}
+		}
+	}
 
-			return generate();
+	state.collector?.onStage?.("research_completed");
+	return updates;
+}
+
+async function planNode(state: typeof WorkflowStateAnnotation.State) {
+	state.collector?.onStage?.("planning_started");
+	const startedAt = Date.now();
+	const previousDraft = state.planning?.draft;
+	const agent = createPlannerAgent(state.llm);
+	const { assistantMessages, latestAssistantText } = await invokeGraphAgentNode(agent, "planner_agent", state);
+	
+	const updates: Partial<typeof WorkflowStateAnnotation.State> = {
+		messages: assistantMessages,
+		finalResponse: latestAssistantText,
+		workflow: { ...state.workflow, stage: "planning" },
+		telemetry: {
+			toolCalls: state.telemetry?.toolCalls ?? [],
+			agentHistory: [...(state.telemetry?.agentHistory ?? []), "planner_agent"],
+			timings: { planningMs: Date.now() - startedAt },
+		}
+	};
+
+	if (latestAssistantText) {
+		const parsed = parsePlanningStageOutput(latestAssistantText);
+		if (parsed) {
+			updates.planning = {
+				constraints: state.planning?.constraints,
+				draft: parsed.tripDraft,
+				assumptions: parsed.assumptions,
+				droppedPlaces: parsed.droppedPlaces,
+			};
+			updates.ui = {
+				previewPlaces: state.ui?.previewPlaces || [],
+				previewTripDraft: parsed.tripDraft,
+				statusLabel: "Planning itinerary",
+				progressStep: state.workflow.stage === "revision" ? 4 : 2,
+				latestSummary: parsed.summary,
+			};
+			updates.workflow = {
+				...(updates.workflow ?? state.workflow),
+				status: hasMaterialDraftChange(previousDraft, parsed.tripDraft) ? "running" : "waiting_revision",
+			};
+		}
+	}
+	
+	state.collector?.onStage?.("planning_completed");
+	return updates;
+}
+
+async function validateNode(state: typeof WorkflowStateAnnotation.State) {
+	const currentDraft = state.planning?.draft;
+	let validationFindings = null;
+	let deterministicHardViolations: string[] = [];
+	
+	if (currentDraft) {
+		validationFindings = await validateItineraryImpl(currentDraft);
+		deterministicHardViolations = deriveHardViolations(validationFindings);
+	}
+
+	const agent = createCriticAgent(state.llm);
+	state.collector?.onStage?.(validationFindings ? "validation_started" : "critique_started");
+	
+	const stateWithFindings = {
+		...state,
+		messages: validationFindings ? [
+			...state.messages,
+			{ role: "user", content: `Please review this draft against these deterministic validation findings: ${JSON.stringify(validationFindings, null, 2)}. Return the final validation JSON.` }
+		] : state.messages
+	};
+	
+	const { assistantMessages, latestAssistantText } = await invokeGraphAgentNode(agent, "critic_agent", stateWithFindings);
+	
+	const updates: Partial<typeof WorkflowStateAnnotation.State> = {
+		// Note on reducer: `messages` is configured to `x.concat(y)`, so this appends safely
+		messages: assistantMessages,
+		workflow: { ...state.workflow, stage: "critique" },
+		critique: { ...state.critique },
+		telemetry: {
+			toolCalls: state.telemetry?.toolCalls ?? [],
+			agentHistory: [...(state.telemetry?.agentHistory ?? []), "critic_agent"],
+			timings: state.telemetry?.timings ?? {},
+		}
+	};
+	
+	let parsedCritique: CritiqueStageOutput | null = null;
+	if (latestAssistantText) {
+		parsedCritique = parseCritiqueStageOutput(
+			latestAssistantText,
+			validationFindings,
+			deterministicHardViolations
+		);
+	}
+	
+	const validationResult = (parsedCritique?.validation || validationFindings || currentDraft?.validation) as TripValidation | null | undefined;
+	if (parsedCritique && validationResult) {
+		updates.critique = {
+			result: validationResult,
+			isValid: validationResult.isValid,
+			score: validationResult.score,
+			hardViolations: parsedCritique.hardViolations,
+			softWarnings: parsedCritique.softWarnings.length ? parsedCritique.softWarnings : validationResult.warnings,
+			revisionInstructions: parsedCritique.revisionInstructions.length ? parsedCritique.revisionInstructions : validationResult.suggestions,
+			history: [...(state.critique?.history ?? []), parsedCritique],
+		};
+		updates.ui = {
+			previewPlaces: state.ui?.previewPlaces || [],
+			previewTripDraft: state.ui?.previewTripDraft,
+			statusLabel: "Reviewing plan",
+			progressStep: 3,
+			latestSummary: parsedCritique.summary || state.ui?.latestSummary,
+		};
+	}
+	
+	if (validationResult) {
+		const hardViolations = parsedCritique?.hardViolations ?? deterministicHardViolations;
+		const willRevise = hardViolations.length > 0 || !validationResult.isValid || (validationResult.score && validationResult.score < 80);
+		const iters = state.workflow.iteration || 0;
+		const maxIters = state.workflow.maxIterations || 2;
+		
+		const hasProgress = state.workflow.stage !== "revision" || hasMaterialDraftChange(undefined, currentDraft);
+		
+		if (willRevise && iters < maxIters && hasProgress) {
+			updates.workflow = { ...state.workflow, stage: "revision", iteration: iters + 1 };
+			state.collector?.onStage?.("revision_started");
+			// Appends revision instruction
+			updates.messages = [
+				...updates.messages || [],
+				{
+					role: "system",
+					content: JSON.stringify({
+						type: "revision_request",
+						revisionCount: iters + 1,
+						validation: validationResult,
+						instruction: (parsedCritique?.revisionInstructions ?? validationResult.suggestions).join(" ") || "Revise the itinerary to address validation warnings.",
+					}),
+				}
+			];
+		} else if (willRevise && iters >= maxIters) {
+			updates.workflow = { ...state.workflow, stage: "finalize", status: "completed" };
+			updates.ui = {
+				previewPlaces: updates.ui?.previewPlaces ?? state.ui?.previewPlaces ?? [],
+				previewTripDraft: updates.ui?.previewTripDraft ?? state.ui?.previewTripDraft,
+				statusLabel: "Finalizing with warnings",
+				progressStep: 5,
+				latestSummary: updates.ui?.latestSummary ?? state.ui?.latestSummary,
+			};
+		}
+	}
+	
+	state.collector?.onStage?.("critique_completed");
+	return updates;
+}
+
+async function finalizeNode(state: typeof WorkflowStateAnnotation.State) {
+	state.collector?.onStage?.("finalizing");
+	if (state.finalPayload) {
+		return { finalResponse: JSON.stringify(state.finalPayload), workflow: { stage: "done", status: "completed" } };
+	}
+	const finalPayload = createFinalPayload(state);
+	return {
+		finalPayload,
+		finalResponse: JSON.stringify(finalPayload),
+		ui: {
+			previewPlaces: finalPayload.places,
+			previewTripDraft: finalPayload.tripDraft ?? undefined,
+			statusLabel: "Trip ready",
+			progressStep: 5,
+			latestSummary: finalPayload.summary,
+		},
+		workflow: { stage: "done", status: "completed" }
+	};
+}
+
+const shouldProceed = (state: typeof WorkflowStateAnnotation.State) => {
+	if (state.workflow?.stage === "done") return END;
+	return "hydrateContext";
+};
+
+const routeAfterResearch = (state: typeof WorkflowStateAnnotation.State) => {
+	if (state.policy.requiresPlanning) return "planStage";
+	return "finalize";
+};
+
+const routeAfterPlan = (state: typeof WorkflowStateAnnotation.State) => {
+	if (state.policy.useCritic) return "validateStage";
+	return "finalize";
+};
+
+const routeAfterValidate = (state: typeof WorkflowStateAnnotation.State) => {
+	if (state.workflow?.stage === "revision") return "planStage";
+	return "finalize";
+};
+
+const builder = new StateGraph(WorkflowStateAnnotation)
+	.addNode("scopeCheck", scopeCheckNode)
+	.addNode("hydrateContext", hydrateContextNode)
+	.addNode("researchStage", researchNode)
+	.addNode("planStage", planNode)
+	.addNode("validateStage", validateNode)
+	.addNode("finalize", finalizeNode)
+
+	.addEdge(START, "scopeCheck")
+	.addConditionalEdges("scopeCheck", shouldProceed)
+	.addEdge("hydrateContext", "researchStage")
+	.addConditionalEdges("researchStage", routeAfterResearch)
+	.addConditionalEdges("planStage", routeAfterPlan)
+	.addConditionalEdges("validateStage", routeAfterValidate)
+	.addEdge("finalize", END);
+
+export const supervisorGraph = builder.compile();
+
+export function createTripPlannerSupervisor() {
+	return {
+		mode: "researcher_planner_critic",
+		prompt: SUPERVISOR_PROMPT,
+		async invoke(input: { messages: Array<{ role: string; content: string }> }) {
+			const policy = deriveSupervisorRoutingPolicy({ messages: input.messages, currentTripDraft: parseLatestTripDraft(input.messages) });
+			const state = await supervisorGraph.invoke({ messages: input.messages, policy, llm: new ChatOpenAI({ modelName: "gpt-4o-mini", temperature: 0 }) });
+			return { messages: state.messages };
 		},
 	};
 }
 
-// Pre-built supervisor instance (lazy initialization)
-// Using 'any' here to avoid cross-module type issues with bun's module resolution
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const _supervisorInstances: Partial<Record<SupervisorMode, any>> = {};
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function getSupervisorInstance(
-	mode: SupervisorMode = "researcher_planner_critic"
-): any {
-	if (!_supervisorInstances[mode]) {
-		_supervisorInstances[mode] = createTripPlannerSupervisor({}, mode);
-	}
-	return _supervisorInstances[mode];
+export function getSupervisorInstance(mode: SupervisorMode = "researcher_planner_critic") {
+	return createTripPlannerSupervisor();
 }
 
-// Reset supervisor (useful for testing or reconfiguration)
-export function resetSupervisor(): void {
-	delete _supervisorInstances.researcher_only;
-	delete _supervisorInstances.researcher_planner;
-	delete _supervisorInstances.researcher_planner_critic;
-}
+export function resetSupervisor(): void {}
 
-// Invoke the supervisor with messages
 export async function invokeSupervisor(
 	messages: Array<{ role: string; content: string }>,
-	options: {
-		userLocation?: { lat: number; lng: number };
-		sessionId?: string;
-		userId?: string;
-		userPreferences?: Record<string, unknown>;
-	} = {}
-): Promise<{ messages: Array<{ role: string; content: string }> }> {
-	const state = await runSupervisorGraph(messages, options);
+	options: any = {}
+) {
+	const currentTripDraft = parseLatestTripDraft(messages);
+	const policy = deriveSupervisorRoutingPolicy({ messages, currentTripDraft });
+	const state = await supervisorGraph.invoke({
+		messages,
+		userLocation: options.userLocation,
+		sessionId: options.sessionId,
+		userId: options.userId,
+		userPreferences: options.userPreferences,
+		policy,
+		llm: new ChatOpenAI({ modelName: "gpt-4o-mini", temperature: 0 })
+	});
 	return normalizeSupervisorInvocationResult({ messages: state.messages });
 }
 
-// Stream the supervisor execution for SSE
 export async function* streamSupervisor(
 	messages: Array<{ role: string; content: string }>,
-	options: {
-		userLocation?: { lat: number; lng: number };
-		sessionId?: string;
-		userId?: string;
-		userPreferences?: Record<string, unknown>;
-	} = {}
-): AsyncGenerator<{
-	type: "agent" | "tool" | "message" | "done";
-	data: any;
-}> {
-	const bufferedEvents: Array<{
-		type: "agent" | "tool" | "message";
-		data: any;
-	}> = [];
+	options: any = {}
+) {
+	const currentTripDraft = parseLatestTripDraft(messages);
+	const policy = deriveSupervisorRoutingPolicy({ messages, currentTripDraft });
 
-	await runSupervisorGraph(messages, options, {
-		onAgent: async (agent) => {
-			bufferedEvents.push({
-				type: "agent",
-				data: { agent },
-			});
-		},
-		onTool: async (tool, args) => {
-			bufferedEvents.push({
-				type: "tool",
-				data: { tool, args },
-			});
-		},
-		onMessage: async (message) => {
-			bufferedEvents.push({
-				type: "message",
-				data: message,
-			});
-		},
+	const queue: any[] = [];
+	let isDone = false;
+	let resolver: (() => void) | null = null;
+
+	const pushEvent = (event: any) => {
+		queue.push(event);
+		if (resolver) {
+			resolver();
+			resolver = null;
+		}
+	};
+
+	const graphPromise = supervisorGraph.invoke({
+		messages,
+		userLocation: options.userLocation,
+		sessionId: options.sessionId,
+		userId: options.userId,
+		userPreferences: options.userPreferences,
+		policy,
+		llm: new ChatOpenAI({ modelName: "gpt-4o-mini", temperature: 0 }),
+		collector: {
+			onAgent: async (agent: string) => pushEvent({ type: "agent", data: { agent } }),
+			onTool: async (tool: string, args: any) => pushEvent({ type: "tool", data: { tool, args } }),
+			onMessage: async (message: any) => pushEvent({ type: "message", data: message }),
+			onStage: async (stage: string) => pushEvent({ type: "stage", data: { stage } }),
+		}
+	}).then(() => {
+		isDone = true;
+		if (resolver) resolver();
+	}).catch((err) => {
+		pushEvent({ type: "error", data: err });
+		isDone = true;
+		if (resolver) resolver();
 	});
 
-	for (const event of bufferedEvents) {
-		yield event;
+	while (!isDone || queue.length > 0) {
+		if (queue.length > 0) {
+			yield queue.shift();
+		} else {
+			await new Promise<void>((resolve) => { resolver = resolve; });
+		}
 	}
 
-	yield {
-		type: "done",
-		data: { success: true },
-	};
+	yield { type: "done", data: { success: true } };
 }

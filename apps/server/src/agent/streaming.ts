@@ -6,7 +6,7 @@ import { parseAssistantPayload, parseToolPlacesPayload } from "./payload-parsing
 import { buildUiPayload } from "./ui-payload";
 
 export interface SSEEvent {
-	event: "start" | "agent" | "tools" | "context" | "suggestions" | "itinerary" | "ui" | "message" | "error" | "done";
+	event: "start" | "stage" | "agent" | "tools" | "context" | "suggestions" | "itinerary" | "ui" | "message" | "error" | "done";
 	data: string;
 }
 
@@ -119,6 +119,13 @@ export async function* streamAgentExecution(
 
 		for await (const event of stream) {
 			switch (event.type) {
+				case "stage":
+					yield {
+						event: "stage",
+						data: JSON.stringify(event.data),
+					};
+					break;
+
 				case "agent":
 					if (event.data.agent !== lastAgent) {
 						lastAgent = event.data.agent;
@@ -335,11 +342,38 @@ export async function runAgent(options: {
 				const data = JSON.parse(event.data) as { places: CandidatePlace[] };
 				places.push(...data.places);
 			}
+			if (event.event === "ui") {
+				const data = JSON.parse(event.data) as UiResponsePayload;
+				if (!finalResponse && typeof data.summary === "string") {
+					finalResponse = data.summary;
+				}
+			}
 			if (event.event === "error") {
 				return {
 					success: false,
 					error: event.data,
 				};
+			}
+		}
+
+		if (!finalResponse) {
+			const fallbackResult = await invokeSupervisor(options.messages, {
+				userLocation: options.userLocation,
+				sessionId: options.sessionId,
+				userId: options.userId,
+			});
+			const assistantMessage = [...(fallbackResult.messages || [])]
+				.reverse()
+				.find(
+					(message) =>
+						message.role === "assistant" &&
+						typeof message.content === "string" &&
+						message.content.trim().length > 0
+				);
+
+			if (assistantMessage?.content) {
+				const parsed = parseAssistantPayload(assistantMessage.content);
+				finalResponse = parsed.summary || assistantMessage.content;
 			}
 		}
 
