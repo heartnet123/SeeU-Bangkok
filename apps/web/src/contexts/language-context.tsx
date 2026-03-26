@@ -11,7 +11,7 @@ type Translation = Record<string, any>;
 interface LanguageContextValue {
   locale: Locale;
   setLocale: (l: Locale) => void;
-  t: (key: string, fallback?: string) => string;
+  t: (key: string, vars?: Record<string, string> | string, fallback?: string) => string;
 }
 
 const translations: Record<Locale, Translation> = {
@@ -43,17 +43,27 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   const setLocale = (l: Locale) => setLocaleState(l);
 
-  const t = (key: string, fallback = "") => {
+  const t = (key: string, vars?: Record<string, string> | string, fallback?: string) => {
+    // Support legacy call: t(key, fallbackString)
+    const resolvedFallback = typeof vars === "string" ? vars : (fallback ?? "");
+    const resolvedVars = typeof vars === "object" ? vars : undefined;
+
     const parts = key.split(".");
     let value: any = translations[locale];
     for (const p of parts) {
       if (value && typeof value === "object" && p in value) {
         value = value[p];
       } else {
-        return fallback || key;
+        return resolvedFallback || key;
       }
     }
-    return typeof value === "string" ? value : fallback || key;
+    if (typeof value !== "string") return resolvedFallback || key;
+
+    // Replace {placeholder} tokens
+    if (resolvedVars) {
+      return value.replace(/\{(\w+)\}/g, (_: string, k: string) => resolvedVars[k] ?? `{${k}}`);
+    }
+    return value;
   };
 
   return (
@@ -70,6 +80,6 @@ export function useLanguage() {
 }
 
 export function useTranslation() {
-  const { t, locale } = useLanguage();
-  return { t, locale };
+  const { t, locale, setLocale } = useLanguage();
+  return { t, locale, setLocale };
 }

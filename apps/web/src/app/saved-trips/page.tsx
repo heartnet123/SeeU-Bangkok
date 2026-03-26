@@ -9,6 +9,7 @@ import { Clock3, ListChecks, Edit, Trash2, Plus, Search, ArrowRight } from 'luci
 import { toast } from 'sonner'
 import { NewTripDialog } from '@/components/trips/new-trip-dialog'
 import { EditTripDialog } from '@/components/trips/edit-trip-dialog'
+import { useTranslation } from '@/contexts/language-context'
 
 type Stop = {
   id: string
@@ -29,6 +30,7 @@ type Trip = {
 }
 
 export default function SavedTripsPage() {
+  const { t } = useTranslation()
   const { session, loading } = useAuth()
   const router = useRouter()
   const [trips, setTrips] = useState<Trip[]>([])
@@ -74,11 +76,10 @@ export default function SavedTripsPage() {
       setActiveTripId(null)
       return
     }
-
-    setActiveTripId((prev) => (prev && trips.some((t) => t.id === prev) ? prev : trips[0].id))
+    setActiveTripId((prev) => (prev && trips.some((trip) => trip.id === prev) ? prev : trips[0].id))
   }, [trips])
 
-  const totalStops = useMemo(() => trips.reduce((acc, t) => acc + (t.stops?.length || 0), 0), [trips])
+  const totalStops = useMemo(() => trips.reduce((acc, trip) => acc + (trip.stops?.length || 0), 0), [trips])
 
   const filteredTrips = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
@@ -114,7 +115,7 @@ export default function SavedTripsPage() {
 
   const handleDelete = async (tripId: string) => {
     if (!session?.access_token) return
-    if (!confirm('Are you sure you want to delete this trip?')) return
+    if (!confirm(t("savedTrips.deleteConfirm"))) return
     setDeletingTripId(tripId)
     try {
       const res = await fetch(`${serverUrl}/api/itineraries/${tripId}`, {
@@ -128,10 +129,10 @@ export default function SavedTripsPage() {
         ? await res.json()
         : { success: false, error: (await res.text()) || 'Bad response' }
       if (!res.ok || !json.success) throw new Error(json.error || 'Failed to delete trip')
-      toast.success('Trip deleted successfully')
+      toast.success(t("savedTrips.deleteSuccess"))
       await fetchTrips()
     } catch (e: any) {
-      toast.error(`Failed to delete trip: ${e?.message || 'Unknown error'}`)
+      toast.error(`${t("savedTrips.deleteError")}: ${e?.message || 'Unknown error'}`)
     } finally {
       setDeletingTripId(null)
     }
@@ -144,14 +145,21 @@ export default function SavedTripsPage() {
   if (!isAuthed && !loading) {
     return (
       <div className="max-w-4xl mx-auto p-6 space-y-4 text-black">
-        <h1 className="text-2xl font-semibold">Saved Trips</h1>
-        <p className="text-gray-600">Please sign in to view your saved trips.</p>
+        <h1 className="text-2xl font-semibold">{t("nav.savedTrips")}</h1>
+        <p className="text-gray-600">{t("savedTrips.signInPrompt")}</p>
         <Link href="/profile">
-          <Button className="bg-blue-700 hover:bg-blue-800">Go to Profile</Button>
+          <Button className="bg-blue-700 hover:bg-blue-800">{t("savedTrips.goToProfile")}</Button>
         </Link>
       </div>
     )
   }
+
+  const tabs = [
+    { id: 'all' as const, label: t("savedTrips.tabAll") },
+    { id: 'recent' as const, label: t("savedTrips.tabRecent") },
+    { id: 'short' as const, label: t("savedTrips.tabShort") },
+    { id: 'long' as const, label: t("savedTrips.tabLong") },
+  ]
 
   return (
     <div className="min-h-[calc(100vh-64px)] bg-slate-50 text-slate-900">
@@ -159,8 +167,8 @@ export default function SavedTripsPage() {
         <div className="mx-auto max-w-7xl px-6 py-8">
           <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
             <div>
-              <h1 className="text-3xl font-medium tracking-tight">Your Library</h1>
-              <p className="mt-1 text-sm text-slate-500">Manage your saved trips and revisit your route ideas.</p>
+              <h1 className="text-3xl font-medium tracking-tight">{t("savedTrips.pageTitle")}</h1>
+              <p className="mt-1 text-sm text-slate-500">{t("savedTrips.pageSubtitle")}</p>
             </div>
 
             <div className="flex w-full flex-col items-stretch gap-3 sm:flex-row md:w-auto">
@@ -170,7 +178,7 @@ export default function SavedTripsPage() {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search trips or stops..."
+                  placeholder={t("savedTrips.searchPlaceholder")}
                   className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
@@ -180,23 +188,18 @@ export default function SavedTripsPage() {
                 className="h-10 px-4 text-white bg-blue-600 hover:bg-blue-700"
               >
                 <Plus className="mr-2 h-4 w-4" />
-                New Trip
+                {t("savedTrips.newTrip")}
               </Button>
             </div>
           </div>
 
           <div className="mt-7 flex flex-wrap items-center gap-4 border-b border-slate-100 text-sm">
-            {[
-              { id: 'all', label: 'All' },
-              { id: 'recent', label: 'Recent' },
-              { id: 'short', label: 'Short Trips' },
-              { id: 'long', label: 'Long Trips' },
-            ].map((tab) => {
+            {tabs.map((tab) => {
               const selected = activeTab === tab.id
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as 'all' | 'recent' | 'short' | 'long')}
+                  onClick={() => setActiveTab(tab.id)}
                   className={`relative pb-3 transition ${selected ? 'text-slate-900' : 'text-slate-400 hover:text-slate-700'}`}
                 >
                   {tab.label}
@@ -211,21 +214,21 @@ export default function SavedTripsPage() {
       <main className="mx-auto grid max-w-7xl gap-8 px-6 py-8 lg:grid-cols-[1fr_360px]">
         <section className="space-y-2">
           <div className="mb-2 flex items-center justify-between px-1 text-xs uppercase tracking-wide text-slate-500">
-            <span>{filteredTrips.length} Trips</span>
-            <span>{totalStops} total stops</span>
+            <span>{t("savedTrips.tripsCount", { count: String(filteredTrips.length) })}</span>
+            <span>{t("savedTrips.totalStops", { count: String(totalStops) })}</span>
           </div>
 
           {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">{error}</div>}
 
           {filteredTrips.length === 0 && !busy ? (
             <div className="rounded-2xl border border-slate-200 bg-white p-6">
-              <p className="text-sm text-slate-600">No trips found. Create one from the Trip Planner or browse places.</p>
+              <p className="text-sm text-slate-600">{t("savedTrips.noTrips")}</p>
               <div className="mt-4 flex flex-wrap gap-3">
                 <Link href="/map">
-                  <Button>Open Trip Planner</Button>
+                  <Button>{t("savedTrips.openPlanner")}</Button>
                 </Link>
                 <Link href="/places">
-                  <Button variant="outline">Browse Places</Button>
+                  <Button variant="outline">{t("savedTrips.browsePlaces")}</Button>
                 </Link>
               </div>
             </div>
@@ -247,12 +250,12 @@ export default function SavedTripsPage() {
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                       <span className="inline-flex items-center gap-1">
                         <ListChecks className="h-3.5 w-3.5" />
-                        {trip.stops?.length || 0} stops
+                        {trip.stops?.length || 0} {t("common.stops")}
                       </span>
                       {typeof trip.total_minutes === 'number' && (
                         <span className="inline-flex items-center gap-1">
                           <Clock3 className="h-3.5 w-3.5" />
-                          {trip.total_minutes} min
+                          {trip.total_minutes} {t("common.min")}
                         </span>
                       )}
                     </div>
@@ -260,7 +263,7 @@ export default function SavedTripsPage() {
 
                   <div className="hidden sm:block sm:col-span-2">
                     <span className="inline-flex rounded border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] uppercase tracking-wider text-slate-600">
-                      Saved
+                      {t("common.saved")}
                     </span>
                   </div>
 
@@ -278,41 +281,41 @@ export default function SavedTripsPage() {
             <div className="sticky top-20 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="bg-gradient-to-br from-slate-800 to-slate-600 p-5 text-white">
                 <div className="mb-2 flex items-center gap-2 text-xs">
-                  <span className="rounded border border-white/30 bg-white/20 px-2 py-0.5">{activeTrip.stops?.length || 0} Stops</span>
-                  {typeof activeTrip.total_distance_km === 'number' && <span>{activeTrip.total_distance_km} km</span>}
+                  <span className="rounded border border-white/30 bg-white/20 px-2 py-0.5">{activeTrip.stops?.length || 0} {t("common.stops")}</span>
+                  {typeof activeTrip.total_distance_km === 'number' && <span>{activeTrip.total_distance_km} {t("common.km")}</span>}
                 </div>
                 <h3 className="text-lg font-medium tracking-tight">{activeTrip.title}</h3>
                 <p className="mt-1 text-xs text-white/80">
-                  {activeTrip.created_at ? new Date(activeTrip.created_at).toLocaleString() : 'No creation date'}
+                  {activeTrip.created_at ? new Date(activeTrip.created_at).toLocaleString() : t("common.noCreationDate")}
                 </p>
               </div>
 
               <div className="space-y-5 p-5">
                 <div>
-                  <h4 className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">Stops Preview</h4>
+                  <h4 className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">{t("savedTrips.stopsPreview")}</h4>
                   <ol className="space-y-1.5 text-sm text-slate-600">
                     {activeTrip.stops?.slice(0, 5).map((stop, idx) => (
                       <li key={stop.id} className="truncate">
                         <span className="mr-1 text-slate-400">{idx + 1}.</span>
-                        <span className="text-slate-800">{stop.place?.name || 'Untitled stop'}</span>
+                        <span className="text-slate-800">{stop.place?.name || t("savedTrips.untitledStop")}</span>
                       </li>
                     ))}
                     {(activeTrip.stops?.length || 0) > 5 && (
-                      <li className="text-xs text-slate-400">+{(activeTrip.stops?.length || 0) - 5} more stops</li>
+                      <li className="text-xs text-slate-400">{t("savedTrips.moreStops", { count: String((activeTrip.stops?.length || 0) - 5) })}</li>
                     )}
                   </ol>
                 </div>
 
                 <div className="space-y-2">
                   <Button className="w-full bg-blue-700 text-white hover:bg-blue-800" onClick={() => handleViewDetail(activeTrip)}>
-                    View Detail
+                    {t("savedTrips.viewDetail")}
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
 
                   <div className="flex gap-2">
                     <Button className="flex-1 bg-gray-100 text-black hover:bg-gray-200" onClick={() => handleEditTrip(activeTrip)}>
                       <Edit className="mr-2 h-4 w-4" />
-                      Edit
+                      {t("savedTrips.edit")}
                     </Button>
                     <Button
                       className="flex-1 bg-red-700 text-white hover:bg-red-800"
@@ -322,12 +325,12 @@ export default function SavedTripsPage() {
                       {deletingTripId === activeTrip.id ? (
                         <>
                           <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                          Deleting...
+                          {t("savedTrips.deleting")}
                         </>
                       ) : (
                         <>
                           <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
+                          {t("savedTrips.delete")}
                         </>
                       )}
                     </Button>
@@ -335,8 +338,8 @@ export default function SavedTripsPage() {
                 </div>
 
                 <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs text-slate-500">
-                  <p className="mb-1 font-medium text-slate-600">Tip</p>
-                  <p>Use search to quickly find trips by stop name and open them from the panel.</p>
+                  <p className="mb-1 font-medium text-slate-600">{t("savedTrips.tipTitle")}</p>
+                  <p>{t("savedTrips.tipDesc")}</p>
                 </div>
               </div>
             </div>

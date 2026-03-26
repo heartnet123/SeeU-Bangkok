@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { User, Save, Loader2, Mail, Calendar, MapPin, DollarSign, Languages, Heart } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
+import { useTranslation } from '@/contexts/language-context'
 
 interface UserProfile {
   user_id: string
@@ -29,6 +30,7 @@ interface UserProfile {
 }
 
 export default function ProfilePage() {
+  const { t } = useTranslation()
   const { user, getProfile, updateProfile, refreshProfile, loading: authLoading } = useAuth()
   const router = useRouter()
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -136,7 +138,6 @@ export default function ProfilePage() {
         toast.error(`Failed to update profile: ${error}`)
       } else {
         setProfile(updatedProfile)
-        // Update form data with the saved data to ensure consistency
         if (updatedProfile) {
           setFormData({
             nick_name: updatedProfile.nick_name || '',
@@ -148,9 +149,8 @@ export default function ProfilePage() {
             languages: updatedProfile.languages || ['th'],
           })
         }
-        // Immediately refresh the profile in auth context for AuthButton
         await refreshProfile()
-        toast.success('Profile updated successfully!')
+        toast.success(t("profile.saveProfile") + " ✓")
       }
     } catch (error) {
       toast.error('An error occurred while updating profile')
@@ -165,16 +165,23 @@ export default function ProfilePage() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="flex items-center space-x-2">
           <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-          <span className="text-lg">Loading...</span>
+          <span className="text-lg">{t("profile.loading")}</span>
         </div>
       </div>
     )
   }
 
-  // Show if not authenticated (shouldn't reach here due to redirect)
   if (!user) {
     return null
   }
+
+  const travelStyles = [
+    { value: 'slow-life', labelKey: 'profile.styleSlowLife', descKey: 'profile.styleSlowLifeDesc' },
+    { value: 'budget', labelKey: 'profile.styleBudget', descKey: 'profile.styleBudgetDesc' },
+    { value: 'instagram', labelKey: 'profile.styleInstagram', descKey: 'profile.styleInstagramDesc' },
+    { value: 'foodie', labelKey: 'profile.styleFoodie', descKey: 'profile.styleFoodieDesc' },
+    { value: 'history', labelKey: 'profile.styleHistory', descKey: 'profile.styleHistoryDesc' },
+  ]
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -185,22 +192,22 @@ export default function ProfilePage() {
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <Heart className="h-5 w-5 text-amber-500" />
-                <span>Travel Survey</span>
+                <span>{t("profile.travelSurvey")}</span>
               </CardTitle>
               <CardDescription>
-                Personalize your recommendations with a quick survey.
+                {t("profile.surveyDesc")}
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm text-gray-700">
                   {profile?.onboarding_completed
-                    ? 'Survey completed. You can update your preferences anytime.'
-                    : 'Survey not completed yet. Complete it to get better travel plans.'}
+                    ? t("profile.surveyCompleted")
+                    : t("profile.surveyPending")}
                 </p>
               </div>
               <Button type="button" onClick={() => router.push('/onboarding')}>
-                {profile?.onboarding_completed ? 'Edit Survey' : 'Complete Survey'}
+                {profile?.onboarding_completed ? t("profile.editSurvey") : t("profile.completeSurvey")}
               </Button>
             </CardContent>
           </Card>
@@ -210,10 +217,10 @@ export default function ProfilePage() {
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <User className="h-5 w-5" />
-                <span>Profile Information</span>
+                <span>{t("profile.profileInfo")}</span>
               </CardTitle>
               <CardDescription>
-                Your basic information and profile picture
+                {t("profile.profileInfoDesc")}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -235,7 +242,7 @@ export default function ProfilePage() {
                   <div className="space-y-2">
                     <Label htmlFor="email" className="flex items-center space-x-2">
                       <Mail className="h-4 w-4" />
-                      <span>Email Address</span>
+                      <span>{t("profile.emailLabel")}</span>
                     </Label>
                     <Input
                       id="email"
@@ -245,7 +252,7 @@ export default function ProfilePage() {
                       className="bg-gray-100"
                     />
                     <p className="text-sm text-gray-600">
-                      Email cannot be changed.
+                      {t("profile.emailReadOnly")}
                     </p>
                   </div>
 
@@ -253,7 +260,7 @@ export default function ProfilePage() {
                   <div className="space-y-2">
                     <Label htmlFor="nick_name" className="flex items-center space-x-2">
                       <User className="h-4 w-4" />
-                      <span>Display Name *</span>
+                      <span>{t("profile.displayName")} *</span>
                     </Label>
                     <Input
                       id="nick_name"
@@ -261,11 +268,11 @@ export default function ProfilePage() {
                       type="text"
                       value={formData.nick_name}
                       onChange={handleInputChange}
-                      placeholder="Enter your display name"
+                      placeholder={t("profile.displayNamePlaceholder")}
                       required
                     />
                     <p className="text-sm text-gray-600">
-                      This name will be visible to other travelers.
+                      {t("profile.displayNameDesc")}
                     </p>
                   </div>
 
@@ -273,7 +280,7 @@ export default function ProfilePage() {
                   <div className="space-y-2">
                     <Label htmlFor="birth_year" className="flex items-center space-x-2">
                       <Calendar className="h-4 w-4" />
-                      <span>Birth Year</span>
+                      <span>{t("profile.birthYear")}</span>
                     </Label>
                     <Input
                       id="birth_year"
@@ -283,10 +290,10 @@ export default function ProfilePage() {
                       max="2010"
                       value={formData.birth_year || ''}
                       onChange={handleInputChange}
-                      placeholder="e.g., 1990"
+                      placeholder={t("profile.birthYearPlaceholder")}
                     />
                     <p className="text-sm text-gray-600">
-                      Optional. Helps provide age-appropriate recommendations.
+                      {t("profile.birthYearDesc")}
                     </p>
                   </div>
                 </div>
@@ -301,21 +308,15 @@ export default function ProfilePage() {
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2">
                   <Heart className="h-5 w-5 text-red-500" />
-                  <span>Travel Style</span>
+                  <span>{t("profile.travelStyle")}</span>
                 </CardTitle>
                 <CardDescription>
-                  What kind of traveler are you?
+                  {t("profile.travelStyleDesc")}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {[
-                    { value: 'slow-life', label: 'Slow Life', desc: 'Relaxed, peaceful travel' },
-                    { value: 'budget', label: 'Budget', desc: 'Cost-conscious adventures' },
-                    { value: 'instagram', label: 'Instagram', desc: 'Photo-worthy destinations' },
-                    { value: 'foodie', label: 'Foodie', desc: 'Culinary experiences' },
-                    { value: 'history', label: 'History', desc: 'Cultural & historical sites' }
-                  ].map((style) => (
+                  {travelStyles.map((style) => (
                     <div key={style.value} className="flex items-start space-x-3 p-2 rounded hover:bg-gray-50">
                       <Checkbox
                         id={style.value}
@@ -325,9 +326,9 @@ export default function ProfilePage() {
                       />
                       <div className="flex-1">
                         <label htmlFor={style.value} className="text-sm font-medium cursor-pointer">
-                          {style.label}
+                          {t(style.labelKey)}
                         </label>
-                        <p className="text-xs text-gray-600">{style.desc}</p>
+                        <p className="text-xs text-gray-600">{t(style.descKey)}</p>
                       </div>
                     </div>
                   ))}
@@ -340,10 +341,10 @@ export default function ProfilePage() {
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2">
                   <MapPin className="h-5 w-5 text-green-500" />
-                  <span>Travel Preferences</span>
+                  <span>{t("profile.travelPrefs")}</span>
                 </CardTitle>
                 <CardDescription>
-                  How you like to get around
+                  {t("profile.travelPrefsDesc")}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -351,7 +352,7 @@ export default function ProfilePage() {
                 <div className="space-y-2">
                   <Label htmlFor="mobility" className="flex items-center space-x-2">
                     <MapPin className="h-4 w-4" />
-                    <span>Preferred Transportation</span>
+                    <span>{t("profile.mobility")}</span>
                   </Label>
                   <select
                     id="mobility"
@@ -360,10 +361,10 @@ export default function ProfilePage() {
                     onChange={handleInputChange}
                     className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
-                    <option value="walk">🚶 Walking</option>
-                    <option value="bike">🚴 Bicycle</option>
-                    <option value="public">🚌 Public Transport</option>
-                    <option value="grab">🚗 Grab/Taxi</option>
+                    <option value="walk">🚶 {t("profile.mobilityWalk")}</option>
+                    <option value="bike">🚴 {t("profile.mobilityBike")}</option>
+                    <option value="public">🚌 {t("profile.mobilityPublic")}</option>
+                    <option value="grab">🚗 {t("profile.mobilityGrab")}</option>
                   </select>
                 </div>
 
@@ -371,7 +372,7 @@ export default function ProfilePage() {
                 <div className="space-y-2">
                   <Label htmlFor="budget_per_day" className="flex items-center space-x-2">
                     <DollarSign className="h-4 w-4" />
-                    <span>Daily Budget (THB)</span>
+                    <span>{t("profile.budget")}</span>
                   </Label>
                   <Input
                     id="budget_per_day"
@@ -381,23 +382,25 @@ export default function ProfilePage() {
                     step="100"
                     value={formData.budget_per_day || ''}
                     onChange={handleInputChange}
-                    placeholder="1500"
+                    placeholder={t("profile.budgetPlaceholder")}
                   />
                   <p className="text-sm text-gray-600">
-                    Your approximate daily spending in Thai Baht.
+                    {t("profile.budgetDesc")}
                   </p>
                 </div>
               </CardContent>
             </Card>
-          </div>          {/* Languages */}
+          </div>
+
+          {/* Languages */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <Languages className="h-5 w-5 text-purple-500" />
-                <span>Languages</span>
+                <span>{t("profile.languages")}</span>
               </CardTitle>
               <CardDescription>
-                Languages you speak (helps connect with locals and other travelers)
+                {t("profile.languagesDesc")}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -408,7 +411,7 @@ export default function ProfilePage() {
                       type="text"
                       value={lang}
                       onChange={(e) => handleLanguageChange(index, e.target.value)}
-                      placeholder="e.g., th, en, zh"
+                      placeholder={t("profile.languagePlaceholder")}
                     />
                     {formData.languages.length > 1 && (
                       <Button
@@ -423,7 +426,7 @@ export default function ProfilePage() {
                         }}
                         className="text-red-500 hover:text-red-700"
                       >
-                        Remove
+                        {t("profile.remove")}
                       </Button>
                     )}
                   </div>
@@ -434,10 +437,10 @@ export default function ProfilePage() {
                   size="sm"
                   onClick={() => setFormData(prev => ({ ...prev, languages: [...prev.languages, ''] }))}
                 >
-                  + Add Language
+                  {t("profile.addLanguage")}
                 </Button>
                 <p className="text-sm text-gray-600">
-                  Use language codes like 'th' (Thai), 'en' (English), 'zh' (Chinese).
+                  {t("profile.languageCodeHint")}
                 </p>
               </div>
             </CardContent>
@@ -453,12 +456,12 @@ export default function ProfilePage() {
               {saving ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
+                  {t("profile.saving")}
                 </>
               ) : (
                 <>
                   <Save className="mr-2 h-4 w-4" />
-                  Save Profile
+                  {t("profile.saveProfile")}
                 </>
               )}
             </Button>

@@ -1,7 +1,6 @@
 "use client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import Image from "next/image";
 import {
   Pagination,
@@ -12,12 +11,13 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { MapPin, Search, Star, Bookmark, ArrowRight, Sparkles, Check, ChevronDown } from "lucide-react";
+import { MapPin, Search, Check } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { nameToSlug } from "@/lib/slug-utils";
 import { createClient } from "@/lib/supabase/client";
+import { useTranslation } from "@/contexts/language-context";
 
 
 interface Place {
@@ -34,6 +34,7 @@ interface Place {
 }
 
 export default function PlacesPage() {
+  const { t } = useTranslation();
   const [places, setPlaces] = useState<Place[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,7 +76,7 @@ export default function PlacesPage() {
       setPlaces(safeData);
     } catch (err) {
       console.error('Error fetching places:', err);
-      setError('Failed to load places. Please try again later.');
+      setError(t("places.errorTitle"));
     } finally {
       setLoading(false);
     }
@@ -113,8 +114,8 @@ export default function PlacesPage() {
         label: formatTagLabel(value),
       }));
 
-    return [{ value: "all", label: "All Gems" }, ...dynamicCategories];
-  }, [places]);
+    return [{ value: "all", label: t("places.allGems") }, ...dynamicCategories];
+  }, [places, t]);
 
   const filteredPlaces = useMemo(() => {
     let result = places;
@@ -122,7 +123,7 @@ export default function PlacesPage() {
     // Category filter
     if (selectedCategory !== "all") {
       result = result.filter(place => {
-        const placeTags = Array.isArray(place.tags) ? place.tags.map((t) => normalizeTag(t)) : [];
+        const placeTags = Array.isArray(place.tags) ? place.tags.map((tag) => normalizeTag(tag)) : [];
         return placeTags.includes(selectedCategory);
       });
     }
@@ -157,7 +158,7 @@ export default function PlacesPage() {
     setCurrentPage(page);
     const element = document.getElementById('places-grid');
     if (element) {
-      const y = element.getBoundingClientRect().top + window.scrollY - 30; // 30px breathing room
+      const y = element.getBoundingClientRect().top + window.scrollY - 30;
       window.scrollTo({ top: y, behavior: 'smooth' });
     }
   };
@@ -173,7 +174,7 @@ export default function PlacesPage() {
       <div className="min-h-screen bg-slate-50 flex items-center justify-center" aria-busy="true">
         <div className="text-center" role="status" aria-live="polite">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-xl text-slate-600">Finding places around Bangkok...</p>
+          <p className="text-xl text-slate-600">{t("places.loading")}</p>
         </div>
       </div>
     );
@@ -183,13 +184,13 @@ export default function PlacesPage() {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="text-center max-w-md px-6" role="alert" aria-live="assertive">
-          <h1 className="text-2xl font-semibold text-slate-900 mb-2">Places are unavailable right now</h1>
+          <h1 className="text-2xl font-semibold text-slate-900 mb-2">{t("places.errorTitle")}</h1>
           <p className="text-xl text-red-600 mb-4">{error}</p>
           <p className="text-sm text-slate-500 mb-6">
-            Check your connection, then try again. If it still does not work, come back in a bit.
+            {t("places.errorDesc")}
           </p>
           <Button type="button" onClick={fetchPlaces} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl">
-            Try Again
+            {t("places.retry")}
           </Button>
         </div>
       </div>
@@ -203,10 +204,10 @@ export default function PlacesPage() {
       <header className="bg-white border-b border-blue-100/50 pt-14 pb-12">
         <div className="relative max-w-3xl mx-auto px-6 text-center flex flex-col items-center">
           <h1 className="text-4xl md:text-5xl font-semibold tracking-tight text-slate-900 mb-3">
-            Uncover the <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-sky-500">unseen Bangkok.</span>
+            {t("places.pageTitle")}
           </h1>
           <p className="text-base text-slate-500 mb-8 max-w-xl">
-            Search by vibe, neighborhood, or category to find places worth the detour.
+            {t("places.pageSubtitle")}
           </p>
 
           <div className="w-full relative rounded-2xl shadow-sm">
@@ -216,7 +217,7 @@ export default function PlacesPage() {
               </div>
               <input
                 type="text"
-                placeholder="Try riverside cafe, street food, or Talat Noi"
+                placeholder={t("places.searchPlaceholder")}
                 className="w-full py-4 pl-3 pr-4 text-base bg-transparent border-none focus:outline-none text-slate-800 placeholder:text-slate-400"
                 value={searchTerm}
                 onChange={(e) => {
@@ -235,7 +236,7 @@ export default function PlacesPage() {
         {/* Sidebar Filters */}
         <aside className="w-full lg:w-64 flex-shrink-0 space-y-8">
           <div>
-            <h3 className="text-sm font-semibold tracking-tight text-slate-900 mb-4">Categories</h3>
+            <h3 className="text-sm font-semibold tracking-tight text-slate-900 mb-4">{t("places.categoriesLabel")}</h3>
             <div className="space-y-2">
               {categories.map((cat) => {
                 const isSelected = selectedCategory === cat.value;
@@ -255,34 +256,17 @@ export default function PlacesPage() {
               })}
             </div>
           </div>
-          {/* 
-          <div className="pt-6 border-t border-blue-100">
-          </div> */}
-
-          {/* Custom Slider Example (Decorative for filter) */}
-          {/* <div className="pt-6 border-t border-blue-100">
-            <h3 className="text-sm font-semibold tracking-tight text-slate-900 mb-4 flex justify-between">
-              <span>Crowd Level</span>
-              <span className="text-slate-400 font-normal">Low</span>
-            </h3>
-            <div className="relative w-full h-1.5 bg-slate-200 rounded-full mt-2">
-              <div className="absolute top-0 left-0 h-full bg-blue-500 rounded-full w-1/3"></div>
-              <div className="absolute top-1/2 left-1/3 -translate-y-1/2 -translate-x-1/2 w-4 h-4 bg-white border-2 border-blue-600 rounded-full shadow-sm cursor-grab"></div>
-            </div>
-            <div className="flex justify-between text-xs text-slate-400 mt-3">
-              <span>Empty</span>
-              <span>Bustling</span>
-            </div>
-          </div> */}
         </aside>
 
         {/* Places Grid */}
         <div id="places-grid" className="flex-grow">
           <div className="mb-6">
             <div>
-              <h2 className="text-xl font-semibold tracking-tight text-slate-900">Curated Gems</h2>
+              <h2 className="text-xl font-semibold tracking-tight text-slate-900">{t("places.curatedGems")}</h2>
               <p className="text-sm text-slate-500 mt-1" aria-live="polite">
-                {filteredPlaces.length} place{filteredPlaces.length === 1 ? "" : "s"} ready to explore
+                {filteredPlaces.length === 1
+                  ? t("places.placeCount", { count: String(filteredPlaces.length) })
+                  : t("places.placesCount", { count: String(filteredPlaces.length) })}
               </p>
             </div>
           </div>
@@ -290,7 +274,7 @@ export default function PlacesPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {currentPlaces.length === 0 ? (
               <div className="col-span-full rounded-2xl border border-dashed border-slate-300 bg-white/70 p-12 text-center text-slate-500">
-                No places match your search yet. Try different keywords.
+                {t("places.noResults")}
               </div>
             ) : (
               currentPlaces.map((place) => {
@@ -360,7 +344,7 @@ export default function PlacesPage() {
                             }}
                           >
                             <MapPin className="w-4 h-4" />
-                            View on Map
+                            {t("places.viewOnMap")}
                           </Button>
                         </div>
                       </div>
