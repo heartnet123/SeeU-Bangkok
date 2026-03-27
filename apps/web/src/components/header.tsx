@@ -37,7 +37,7 @@ const { t } = useTranslation();
 				{/* Logo */}
 				<div className="flex items-center gap-2">
 					<Link href="/" className="text-blue-400 text-xl font-bold hover:text-blue-300 transition-colors duration-300 cursor-pointer">
-					<span>SeeU Bangkok</span>
+					<span>Visit BKK</span>
 				</Link>
 			</div>
 			{/* Center Rounded Navigation Container */}
