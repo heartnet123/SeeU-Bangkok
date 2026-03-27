@@ -14,6 +14,8 @@ export const placeSchema = z.object({
   slug: z.string().min(1).optional(),                 // server จะ auto-gen ได้
   area: z.string().optional(),
   description: z.string().optional().default(""),
+  name_th: z.string().optional(),
+  description_th: z.string().optional(),
   tags: z.array(z.string()).optional().default([]),
   lat: z.number({
     error: "Latitude is required and must be a number",
@@ -33,6 +35,8 @@ const updatePlaceSchema = z.object({
   name: z.string().min(1).optional(),
   area: z.string().optional(),
   description: z.string().optional(),
+  name_th: z.string().optional(),
+  description_th: z.string().optional(),
   tags: z.array(z.string()).optional(),
   lat: z.number().optional(),
   lng: z.number().optional(),
@@ -205,6 +209,8 @@ Price: ${body.price ? body.price + ' Baht' : 'Free'}
       slug,
       area: body.area || null,
       description: body.description || null,
+      name_th: body.name_th || null,
+      description_th: body.description_th || null,
       tags: body.tags || [],
       lat: body.lat,          // ต้องมีค่าเลขที่ valid
       lng: body.lng,          // ต้องมีค่าเลขที่ valid
@@ -263,6 +269,8 @@ admin.put('/places/:id', zValidator('json', updatePlaceSchema), async (c) => {
     if (body.name !== undefined) updatePayload.name = body.name
     if (body.area !== undefined) updatePayload.area = body.area
     if (body.description !== undefined) updatePayload.description = body.description
+    if (body.name_th !== undefined) updatePayload.name_th = body.name_th
+    if (body.description_th !== undefined) updatePayload.description_th = body.description_th
     if (body.tags !== undefined) updatePayload.tags = body.tags
     if (body.lat !== undefined) updatePayload.lat = body.lat
     if (body.lng !== undefined) updatePayload.lng = body.lng

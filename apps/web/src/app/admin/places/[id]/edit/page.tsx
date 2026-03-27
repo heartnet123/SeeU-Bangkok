@@ -11,6 +11,8 @@ import Link from 'next/link'
 type PlacePayload = {
   name?: string
   description?: string
+  name_th?: string
+  description_th?: string
   tags?: string[]
   lat?: number
   lng?: number
@@ -25,6 +27,8 @@ interface Place {
   id: string
   name: string
   description: string
+  name_th?: string
+  description_th?: string
   tags: string[]
   lat: number
   lng: number
@@ -69,6 +73,8 @@ export default function AdminEditPlacePage() {
       setForm({
         name: place.name,
         description: place.description,
+        name_th: place.name_th || '',
+        description_th: place.description_th || '',
         lat: place.lat,
         lng: place.lng,
         address: place.address,
@@ -129,6 +135,8 @@ export default function AdminEditPlacePage() {
       
       if (form.name !== originalPlace?.name) changedPayload.name = form.name
       if (form.description !== originalPlace?.description) changedPayload.description = form.description
+      if (form.name_th !== (originalPlace?.name_th || '')) changedPayload.name_th = form.name_th
+      if (form.description_th !== (originalPlace?.description_th || '')) changedPayload.description_th = form.description_th
       if (form.address !== originalPlace?.address) changedPayload.address = form.address
       if (form.image_url !== originalPlace?.image_url) changedPayload.image_url = form.image_url
       
@@ -236,7 +244,7 @@ export default function AdminEditPlacePage() {
           <div className="bg-white rounded-lg shadow-sm p-6 space-y-6">
             <div className="grid gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1 text-gray-700">Name</label>
+                <label className="block text-sm font-medium mb-1 text-gray-700">Name (EN)</label>
                 <Input 
                   value={form.name || ''} 
                   onChange={(e) => update('name', e.target.value)} 
@@ -245,12 +253,31 @@ export default function AdminEditPlacePage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1 text-gray-700">Description</label>
+                <label className="block text-sm font-medium mb-1 text-gray-700">Description (EN)</label>
                 <Textarea 
                   value={form.description || ''} 
                   onChange={(e) => update('description', e.target.value)} 
                   rows={5} 
                   placeholder="Write a short description" 
+                  className="" 
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 text-gray-700">ชื่อภาษาไทย (name_th)</label>
+                <Input 
+                  value={form.name_th || ''} 
+                  onChange={(e) => update('name_th', e.target.value)} 
+                  placeholder="วัดโพธิ์" 
+                  className="" 
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 text-gray-700">คำอธิบายภาษาไทย (description_th)</label>
+                <Textarea 
+                  value={form.description_th || ''} 
+                  onChange={(e) => update('description_th', e.target.value)} 
+                  rows={5} 
+                  placeholder="คำอธิบายภาษาไทย" 
                   className="" 
                 />
               </div>

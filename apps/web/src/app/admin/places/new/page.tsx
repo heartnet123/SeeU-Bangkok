@@ -13,6 +13,8 @@ type PlacePayload = {
   slug?: string
   area?: string
   description?: string
+  name_th?: string
+  description_th?: string
   tags?: string[]
   lat: number
   lng: number
@@ -81,6 +83,8 @@ export default function AdminNewPlacePage() {
         slug: (effectiveSlug || undefined),
         area: (form.area || undefined)?.trim() || undefined,
         description: (form.description || undefined)?.trim() || undefined,
+        name_th: (form.name_th || undefined)?.trim() || undefined,
+        description_th: (form.description_th || undefined)?.trim() || undefined,
         tags: tagsText
           .split(',')
           .map((s) => s.trim())
@@ -163,12 +167,33 @@ export default function AdminNewPlacePage() {
 
         {/* Description */}
         <div>
-          <Label className="mb-1 block text-black">Description</Label>
+          <Label className="mb-1 block text-black">Description (EN)</Label>
           <Textarea
             value={form.description || ''}
             onChange={(e) => update('description', e.target.value)}
             rows={5}
             placeholder="Write a short description"
+            className="text-black border-gray-400 dark:border-gray-700"
+          />
+        </div>
+
+        {/* Thai translations */}
+        <div>
+          <Label className="mb-1 block text-black">ชื่อภาษาไทย (name_th)</Label>
+          <Input
+            value={form.name_th || ''}
+            onChange={(e) => update('name_th', e.target.value)}
+            placeholder="วัดโพธิ์"
+            className="text-black"
+          />
+        </div>
+        <div>
+          <Label className="mb-1 block text-black">คำอธิบายภาษาไทย (description_th)</Label>
+          <Textarea
+            value={form.description_th || ''}
+            onChange={(e) => update('description_th', e.target.value)}
+            rows={5}
+            placeholder="คำอธิบายภาษาไทย"
             className="text-black border-gray-400 dark:border-gray-700"
           />
         </div>

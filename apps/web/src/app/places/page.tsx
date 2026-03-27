@@ -24,6 +24,8 @@ interface Place {
   id: string;
   name: string;
   description: string;
+  name_th?: string;
+  description_th?: string;
   tags: string[];
   lat: number;
   lng: number;
@@ -34,7 +36,7 @@ interface Place {
 }
 
 export default function PlacesPage() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const [places, setPlaces] = useState<Place[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -285,6 +287,10 @@ export default function PlacesPage() {
                 : null;
               const placeDetailHref = `/places/${place.slug || nameToSlug(place.name || "unknown-place")}`;
 
+              // Locale-aware content — fall back to EN if TH not available
+              const displayName = (locale === "th" && place.name_th) ? place.name_th : place.name;
+              const displayDesc = (locale === "th" && place.description_th) ? place.description_th : place.description;
+
               return (
                 <Card 
                   key={place.id} 
@@ -311,7 +317,7 @@ export default function PlacesPage() {
                 />
                         <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors duration-300" />
                         <div className="absolute bottom-4 left-4 text-white">
-                          <h3 className="text-xl font-semibold">{place.name}</h3>
+                          <h3 className="text-xl font-semibold">{displayName}</h3>
                           {place.tags && place.tags.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-2">
                               {place.tags.slice(0, 2).map((tag, index) => (
@@ -327,7 +333,7 @@ export default function PlacesPage() {
                       {/* Content */}
                       <div className="px-6 py-5 flex flex-col flex-grow">
                         <p className="text-gray-600 mb-4 leading-relaxed flex-grow">
-                          {place.description}
+                          {displayDesc}
                         </p>
                         
                         {/* Action Buttons */}
