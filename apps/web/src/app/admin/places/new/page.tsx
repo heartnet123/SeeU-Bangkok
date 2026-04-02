@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { AdminMapPicker } from '@/components/map/admin-map-picker'
 import { MapPin } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 
 type PlacePayload = {
   name: string
@@ -78,6 +79,9 @@ export default function AdminNewPlacePage() {
     setBusy(true)
     setResult(null)
     try {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+
       const payload: PlacePayload = {
         name: (form.name || '').trim(),
         slug: (effectiveSlug || undefined),
@@ -100,7 +104,10 @@ export default function AdminNewPlacePage() {
 
       const res = await fetch(`${serverUrl}/api/admin/places`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token ?? ''}`,
+        },
         body: JSON.stringify(payload),
       })
       

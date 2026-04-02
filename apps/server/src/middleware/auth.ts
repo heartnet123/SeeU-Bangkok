@@ -74,3 +74,22 @@ export const optionalAuthMiddleware = createMiddleware(async (c, next) => {
 
   await next()
 })
+
+/**
+ * Middleware factory that requires the authenticated user to have a specific role.
+ * Must be used after `authMiddleware` so that `c.get('user')` is already set.
+ *
+ * @example
+ * app.use('/admin/*', authMiddleware)
+ * app.use('/admin/*', roleGuard('admin'))
+ */
+export const roleGuard = (requiredRole: string) =>
+  createMiddleware(async (c, next) => {
+    const user = c.get('user')
+    if (!user || user.role !== requiredRole) {
+      throw new HTTPException(403, {
+        message: `Forbidden: requires role '${requiredRole}'`,
+      })
+    }
+    await next()
+  })

@@ -4,9 +4,13 @@ import { zValidator } from '@hono/zod-validator'
 import { supabase } from '../lib/supabase'
 import { openaiEmbed } from '../lib/openai'
 import { nameToSlug } from '../lib/slug-utils'
+import { authMiddleware, roleGuard } from '../middleware/auth'
 
 const admin = new Hono()
 
+// Require authentication + admin role for all routes under /admin
+admin.use('*', authMiddleware)
+admin.use('*', roleGuard('admin'))
 
 
 export const placeSchema = z.object({

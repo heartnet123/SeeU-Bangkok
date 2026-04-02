@@ -9,8 +9,10 @@ import { AnimatedGroup } from "./core/animated-group";
 import { motion } from "motion/react";
 import LanguageToggle from "./language-toggle";
 import { useTranslation } from "@/contexts/language-context";
+import { useAuth } from "@/contexts/auth-context";
 
 export default function Header() {
+	const { user } = useAuth();
 	const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 	const pathname = usePathname();
 
@@ -21,9 +23,7 @@ const { t } = useTranslation();
 			{ to: "/places", label: t("nav.places") },
 			{ to: "/map", label: t("nav.map") },
 			{ to: "/saved-trips", label: t("nav.savedTrips") },
-			// { to: "/chat", label: "Trip Planner" },
-			{ to: "/admin/places", label: t("nav.admin") },
-		// { to: "/about", label: "About Us" },
+			...(user?.role === "admin" ? [{ to: "/admin/places", label: t("nav.admin") }] : []),
 	];
 
 	return (

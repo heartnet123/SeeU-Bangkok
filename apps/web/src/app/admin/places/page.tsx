@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Pencil, Trash2, Plus, Search, MapPin } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 
 interface Place {
   id: string
@@ -42,7 +43,10 @@ export default function AdminPlacesPage() {
     try {
       setLoading(true)
       setError(null)
-      
+
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+
       const limit = 20
       const offset = (page - 1) * limit
       const params = new URLSearchParams({
@@ -55,7 +59,12 @@ export default function AdminPlacesPage() {
       }
       
       const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'
-      const res = await fetch(`${serverUrl}/api/admin/places?${params}`)
+      const res = await fetch(`${serverUrl}/api/admin/places?${params}`, {
+        headers: {
+          'Authorization': `Bearer ${session?.access_token ?? ''}`,
+          'Content-Type': 'application/json',
+        },
+      })
       
       // Safely parse response, handling non-JSON errors gracefully
       const contentType = res.headers.get('content-type') || ''
@@ -83,10 +92,16 @@ export default function AdminPlacesPage() {
     
     try {
       setDeleteLoading(id)
-      
+
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+
       const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'
       const res = await fetch(`${serverUrl}/api/admin/places/${id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session?.access_token ?? ''}`,
+        },
       })
       
       const contentType = res.headers.get('content-type') || ''
