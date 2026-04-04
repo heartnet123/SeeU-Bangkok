@@ -16,28 +16,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { nameToSlug } from "@/lib/slug-utils";
-import { createClient } from "@/lib/supabase/client";
+import { fetchPlacesList, type PlaceListItem } from "@/lib/places-api";
 import { useTranslation } from "@/contexts/language-context";
-
-
-interface Place {
-  id: string;
-  name: string;
-  description: string;
-  name_th?: string;
-  description_th?: string;
-  tags: string[];
-  lat: number;
-  lng: number;
-  address: string;
-  price: number;
-  image_url: string;
-  slug?: string;
-}
 
 export default function PlacesPage() {
   const { t, locale } = useTranslation();
-  const [places, setPlaces] = useState<Place[]>([]);
+  const [places, setPlaces] = useState<PlaceListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -45,8 +29,8 @@ export default function PlacesPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
   const placesPerPage = 6;
-  const supabase = createClient();
   const router = useRouter();
+  const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3000";
 
   useEffect(() => {
     fetchPlaces();
@@ -57,24 +41,7 @@ export default function PlacesPage() {
       setLoading(true);
       setError(null);
 
-      const { data, error } = await supabase
-        .from('bangkok_unseen')
-        .select('*')
-        .order('name');
-
-      if (error) {
-        throw error;
-      }
-
-      const safeData = (data || []).map(place => ({
-        ...place,
-        image_url: place.image_url || '',
-        tags: Array.isArray(place.tags) ? place.tags : [],
-        description: place.description || 'No description available',
-        price: typeof place.price === 'number' ? place.price : 0,
-        slug: nameToSlug(place.name || 'unknown-place')
-      }));
-
+      const safeData = await fetchPlacesList({ serverUrl });
       setPlaces(safeData);
     } catch (err) {
       console.error('Error fetching places:', err);
