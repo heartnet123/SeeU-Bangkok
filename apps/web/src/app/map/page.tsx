@@ -12,10 +12,12 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { NewTripDialog } from "@/components/trips/new-trip-dialog";
 import { EditTripDialog } from "@/components/trips/edit-trip-dialog";
+import { AddTripStopDialog } from "@/components/trips/add-trip-stop-dialog";
 import type { Trip, TripStop } from "@/types/trip";
 import type { TripDraft, TripDraftStop } from "@/components/planner/chat/types";
 import { buildTripDraftSavePayload } from "@/components/planner/chat/lib/trip-draft";
 import { nameToSlug } from "@/lib/slug-utils";
+import { appendPlaceToTrip, type TripPlaceCandidate } from "@/lib/trip-stop-utils";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -37,17 +39,13 @@ import {
   Map as MapIcon,
 } from "lucide-react";
 
-interface PlaceItem {
-  id: string;
-  name: string;
-  slug: string;
+interface PlaceItem extends TripPlaceCandidate {
   lat?: number;
   lng?: number;
   tags?: string[];
-  price?: number;
-  description?: string;
   address?: string;
   image_url?: string;
+  price?: number;
 }
 
 interface ChatSession {
@@ -107,6 +105,7 @@ export default function TripPlannerPage() {
   const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
   const [isBottomSheetExpanded, setIsBottomSheetExpanded] = useState(true);
   const [isNewTripDialogOpen, setIsNewTripDialogOpen] = useState(false);
+  const [isAddStopDialogOpen, setIsAddStopDialogOpen] = useState(false);
   const [isLeftPanelOpen, setIsLeftPanelOpen] = useState(true);
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
@@ -363,55 +362,41 @@ export default function TripPlannerPage() {
     console.log("Received trip draft from agent:", tripDraft);
   };
 
-  const handleAddPlaceToTrip = (place: PlaceItem) => {
-    if (!selectedTripId) {
-      toast.error(t("errors.selectTrip"));
-      return;
-    }
+  const handleAddPlaceToTrip = useCallback((place: PlaceItem | TripPlaceCandidate) => {
+    setTrips((prevTrips) => {
+      const result = appendPlaceToTrip({
+        trips: prevTrips,
+        selectedTripId,
+        place,
+      });
 
-    if (!place.lat || !place.lng) {
-      toast.error(t("errors.noLocation"));
-      return;
-    }
+      if (result.status === "missing-trip") {
+        toast.error(t("errors.selectTrip"));
+        return prevTrips;
+      }
 
-    const newStop: TripStop = {
-      id: `stop-${Date.now()}`,
-      placeId: place.id,
-      name: place.name,
-      address: place.slug || "Address not available",
-      category: (place.tags?.[0] as any) || "Shopping",
-      suggestedDurationMin: 60,
-      lat: place.lat,
-      lng: place.lng,
-      notes: place.description,
-    };
+      if (result.status === "missing-location") {
+        toast.error(t("errors.noLocation"));
+        return prevTrips;
+      }
 
-    setTrips((prevTrips) =>
-      prevTrips.map((trip) => {
-        if (trip.id === selectedTripId) {
-          if (trip.stops.some((stop) => stop.name === place.name)) {
-            toast.info(`${place.name} is already in this trip`);
-            return trip;
-          }
+      if (result.status === "duplicate") {
+        toast.info(`${place.name} is already in this trip`);
+        return prevTrips;
+      }
 
-          const updatedStops = [...trip.stops, newStop];
-          const newDuration = updatedStops.reduce(
-            (sum, stop) => sum + stop.suggestedDurationMin,
-            0
-          );
+      const addedMessage =
+        t("actions.addedToTrip") || "{place} added to {trip}";
+      const tripName = result.tripName || "this trip";
+      toast.success(
+        addedMessage
+          .replace("{place}", place.name)
+          .replace("{trip}", tripName)
+      );
 
-          toast.success(t("actions.addedToTrip").replace("{place}", place.name).replace("{trip}", trip.name));
-
-          return {
-            ...trip,
-            stops: updatedStops,
-            totalDurationMin: newDuration,
-          };
-        }
-        return trip;
-      })
-    );
-  };
+      return result.trips;
+    });
+  }, [selectedTripId, t]);
 
   const handleNewTrip = () => {
     setIsNewTripDialogOpen(true);
@@ -422,6 +407,11 @@ export default function TripPlannerPage() {
     fetchSavedTrips();
     setIsNewTripDialogOpen(false);
   };
+
+  const handleOpenAddStopDialog = useCallback((tripId: string) => {
+    setSelectedTripId(tripId);
+    setIsAddStopDialogOpen(true);
+  }, []);
 
   const handleDeleteTrip = async (tripId: string) => {
     if (!confirm("Are you sure you want to delete this trip?")) return;
@@ -992,6 +982,7 @@ export default function TripPlannerPage() {
           <ItineraryColumn
             trip={displayedTrip}
             onEditTrip={displayedTrip?.source === "draft" ? undefined : handleEditTrip}
+            onAddStop={displayedTrip?.source === "saved" ? handleOpenAddStopDialog : undefined}
             onSaveTrip={handleSaveTripToServer}
             onReorderStops={handleReorderStops}
             isLoading={isTripsLoading}
@@ -1037,6 +1028,7 @@ export default function TripPlannerPage() {
             <ItineraryColumn
               trip={displayedTrip}
               onEditTrip={displayedTrip?.source === "draft" ? undefined : handleEditTrip}
+              onAddStop={displayedTrip?.source === "saved" ? handleOpenAddStopDialog : undefined}
               onSaveTrip={handleSaveTripToServer}
               onReorderStops={handleReorderStops}
               isLoading={isTripsLoading}
@@ -1071,6 +1063,13 @@ export default function TripPlannerPage() {
         onSuccess={handleNewTripSuccess}
         serverUrl={process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3000"}
         sessionToken={session?.access_token || ""}
+      />
+
+      <AddTripStopDialog
+        isOpen={isAddStopDialogOpen}
+        onClose={() => setIsAddStopDialogOpen(false)}
+        onAddPlace={handleAddPlaceToTrip}
+        serverUrl={process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3000"}
       />
 
       {/* Edit Trip Dialog */}

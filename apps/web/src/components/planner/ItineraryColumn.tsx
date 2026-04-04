@@ -29,6 +29,7 @@ interface Props {
   trip: Trip | null;
   onEditTrip?: (tripId: string) => void;
   onSaveTrip?: (tripId: string, orderedStops: TripStop[]) => void;
+  onAddStop?: (tripId: string) => void;
   isLoading?: boolean;
   onReorderStops?: (tripId: string, orderedStopIds: string[]) => void;
   totalDurationMin?: number | null;
@@ -49,6 +50,7 @@ export function ItineraryColumn({
   trip,
   onEditTrip,
   onSaveTrip,
+  onAddStop,
   isLoading = false,
   onReorderStops,
   totalDurationMin = null,
@@ -293,7 +295,8 @@ export function ItineraryColumn({
       <Button
         variant="outline"
         className="w-full"
-        onClick={() => onEditTrip?.(trip.id)}
+        onClick={() => onAddStop?.(trip.id)}
+        disabled={!onAddStop || mode !== "saved"}
         aria-label="Add new stop to itinerary"
       >
         + Add Stop
