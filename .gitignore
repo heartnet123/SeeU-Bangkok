@@ -19,7 +19,7 @@ web-bundles
 *.vscode
 *.bmad
 
-
+*.omx
 
 
 # Auto Claude data directory
