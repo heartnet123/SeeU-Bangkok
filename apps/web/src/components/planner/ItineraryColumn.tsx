@@ -2,7 +2,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Edit, GripVertical, Save, Clock } from "lucide-react";
+import { Trash2, GripVertical, Save, Clock, Edit } from "lucide-react";
 import type { Trip, TripStop } from "@/types/trip";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +30,8 @@ interface Props {
   onEditTrip?: (tripId: string) => void;
   onSaveTrip?: (tripId: string, orderedStops: TripStop[]) => void;
   onAddStop?: (tripId: string) => void;
+  onDeleteStop?: (tripId: string, stopId: string) => void;
+  onSelectStop?: (stop: TripStop) => void;
   isLoading?: boolean;
   onReorderStops?: (tripId: string, orderedStopIds: string[]) => void;
   totalDurationMin?: number | null;
@@ -51,6 +53,8 @@ export function ItineraryColumn({
   onEditTrip,
   onSaveTrip,
   onAddStop,
+  onDeleteStop,
+  onSelectStop,
   isLoading = false,
   onReorderStops,
   totalDurationMin = null,
@@ -214,8 +218,9 @@ export function ItineraryColumn({
               {orderedStops.map((stop, index) => (
                 <SortableStopCard key={stop.id} id={stop.id}>
                   <Card
-                    className="bg-white border border-slate-200 shadow-sm hover:shadow-md transition-shadow"
+                    className="bg-white border border-slate-200 shadow-sm hover:shadow-md hover:cursor-pointer transition-shadow"
                     role="listitem"
+                    onClick={() => onSelectStop?.(stop)}
                   >
                     <CardContent className="p-3 flex items-start gap-3">
                       {/* Stop number and drag handle */}
@@ -272,15 +277,15 @@ export function ItineraryColumn({
                         </div>
                       </div>
 
-                      {/* Edit button */}
+                      {/* Delete button */}
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="w-7 h-7 shrink-0 text-slate-500 hover:text-slate-700"
-                        aria-label={`Edit stop: ${stop.name}`}
-                        onClick={() => onEditTrip?.(trip.id)}
+                        className="w-7 h-7 shrink-0 text-slate-500 hover:text-red-600"
+                        aria-label={`Delete stop: ${stop.name}`}
+                        onClick={() => onDeleteStop?.(trip.id, stop.id)}
                       >
-                        <Edit className="w-4 h-4" />
+                        <Trash2 className="w-4 h-4" />
                       </Button>
                     </CardContent>
                   </Card>

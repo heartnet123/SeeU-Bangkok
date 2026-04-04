@@ -117,8 +117,8 @@ export function AddTripStopDialog({
 
 	return (
 		<Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-			<DialogContent className="max-w-2xl gap-0 p-0">
-				<DialogHeader className="border-b px-6 py-4">
+			<DialogContent className="max-w-2xl gap-0 p-0 bg-white text-slate-900 shadow-2xl border border-slate-200">
+				<DialogHeader className="border-b border-slate-200 px-6 py-4">
 					<DialogTitle>Add place to trip</DialogTitle>
 					<DialogDescription>
 						Search existing places and append one to the selected trip.

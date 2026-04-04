@@ -37,7 +37,7 @@ const { t } = useTranslation();
 				{/* Logo */}
 				<div className="flex items-center gap-2">
 					<Link href="/" className="text-blue-400 text-xl font-bold hover:text-blue-300 transition-colors duration-300 cursor-pointer">
-					<span>Visit BKK</span>
+					<span>SeeU Bangkok</span>
 				</Link>
 			</div>
 			{/* Center Rounded Navigation Container */}
@@ -100,7 +100,7 @@ const { t } = useTranslation();
 					</div>
 					{/* Mobile menu button */}
 					<motion.button 
-						className="md:hidden p-3 hover:bg-gray-800/50 rounded-full transition-all duration-300 border border-gray-700/50 backdrop-blur-sm hover:border-blue-500/50"
+						className="md:hidden p-3 hover:bg-slate-100 rounded-full transition-all duration-300 border border-slate-300/70 backdrop-blur-sm hover:border-blue-300"
 						onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
 						whileHover={{ scale: 1.05, y: -2 }}
 						whileTap={{ scale: 0.95 }}
@@ -110,9 +110,9 @@ const { t } = useTranslation();
 							transition={{ duration: 0.3 }}
 						>
 							{isMobileMenuOpen ? (
-								<X className="w-5 h-5 text-gray-300" />
+								<X className="w-5 h-5 text-slate-900" />
 							) : (
-								<Menu className="w-5 h-5 text-gray-300" />
+								<Menu className="w-5 h-5 text-slate-900" />
 							)}
 						</motion.div>
 					</motion.button>
@@ -122,7 +122,7 @@ const { t } = useTranslation();
 			{/* Mobile Navigation Menu */}
 			{isMobileMenuOpen && (
 				<motion.div 
-					className="md:hidden bg-gray-900/95 backdrop-blur-md border-t border-gray-700"
+					className="md:hidden bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-lg"
 					initial={{ opacity: 0, y: -20 }}
 					animate={{ opacity: 1, y: 0 }}
 					exit={{ opacity: 0, y: -20 }}
@@ -142,7 +142,7 @@ const { t } = useTranslation();
 										block px-4 py-3 font-medium rounded-lg transition-all duration-300
 										${isActive 
 											? 'text-white bg-blue-500 shadow-lg' 
-											: 'text-gray-300 hover:text-white hover:bg-gray-800/50'
+											: 'text-slate-900 hover:text-blue-600 hover:bg-slate-100'
 										}
 									`}
 									onClick={() => setIsMobileMenuOpen(false)}
@@ -156,7 +156,7 @@ const { t } = useTranslation();
 								</Link>
 							);
 						})}
-						<div className="pt-4 border-t border-gray-700 space-y-3">
+						<div className="pt-4 border-t border-slate-200 space-y-3">
 							<AuthButton />
 							<LanguageToggle />
 						</div>

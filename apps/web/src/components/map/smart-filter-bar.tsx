@@ -24,7 +24,7 @@ interface SmartFilterBarProps {
 export const SmartFilterBar: React.FC<SmartFilterBarProps> = ({
     activeFilter,
     onFilterChange,
-    isDarkMode = true,
+    isDarkMode = false,
 }) => {
     return (
         <motion.div

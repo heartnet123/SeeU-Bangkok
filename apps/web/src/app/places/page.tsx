@@ -11,7 +11,7 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { MapPin, Search, Check } from "lucide-react";
+import { MapPin, Search, Check, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -26,7 +26,8 @@ export default function PlacesPage() {
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const placesPerPage = 6;
   const router = useRouter();
@@ -65,6 +66,27 @@ export default function PlacesPage() {
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(" ");
 
+  const toggleCategory = (category: string) => {
+    setSelectedCategories((prev) => {
+      if (category === "all") {
+        return [];
+      }
+
+      const isAlreadySelected = prev.includes(category);
+      if (isAlreadySelected) {
+        return prev.filter((item) => item !== category);
+      }
+
+      return [...prev.filter((item) => item !== "all"), category];
+    });
+    setCurrentPage(1);
+  };
+
+  const clearFilters = () => {
+    setSelectedCategories([]);
+    setCurrentPage(1);
+  };
+
   const categories = useMemo(() => {
     const counter = new Map<string, number>();
 
@@ -86,14 +108,24 @@ export default function PlacesPage() {
     return [{ value: "all", label: t("places.allGems") }, ...dynamicCategories];
   }, [places, t]);
 
+  const selectedLabels = useMemo(
+    () => categories
+      .filter((cat) => selectedCategories.includes(cat.value))
+      .map((cat) => ({ value: cat.value, label: cat.label })),
+    [categories, selectedCategories]
+  );
+
   const filteredPlaces = useMemo(() => {
     let result = places;
 
+    const activeCategories = selectedCategories.filter((value) => value !== "all");
+    const hasCategoryFilter = activeCategories.length > 0;
+
     // Category filter
-    if (selectedCategory !== "all") {
+    if (hasCategoryFilter) {
       result = result.filter(place => {
         const placeTags = Array.isArray(place.tags) ? place.tags.map((tag) => normalizeTag(tag)) : [];
-        return placeTags.includes(selectedCategory);
+        return activeCategories.some((category) => placeTags.includes(category));
       });
     }
 
@@ -115,7 +147,7 @@ export default function PlacesPage() {
     }
 
     return result;
-  }, [places, searchTerm, selectedCategory]);
+  }, [places, searchTerm, selectedCategories]);
 
   // Calculate pagination
   const totalPages = Math.max(1, Math.ceil(filteredPlaces.length / placesPerPage));
@@ -204,27 +236,64 @@ export default function PlacesPage() {
 
         {/* Sidebar Filters */}
         <aside className="w-full lg:w-64 flex-shrink-0 space-y-8">
-          <div>
-            <h3 className="text-sm font-semibold tracking-tight text-slate-900 mb-4">{t("places.categoriesLabel")}</h3>
-            <div className="space-y-2">
-              {categories.map((cat) => {
-                const isSelected = selectedCategory === cat.value;
-                return (
-                  <label key={cat.value} className="flex items-center gap-3 cursor-pointer group" onClick={() => {
-                    setSelectedCategory(cat.value);
-                    setCurrentPage(1);
-                  }}>
-                    <div className={`relative w-4 h-4 rounded border flex items-center justify-center transition-colors ${isSelected ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white group-hover:border-blue-400'}`}>
-                      {isSelected && <Check className="w-3 h-3" />}
-                    </div>
-                    <span className={`text-sm transition-colors ${isSelected ? 'text-blue-700 font-medium' : 'text-slate-600 group-hover:text-slate-900'}`}>
-                      {cat.label}
-                    </span>
-                  </label>
-                );
-              })}
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold tracking-tight text-slate-900 mb-4">{t("places.categoriesLabel")}</h3>
+              <p className="text-xs text-slate-500">{t("places.filtersDescription")}</p>
             </div>
+            <button
+              type="button"
+              className="lg:hidden inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:border-blue-300 hover:text-blue-700 transition"
+              onClick={() => setIsFilterOpen((prev) => !prev)}
+            >
+              {isFilterOpen ? t("places.closeFilters") : t("places.openFilters")}
+            </button>
           </div>
+
+          <div className={`space-y-2 overflow-hidden transition-all duration-300 ${isFilterOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0 lg:opacity-100 lg:max-h-none'}`}>
+            {categories.map((cat) => {
+              const isSelected = cat.value === 'all'
+                ? selectedCategories.length === 0
+                : selectedCategories.includes(cat.value);
+
+              return (
+                <label
+                  key={cat.value}
+                  className="flex items-center gap-3 cursor-pointer group"
+                  onClick={() => toggleCategory(cat.value)}
+                >
+                  <div className={`relative w-4 h-4 rounded border flex items-center justify-center transition-colors ${isSelected ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white group-hover:border-blue-400'}`}>
+                    {isSelected && <Check className="w-3 h-3" />}
+                  </div>
+                  <span className={`text-sm transition-colors ${isSelected ? 'text-blue-700 font-medium' : 'text-slate-600 group-hover:text-slate-900'}`}>
+                    {cat.label}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+
+          {selectedLabels.length > 0 && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-semibold text-slate-900">{t("places.selectedFilters")}</span>
+                <button
+                  type="button"
+                  className="text-sm text-blue-600 hover:text-blue-800"
+                  onClick={clearFilters}
+                >
+                  {t("places.clear")}
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {selectedLabels.map((label) => (
+                  <span key={label.value} className="rounded-full bg-blue-50 px-3 py-1 text-sm text-blue-700">
+                    {label.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </aside>
 
         {/* Places Grid */}

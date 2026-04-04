@@ -8,9 +8,9 @@ import { useTranslation } from "@/contexts/language-context";
 
 
 export default function Home() {
-	const { t } = useTranslation();
+	const { t, locale } = useTranslation();
 	return (
-		<div className="min-h-screen bg-white">
+		<div key={locale} className="min-h-screen bg-white">
 			{/* Hero Section */}
 			<div className="relative min-h-screen bg-gradient-to-br from-gray-800 via-gray-700 to-gray-900 flex items-center justify-center overflow-hidden">
 				{/* Background Pattern/Texture */}

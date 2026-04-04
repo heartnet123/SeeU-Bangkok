@@ -1,8 +1,8 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
-import en from "@/locales/en.json";
-import th from "@/locales/th.json";
+import en from "../locales/en.json";
+import th from "../locales/th.json";
 
 export type Locale = "en" | "th";
 
@@ -24,14 +24,17 @@ const LanguageContext = createContext<LanguageContextValue | undefined>(
 );
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>(() => {
+  const [locale, setLocaleState] = useState<Locale>("en");
+
+  useEffect(() => {
     try {
       const v = localStorage.getItem("locale") as Locale | null;
-      return v ?? (navigator.language?.startsWith("th") ? "th" : "en");
+      const initialLocale = v ?? (navigator.language?.startsWith("th") ? "th" : "en");
+      setLocaleState(initialLocale);
     } catch (e) {
-      return "en";
+      setLocaleState("en");
     }
-  });
+  }, []);
 
   useEffect(() => {
     try {

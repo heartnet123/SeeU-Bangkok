@@ -108,8 +108,8 @@ export function AuthButton() {
           {profile?.nick_name || user.user_metadata?.display_name || user.email}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel className="flex items-center gap-2">
+      <DropdownMenuContent align="end" className="w-56 bg-white text-slate-950 border border-slate-200 shadow-lg">
+        <DropdownMenuLabel className="flex items-center gap-2 rounded-md px-2 py-2 text-slate-950">
           {profile?.avatar_url ? (
             <img 
               src={profile.avatar_url} 
@@ -120,20 +120,20 @@ export function AuthButton() {
             <User className="h-6 w-6" />
           )}
           <div>
-            <div className="font-medium">{profile?.nick_name || user.user_metadata?.display_name || 'User'}</div>
-            <div className="text-xs text-gray-500">{user.email}</div>
+            <div className="font-medium text-slate-950">{profile?.nick_name || user.user_metadata?.display_name || 'User'}</div>
+            <div className="text-xs text-slate-500">{user.email}</div>
           </div>
         </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
+        <DropdownMenuSeparator className="bg-slate-200" />
+        <DropdownMenuItem asChild className="text-slate-700 hover:bg-slate-100 focus:bg-blue-50 focus:text-slate-900">
           <Link href="/profile" className="flex items-center">
-            <Settings className="mr-2 h-4 w-4" />
+            <Settings className="mr-2 h-4 w-4 text-slate-700" />
             <span>Profile Settings</span>
           </Link>
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={handleSignOut}>
-          <LogOut className="mr-2 h-4 w-4" />
+        <DropdownMenuSeparator className="bg-slate-200" />
+        <DropdownMenuItem onClick={handleSignOut} className="text-slate-700 hover:bg-slate-100 focus:bg-blue-50 focus:text-slate-900">
+          <LogOut className="mr-2 h-4 w-4 text-slate-700" />
           <span>Sign out</span>
         </DropdownMenuItem>
       </DropdownMenuContent>

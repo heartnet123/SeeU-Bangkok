@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { TripListColumn } from "@/components/planner/TripListColumn";
 import { ItineraryColumn } from "@/components/planner/ItineraryColumn";
 import { ChatPanel } from "@/components/planner/ChatPanel";
@@ -80,7 +81,8 @@ import { useAuth } from "@/contexts/auth-context";
 
 export default function TripPlannerPage() {
   const { t, locale } = useTranslation();
-  const { session } = useAuth();
+  const { session, loading } = useAuth();
+  const router = useRouter();
   const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3000";
 
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -155,6 +157,16 @@ export default function TripPlannerPage() {
 
   const CATEGORIES = useMemo(() => DEFAULT_CATEGORIES.map(c => ({ ...c, label: t(c.key) })), [t]);
 
+  useEffect(() => {
+    if (!loading && !session?.access_token) {
+      router.replace('/auth/login');
+    }
+  }, [loading, session, router]);
+
+  if (!loading && !session?.access_token) {
+    return null;
+  }
+
   // Fetch saved trips from server
   const fetchSavedTrips = useCallback(async () => {
     if (!session?.access_token) return;
@@ -185,6 +197,7 @@ export default function TripPlannerPage() {
             lng: stop.place?.lng || 0,
             notes: stop.notes || '',
             distanceFromPrevKm: stop.distance_from_prev_km || 0,
+            image_url: stop.place?.image_url || '',
           })),
           totalDurationMin: trip.total_minutes || 0,
           totalDistanceKm: trip.total_distance_km || 0,
@@ -362,39 +375,46 @@ export default function TripPlannerPage() {
     console.log("Received trip draft from agent:", tripDraft);
   };
 
-  const handleAddPlaceToTrip = useCallback((place: PlaceItem | TripPlaceCandidate) => {
+  const handleAddPlaceToTrip = useCallback((placesToAdd: PlaceItem | TripPlaceCandidate | Array<PlaceItem | TripPlaceCandidate>) => {
+    const items = Array.isArray(placesToAdd) ? placesToAdd : [placesToAdd];
     setTrips((prevTrips) => {
-      const result = appendPlaceToTrip({
-        trips: prevTrips,
-        selectedTripId,
-        place,
-      });
+      let updatedTrips = prevTrips;
 
-      if (result.status === "missing-trip") {
-        toast.error(t("errors.selectTrip"));
-        return prevTrips;
+      for (const place of items) {
+        const result = appendPlaceToTrip({
+          trips: updatedTrips,
+          selectedTripId,
+          place,
+        });
+
+        if (result.status === "missing-trip") {
+          toast.error(t("errors.selectTrip"));
+          return prevTrips;
+        }
+
+        if (result.status === "missing-location") {
+          toast.error(t("errors.noLocation"));
+          return prevTrips;
+        }
+
+        if (result.status === "duplicate") {
+          toast.info(`${place.name} is already in this trip`);
+          continue;
+        }
+
+        const addedMessage =
+          t("actions.addedToTrip") || "{place} added to {trip}";
+        const tripName = result.tripName || "this trip";
+        toast.success(
+          addedMessage
+            .replace("{place}", place.name)
+            .replace("{trip}", tripName)
+        );
+
+        updatedTrips = result.trips;
       }
 
-      if (result.status === "missing-location") {
-        toast.error(t("errors.noLocation"));
-        return prevTrips;
-      }
-
-      if (result.status === "duplicate") {
-        toast.info(`${place.name} is already in this trip`);
-        return prevTrips;
-      }
-
-      const addedMessage =
-        t("actions.addedToTrip") || "{place} added to {trip}";
-      const tripName = result.tripName || "this trip";
-      toast.success(
-        addedMessage
-          .replace("{place}", place.name)
-          .replace("{trip}", tripName)
-      );
-
-      return result.trips;
+      return updatedTrips;
     });
   }, [selectedTripId, t]);
 
@@ -411,6 +431,42 @@ export default function TripPlannerPage() {
   const handleOpenAddStopDialog = useCallback((tripId: string) => {
     setSelectedTripId(tripId);
     setIsAddStopDialogOpen(true);
+  }, []);
+
+  const handleDeleteStop = useCallback((tripId: string, stopId: string) => {
+    if (tripId === "draft" && activeTripDraft) {
+      setActiveTripDraft({
+        ...activeTripDraft,
+        stops: activeTripDraft.stops.filter((s) => s.id !== stopId),
+      });
+    } else {
+      setTrips((prev) =>
+        prev.map((t) => {
+          if (t.id !== tripId) return t;
+          return {
+            ...t,
+            stops: t.stops.filter((s) => s.id !== stopId),
+          };
+        })
+      );
+    }
+    toast.success("Stop removed from itinerary");
+  }, [activeTripDraft]);
+
+  const handleSelectStop = useCallback((stop: TripStop) => {
+    const mapPlace = {
+      id: stop.id,
+      name: stop.name,
+      description: `${stop.category} - ${stop.address}`,
+      tags: [stop.category],
+      lat: stop.lat,
+      lng: stop.lng,
+      address: stop.address,
+      price: 0,
+      image_url: stop.image_url || "",
+      slug: stop.placeId || '',
+    };
+    setSelectedPlace(mapPlace);
   }, []);
 
   const handleDeleteTrip = async (tripId: string) => {
@@ -648,7 +704,7 @@ export default function TripPlannerPage() {
         lng: stop.lng,
         address: stop.address,
         price: 0,
-        image_url: "",
+        image_url: stop.image_url || "",
         slug: nameToSlug(stop.name),
       }));
   };
@@ -665,7 +721,7 @@ export default function TripPlannerPage() {
         lng: stop.lng!,
         address: stop.slug,
         price: 0,
-        image_url: "",
+        image_url: (stop as any).image_url || "",
         slug: stop.slug,
       }));
   };
@@ -687,6 +743,7 @@ export default function TripPlannerPage() {
           lat: place?.lat ?? stop.lat,
           lng: place?.lng ?? stop.lng,
           slug: place?.slug ?? stop.slug ?? stop.name,
+          image_url: place?.image_url ?? "",
         };
       })
     };
@@ -983,6 +1040,8 @@ export default function TripPlannerPage() {
             trip={displayedTrip}
             onEditTrip={displayedTrip?.source === "draft" ? undefined : handleEditTrip}
             onAddStop={displayedTrip?.source === "saved" ? handleOpenAddStopDialog : undefined}
+            onDeleteStop={handleDeleteStop}
+            onSelectStop={handleSelectStop}
             onSaveTrip={handleSaveTripToServer}
             onReorderStops={handleReorderStops}
             isLoading={isTripsLoading}
@@ -999,45 +1058,85 @@ export default function TripPlannerPage() {
         isOpen={isBottomSheetExpanded}
         onClose={() => setIsBottomSheetExpanded(false)}
         onOpenChange={setIsBottomSheetExpanded}
-        title={displayedTrip?.name || "My Trip"}
+        title={leftPanelTab === 'history' ? 'Chat History' : displayedTrip?.name || 'My Trip'}
         peekHeight={120}
       >
         <div className="px-4 space-y-6">
-          <div>
-            <h3 className="text-sm font-semibold text-slate-700 mb-3">
+          <div className="flex gap-1 mb-4 p-1 bg-slate-100 rounded-lg">
+            <button
+              onClick={() => setLeftPanelTab('trips')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-sm font-medium transition-colors ${leftPanelTab === 'trips'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+                }`}
+            >
+              <MapIcon className="h-4 w-4" />
               My Trips
-            </h3>
-            <TripListColumn
-              trips={trips}
-              selectedTripId={selectedTripId}
-              onSelectTrip={(tripId) => {
-                setSelectedTripId(tripId);
-                setActiveTripDraft(null);
+            </button>
+            <button
+              onClick={() => {
+                setLeftPanelTab('history');
+                fetchChatSessions();
               }}
-              onNewTripClick={handleNewTrip}
-              onDeleteTrip={handleDeleteTrip}
-              onEditTrip={handleEditTrip}
-              onReorderTrips={handleReorderTrips}
-            />
+              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-sm font-medium transition-colors ${leftPanelTab === 'history'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+                }`}
+            >
+              <MessageSquare className="h-4 w-4" />
+              Chat History
+            </button>
           </div>
 
-          <div>
-            <h3 className="text-sm font-semibold text-slate-700 mb-3">
-              Itinerary
-            </h3>
-            <ItineraryColumn
-              trip={displayedTrip}
-              onEditTrip={displayedTrip?.source === "draft" ? undefined : handleEditTrip}
-              onAddStop={displayedTrip?.source === "saved" ? handleOpenAddStopDialog : undefined}
-              onSaveTrip={handleSaveTripToServer}
-              onReorderStops={handleReorderStops}
-              isLoading={isTripsLoading}
-              totalDurationMin={(stopsSuggestedDuration || 0) + (routeTravelMin || 0)}
-              totalDistanceKm={routeDistanceKm ?? displayedTrip?.totalDistanceKm ?? 0}
-              mode={displayedTrip?.source === "draft" ? "draft" : "saved"}
-              warnings={displayedTrip?.warnings ?? []}
-            />
-          </div>
+          {leftPanelTab === 'trips' ? (
+            <div className="space-y-6">
+              <div>
+                <TripListColumn
+                  trips={trips}
+                  selectedTripId={selectedTripId}
+                  onSelectTrip={(tripId) => {
+                    setSelectedTripId(tripId);
+                    setActiveTripDraft(null);
+                  }}
+                  onNewTripClick={handleNewTrip}
+                  onDeleteTrip={handleDeleteTrip}
+                  onEditTrip={handleEditTrip}
+                  onReorderTrips={handleReorderTrips}
+                />
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700 mb-3">
+                  Itinerary
+                </h3>
+                <ItineraryColumn
+                  trip={displayedTrip}
+                  onEditTrip={displayedTrip?.source === "draft" ? undefined : handleEditTrip}
+                  onAddStop={displayedTrip?.source === "saved" ? handleOpenAddStopDialog : undefined}
+                  onDeleteStop={handleDeleteStop}
+                  onSelectStop={handleSelectStop}
+                  onSaveTrip={handleSaveTripToServer}
+                  onReorderStops={handleReorderStops}
+                  isLoading={isTripsLoading}
+                  totalDurationMin={(stopsSuggestedDuration || 0) + (routeTravelMin || 0)}
+                  totalDistanceKm={routeDistanceKm ?? displayedTrip?.totalDistanceKm ?? 0}
+                  mode={displayedTrip?.source === "draft" ? "draft" : "saved"}
+                  warnings={displayedTrip?.warnings ?? []}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="h-full min-h-[60vh]">
+              <ChatHistorySidebar
+                sessions={chatSessions}
+                activeSessionId={activeSessionId}
+                onSelectSession={handleSelectSession}
+                onNewSession={handleNewSession}
+                onDeleteSession={handleDeleteSession}
+                isLoading={isSessionsLoading}
+              />
+            </div>
+          )}
         </div>
       </BottomSheet>
 

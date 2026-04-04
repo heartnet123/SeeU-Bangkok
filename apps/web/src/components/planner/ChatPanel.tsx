@@ -123,8 +123,10 @@ export function ChatPanel({
 		>
 			<Card
 				className={cn(
-					"fixed bottom-6 right-6 shadow-2xl z-50 overflow-hidden flex flex-col",
-					isMinimized ? "w-80 h-14" : "w-[440px] h-[680px]",
+					"fixed bottom-4 right-4 sm:bottom-6 sm:right-6 shadow-2xl z-50 overflow-hidden flex flex-col",
+					isMinimized
+						? "w-80 h-14"
+						: "w-[95vw] max-w-[440px] h-[65vh] sm:w-[440px] sm:h-[680px]",
 				)}
 			>
 				<CardHeader className="flex flex-row items-center justify-between py-3 px-4 border-b bg-card shrink-0">

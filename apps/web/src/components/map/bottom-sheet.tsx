@@ -143,20 +143,6 @@ export function BottomSheet({
             </div>
           </div>
 
-          {/* Header - Show only when expanded */}
-          {isOpen && title && (
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 flex-shrink-0">
-              <h2 className="text-lg font-semibold text-slate-800">{title}</h2>
-              <button
-                onClick={onClose}
-                className="text-slate-500 hover:text-slate-700 p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
-                aria-label="Close panel"
-              >
-                <ChevronUp className="h-5 w-5" />
-              </button>
-            </div>
-          )}
-
           {/* Content - Show only when expanded */}
           {isOpen && (
             <div

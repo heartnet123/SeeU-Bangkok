@@ -199,15 +199,6 @@ export function TripListColumn({
                             >
                               {trip.date}
                             </p>
-                            <p
-                              className={cn(
-                                "text-sm text-slate-500 mt-2",
-                                isSelected && "text-blue-700"
-                              )}
-                            >
-                              {trip.stops.length} Stops • {trip.totalDistanceKm}{" "}
-                              km
-                            </p>
                           </button>
 
                           {(onEditTrip || onDeleteTrip) && (

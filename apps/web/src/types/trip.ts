@@ -9,6 +9,7 @@ export interface TripStop {
   lng: number;
   notes?: string;
   distanceFromPrevKm?: number;
+  image_url?: string;
 }
 
 export interface Trip {
