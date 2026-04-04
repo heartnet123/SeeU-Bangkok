@@ -92,6 +92,62 @@ describe("agent payload helpers", () => {
 		expect(places[0]?.id).toBe("wat-arun");
 	});
 
+	test("parseAssistantPayload normalizes researcher groupType alias friends", () => {
+		const parsed = parseAssistantPayload(JSON.stringify({
+			intent: "place_recommendation",
+			summary: "Minimal walking ideas",
+			places: [
+				{
+					id: "wat-phra-kaew",
+					name: "Wat Phra Kaew",
+					slug: "wat-phra-kaew",
+					lat: 13.75,
+					lng: 100.4913,
+					tags: ["temple", "cultural"],
+					description: "A sacred temple complex.",
+				},
+			],
+			planningConstraints: {
+				durationMinutes: 120,
+				maxStops: 3,
+				budgetLevel: "medium",
+				groupType: "friends",
+				themes: ["cultural", "temple"],
+			},
+		}));
+
+		expect(parsed.source).toBe("researcher");
+		expect(parsed.summary).toBe("Minimal walking ideas");
+		expect(parsed.places).toHaveLength(1);
+	});
+
+	test("parseAssistantPayload salvages malformed structured payload instead of falling back to raw text", () => {
+		const parsed = parseAssistantPayload(JSON.stringify({
+			intent: "place_recommendation",
+			summary: "Minimal walking ideas",
+			places: [
+				{
+					id: "wat-phra-kaew",
+					name: "Wat Phra Kaew",
+					lat: 13.75,
+					lng: 100.4913,
+				},
+			],
+			planningConstraints: {
+				durationMinutes: 120,
+				maxStops: 3,
+				budgetLevel: "medium",
+				groupType: "buddies",
+				themes: ["cultural", "temple"],
+			},
+		}));
+
+		expect(parsed.source).toBe("partial");
+		expect(parsed.summary).toBe("Minimal walking ideas");
+		expect(parsed.places).toEqual([]);
+		expect(parsed.rawText).toBe("Minimal walking ideas");
+	});
+
 	test("buildUiPayload dedupes places and derives actions", () => {
 		const uniquePlaces = dedupeCandidatePlaces([
 			tripDraft.places[0],

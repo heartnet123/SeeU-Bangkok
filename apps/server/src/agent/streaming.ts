@@ -71,6 +71,33 @@ function createFallbackUiPayload(options: {
 	};
 }
 
+function looksLikeJsonBlob(content: string): boolean {
+	const trimmed = content.trim();
+	return (
+		(trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+		(trimmed.startsWith("[") && trimmed.endsWith("]"))
+	);
+}
+
+function buildSafeMessageEventData(options: {
+	content: string;
+	latestAssistantSummary: string | null;
+}): string | null {
+	if (options.latestAssistantSummary) {
+		return options.latestAssistantSummary;
+	}
+
+	if (looksLikeJsonBlob(options.content)) {
+		const parsed = parseAssistantPayload(options.content);
+		if (parsed.source !== "text") {
+			return parsed.summary;
+		}
+		return null;
+	}
+
+	return options.content;
+}
+
 export async function* streamAgentExecution(
 	options: AgentStreamOptions
 ): AsyncGenerator<SSEEvent> {
@@ -205,10 +232,16 @@ export async function* streamAgentExecution(
 							lastAssistantMessage = content;
 						}
 
-						yield {
-							event: "message",
-							data: latestAssistantSummary || content,
-						};
+						const safeMessageData = buildSafeMessageEventData({
+							content,
+							latestAssistantSummary,
+						});
+						if (safeMessageData) {
+							yield {
+								event: "message",
+								data: safeMessageData,
+							};
+						}
 					}
 					break;
 

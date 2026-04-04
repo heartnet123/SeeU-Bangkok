@@ -50,6 +50,24 @@ function parseJson<T>(input: string, fallback: T): T {
 	}
 }
 
+function extractStructuredSummary(input: string): string | null {
+	const parsed = parseJson<unknown>(input, null);
+	if (!parsed || typeof parsed !== "object") {
+		return null;
+	}
+
+	const summary = (parsed as Record<string, unknown>).summary;
+	return typeof summary === "string" && summary.trim().length > 0 ? summary : null;
+}
+
+function looksLikeJsonBlob(input: string): boolean {
+	const trimmed = input.trim();
+	return (
+		(trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+		(trimmed.startsWith("[") && trimmed.endsWith("]"))
+	);
+}
+
 function isUiResponsePayload(value: unknown): value is UiResponsePayload {
 	if (!value || typeof value !== "object") return false;
 	const v = value as Record<string, unknown>;
@@ -220,7 +238,19 @@ export function handleStreamEvent(
 		}
 
 		case "message":
-			updateLocal((prev) => ({ ...prev, text: joined }));
+			{
+				const structuredSummary = extractStructuredSummary(joined);
+				if (structuredSummary) {
+					updateLocal((prev) => ({ ...prev, text: structuredSummary }));
+					break;
+				}
+
+				if (looksLikeJsonBlob(joined)) {
+					break;
+				}
+
+				updateLocal((prev) => ({ ...prev, text: joined }));
+			}
 			break;
 
 		case "error":

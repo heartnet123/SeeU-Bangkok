@@ -73,7 +73,7 @@ Remember: You are gathering information for trip planning. Focus on relevance an
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function createResearcherAgent(model?: ChatOpenAI): any {
 	const llm = model || new ChatOpenAI({
-		modelName: "gpt-5-nano",
+		modelName: "gpt-5.4-mini",
 		temperature: 0,
 	});
 

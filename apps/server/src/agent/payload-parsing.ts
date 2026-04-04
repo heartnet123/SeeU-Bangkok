@@ -14,12 +14,80 @@ export interface ParsedAgentPayload {
 	warnings: string[];
 	uiPayload: UiResponsePayload | null;
 	rawText: string;
-	source: "planner" | "researcher" | "ui" | "text";
+	source: "planner" | "researcher" | "ui" | "partial" | "text";
+}
+
+function normalizeGroupTypeAlias(value: unknown): unknown {
+	if (!value || typeof value !== "object") {
+		return value;
+	}
+
+	const normalized = { ...(value as Record<string, unknown>) };
+
+	const normalizeConstraints = (constraints: unknown) => {
+		if (!constraints || typeof constraints !== "object") {
+			return constraints;
+		}
+
+		const next = { ...(constraints as Record<string, unknown>) };
+		if (next.groupType === "friends") {
+			next.groupType = "group";
+		}
+		return next;
+	};
+
+	if ("planningConstraints" in normalized) {
+		normalized.planningConstraints = normalizeConstraints(normalized.planningConstraints);
+	}
+
+	if ("tripDraft" in normalized && normalized.tripDraft && typeof normalized.tripDraft === "object") {
+		const tripDraft = { ...(normalized.tripDraft as Record<string, unknown>) };
+		tripDraft.constraints = normalizeConstraints(tripDraft.constraints);
+		normalized.tripDraft = tripDraft;
+	}
+
+	return normalized;
+}
+
+function salvageCandidatePlaces(value: unknown): CandidatePlace[] {
+	if (!Array.isArray(value)) {
+		return [];
+	}
+
+	return value.flatMap((place) => {
+		if (!place || typeof place !== "object") {
+			return [];
+		}
+
+		const record = place as Record<string, unknown>;
+		if (
+			typeof record.id !== "string" ||
+			typeof record.name !== "string" ||
+			typeof record.slug !== "string"
+		) {
+			return [];
+		}
+
+		return [{
+			id: record.id,
+			name: record.name,
+			slug: record.slug,
+			lat: typeof record.lat === "number" ? record.lat : undefined,
+			lng: typeof record.lng === "number" ? record.lng : undefined,
+			tags: Array.isArray(record.tags)
+				? record.tags.filter((tag): tag is string => typeof tag === "string")
+				: [],
+			price: typeof record.price === "number" ? record.price : undefined,
+			image_url: typeof record.image_url === "string" ? record.image_url : undefined,
+			description: typeof record.description === "string" ? record.description : undefined,
+			address: typeof record.address === "string" ? record.address : undefined,
+		} satisfies CandidatePlace];
+	});
 }
 
 export function parseAssistantPayload(content: string): ParsedAgentPayload {
 	try {
-		const parsedJson = JSON.parse(content);
+		const parsedJson = normalizeGroupTypeAlias(JSON.parse(content));
 
 		const uiParsed = UiResponsePayloadSchema.safeParse(parsedJson);
 		if (uiParsed.success) {
@@ -58,6 +126,21 @@ export function parseAssistantPayload(content: string): ParsedAgentPayload {
 				rawText: content,
 				source: "researcher",
 			};
+		}
+
+		if (parsedJson && typeof parsedJson === "object") {
+			const record = parsedJson as Record<string, unknown>;
+			if (typeof record.summary === "string") {
+				return {
+					summary: record.summary,
+					places: salvageCandidatePlaces(record.places),
+					tripDraft: null,
+					warnings: [],
+					uiPayload: null,
+					rawText: record.summary,
+					source: "partial",
+				};
+			}
 		}
 	} catch {
 		// Keep plain text fallback.
