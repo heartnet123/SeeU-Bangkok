@@ -628,6 +628,7 @@ export async function* streamSupervisor(
 
 	const queue: any[] = [];
 	let isDone = false;
+	let emittedAssistantMessage = false;
 	let resolver: (() => void) | null = null;
 
 	const pushEvent = (event: any) => {
@@ -649,10 +650,34 @@ export async function* streamSupervisor(
 		collector: {
 			onAgent: async (agent: string) => pushEvent({ type: "agent", data: { agent } }),
 			onTool: async (tool: string, args: any) => pushEvent({ type: "tool", data: { tool, args } }),
-			onMessage: async (message: any) => pushEvent({ type: "message", data: message }),
+			onMessage: async (message: any) => {
+				if (message?.role === "assistant" && typeof message.content === "string" && message.content.trim().length > 0) {
+					emittedAssistantMessage = true;
+				}
+				pushEvent({ type: "message", data: message });
+			},
 			onStage: async (stage: string) => pushEvent({ type: "stage", data: { stage } }),
 		}
-	}).then(() => {
+	}).then((state) => {
+		if (!emittedAssistantMessage) {
+			if (state.finalPayload) {
+				pushEvent({
+					type: "message",
+					data: {
+						role: "assistant",
+						content: JSON.stringify(state.finalPayload),
+					},
+				});
+			} else if (typeof state.finalResponse === "string" && state.finalResponse.trim().length > 0) {
+				pushEvent({
+					type: "message",
+					data: {
+						role: "assistant",
+						content: state.finalResponse,
+					},
+				});
+			}
+		}
 		isDone = true;
 		if (resolver) resolver();
 	}).catch((err) => {

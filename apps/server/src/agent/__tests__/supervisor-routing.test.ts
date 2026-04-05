@@ -217,6 +217,26 @@ describe("scope policy", () => {
 			warnings: ["OUT_OF_SCOPE"],
 		});
 	});
+
+	test("streams a refusal message for out-of-scope requests", async () => {
+		process.env.SUPABASE_URL ||= "https://example.supabase.co";
+		process.env.SUPABASE_SERVICE_ROLE_KEY ||= "test-service-role-key";
+		const { streamSupervisor } = await import("../supervisor");
+		const events: Array<{ type: string; data: unknown }> = [];
+
+		for await (const event of streamSupervisor([
+			{ role: "user", content: "Recommend 3 cafés in Chiang Mai" },
+		])) {
+			events.push(event);
+		}
+
+		const messageEvent = events.find((event) => event.type === "message");
+		expect(messageEvent).toBeDefined();
+		expect(messageEvent?.data).toMatchObject({
+			role: "assistant",
+			content: expect.stringContaining("\"intent\":\"refusal\""),
+		});
+	});
 });
 
 describe("supervisor response normalization", () => {
