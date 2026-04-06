@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
 
 type PlacePayload = {
   name?: string
@@ -53,13 +54,26 @@ export default function AdminEditPlacePage() {
 
   const update = (k: keyof PlacePayload, v: any) => setForm((f) => ({ ...f, [k]: v }))
 
+  const getAuthHeaders = async () => {
+    const supabase = createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+
+    return {
+      'Authorization': `Bearer ${session?.access_token ?? ''}`,
+    }
+  }
+
   const fetchPlace = async () => {
     try {
       setLoading(true)
       setError(null)
       
       const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'
-      const res = await fetch(`${serverUrl}/api/admin/places/${placeId}`)
+      const res = await fetch(`${serverUrl}/api/admin/places/${placeId}`, {
+        headers: {
+          ...(await getAuthHeaders()),
+        },
+      })
       
       const contentType = res.headers.get('content-type') || ''
       const data = contentType.includes('application/json') ? await res.json() : { success: false, error: (await res.text()) || 'Unexpected response from server' }
@@ -100,7 +114,7 @@ export default function AdminEditPlacePage() {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-
+          ...(await getAuthHeaders()),
         },
         body: JSON.stringify({ text }),
       })
@@ -167,7 +181,7 @@ export default function AdminEditPlacePage() {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
-
+          ...(await getAuthHeaders()),
         },
         body: JSON.stringify(changedPayload),
       })
