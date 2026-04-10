@@ -1,0 +1,254 @@
+================================================================================
+                    FYP_TripPlanner Installation Guide
+================================================================================
+
+PROJECT OVERVIEW
+================================================================================
+FYP_TripPlanner is a monorepo project containing:
+- Server: Backend API built with Hono, LangChain, and Supabase
+- Web: Frontend built with Next.js and React
+- Managed by: Turbo (monorepo manager) and Bun (package manager)
+
+
+PREREQUISITES
+================================================================================
+Before installation, ensure you have the following installed:
+
+1. Node.js (version 18 or higher) - https://nodejs.org/
+   - Can be verified with: node --version
+
+2. Bun (version 1.2.18 or higher) - https://bun.sh/
+   - Install with: npm install -g bun
+   - Verify with: bun --version
+
+3. Git (for version control)
+   - Download from: https://git-scm.com/
+
+4. Database (PostgreSQL recommended)
+   - For local development, use: Supabase
+   - Online setup: https://supabase.com/
+
+
+INSTALLATION STEPS
+================================================================================
+
+STEP 1: Clone the Repository
+--------
+Open terminal/command prompt and run:
+    git clone https://github.com/your-repo/FYP_Mapchatbot.git
+    cd FYP_Mapchatbot
+
+
+STEP 2: Install Dependencies
+--------
+Using Bun (recommended):
+    bun install
+
+Or using npm:
+    npm install
+
+
+STEP 3: Environment Configuration
+--------
+The project uses environment variables for configuration.
+
+For the Server:
+    a) Navigate to: apps/server/
+    b) Copy the example file: .env.example to .env (or server.env)
+    c) Fill in the required variables:
+       - Database connection (POSTGRES_URL or similar)
+       - Supabase credentials (SUPABASE_URL, SUPABASE_KEY)
+       - OpenAI API key (OPENAI_API_KEY)
+       - Other API keys and configurations
+
+For the Web App:
+    a) Navigate to: apps/web/
+    b) Copy .env.example to .env.local
+    c) Fill in the required variables:
+       - API endpoints
+       - Mapbox token
+       - Other client-side configuration
+
+
+STEP 4: Database Setup (Server Only)
+--------
+If using database migrations:
+
+    a) Generate database schema:
+        bun run db:generate
+
+    b) Push database schema:
+        bun run db:push
+
+    c) Run migrations (if any):
+        bun run db:migrate
+
+    d) Start database studio (optional, for viewing data):
+        bun run db:studio
+
+
+STEP 5: Build the Project (Optional)
+--------
+To build all applications:
+    bun run build
+
+Or build specific apps:
+    bun run build:web
+    bun run build:server
+
+
+RUNNING THE PROJECT IN DEVELOPMENT
+================================================================================
+
+START ALL APPLICATIONS (Recommended)
+--------
+    bun run dev
+
+This starts all services in development mode:
+- Server runs on a specified port (check terminal output)
+- Web app runs on http://localhost:3001 (Turbopack)
+
+
+START INDIVIDUAL APPLICATIONS
+--------
+
+Web App Only:
+    bun run dev:web
+    Access at: http://localhost:3001
+
+Server Only:
+    bun run dev:server
+    Check terminal for port information
+
+Native App (if available):
+    bun run dev:native
+
+
+OTHER USEFUL COMMANDS
+================================================================================
+
+Type Check All Apps:
+    bun run check-types
+
+Database Commands:
+    bun run db:push          - Push schema to database
+    bun run db:studio       - Open database studio
+    bun run db:generate     - Generate database types
+    bun run db:migrate      - Run database migrations
+
+Validation:
+    bun run bmad:validate   - Validate AI agent methods
+
+
+PROJECT STRUCTURE
+================================================================================
+
+apps/server/
+    ├── src/
+    │   ├── index.ts          - Server entry point
+    │   ├── agent/            - AI agent logic
+    │   ├── db/               - Database setup
+    │   ├── lib/              - Utility libraries
+    │   ├── middleware/       - Express/Hono middleware
+    │   ├── routers/          - API routes
+    │   └── ...
+    ├── sql/                  - SQL schemas
+    ├── drizzle.config.ts    - Database ORM config
+    └── package.json
+
+apps/web/
+    ├── src/
+    │   ├── app/             - Next.js pages and layout
+    │   ├── components/      - React components
+    │   ├── contexts/        - React contexts
+    │   ├── lib/             - Utilities
+    │   ├── types/           - TypeScript types
+    │   └── ...
+    ├── public/              - Static assets
+    └── package.json
+
+
+TROUBLESHOOTING
+================================================================================
+
+Problem: Module not found errors
+Solution:
+    - Ensure Bun is installed: bun --version
+    - Clear cache: bun install --no-cache
+    - Check ~/.bun/bin is in PATH
+
+Problem: Database connection errors
+Solution:
+    - Verify .env file has correct credentials
+    - Test database connection manually
+    - Check Supabase credentials
+
+Problem: Port already in use
+Solution:
+    - Find process using the port and kill it
+    - Or specify a different port when running dev
+
+Problem: TypeScript errors
+Solution:
+    - Run type check: bun run check-types
+    - Ensure all dependencies are installed
+    - Check tsconfig.json files
+
+
+DEVELOPMENT WORKFLOW
+================================================================================
+
+1. Install dependencies: bun install
+2. Set up environment files (.env, .env.local)
+3. Run database migrations: bun run db:push
+4. Start development: bun run dev
+5. Make code changes (hot reload enabled)
+6. Tests and validation as needed
+7. Build for production: bun run build
+
+
+PRODUCTION DEPLOYMENT
+================================================================================
+
+1. Set environment variables in production environment
+2. Build the applications: bun run build
+3. Database migrations: bun run db:push
+4. Deploy built artifacts to hosting platform
+5. Ensure all required API keys and secrets are set
+
+For specific deployment guides, refer to:
+- Server deployment: Consult server hosting guidelines
+- Web deployment: Next.js deployment docs
+
+
+GETTING HELP
+================================================================================
+
+- Check project README.md for additional info
+- Review .env.example files for needed variables
+- Check logs for detailed error messages
+- Consult package.json for available scripts
+
+
+VERSION INFO
+================================================================================
+
+Project Version: See package.json
+Package Manager: Bun 1.2.18+
+Node Version: 18+
+Next.js Version: 15.3.0
+TypeScript Version: 5+
+
+
+NOTES
+================================================================================
+
+- This project uses Turbo for monorepo management
+- Hot reload is enabled in development mode
+- Environment variables are crucial for proper operation
+- Database setup is required for server functionality
+- Ensure all dependencies are declared in each app's package.json
+
+
+Last Updated: 2026-04-10
+================================================================================
