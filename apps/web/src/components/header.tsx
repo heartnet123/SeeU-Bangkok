@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { Button } from "./ui/button";
 import { Search, Menu, X } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { usePathname } from "next/navigation";
 import { AuthButton } from "./auth/auth-button";
 import { AnimatedGroup } from "./core/animated-group";
@@ -12,19 +12,34 @@ import { useTranslation } from "@/contexts/language-context";
 import { useAuth } from "@/contexts/auth-context";
 
 export default function Header() {
-	const { user } = useAuth();
+	const { user, loading } = useAuth();
 	const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 	const pathname = usePathname();
 
-const { t } = useTranslation();
+	const { t } = useTranslation();
 
-	const links = [
+	// Debug: Check user role for admin link
+	console.log("Current User:", user);
+
+	const links = useMemo(() => {
+		const baseLinks = [
 			{ to: "/", label: t("nav.home") },
 			{ to: "/places", label: t("nav.places") },
 			{ to: "/map", label: t("nav.map") },
 			{ to: "/saved-trips", label: t("nav.savedTrips") },
-			...(user?.role === "admin" ? [{ to: "/admin/places", label: t("nav.admin") }] : []),
-	];
+		];
+
+		if (user?.role === "admin") {
+			baseLinks.push({ to: "/admin/places", label: t("nav.admin") });
+		}
+
+		return baseLinks;
+	}, [user, t]);
+
+	// Prevent flash of unauthenticated content by returning a placeholder while loading
+	if (loading) {
+		return <div className="w-full h-[84px] bg-white/90 backdrop-blur-md shadow-lg" />;
+	}
 
 	return (
 		<motion.header 
