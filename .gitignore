@@ -20,7 +20,7 @@ web-bundles
 *.bmad
 
 *.omx
-
+*.codegraph
 
 # Auto Claude data directory
 .auto-claude/
